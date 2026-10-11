@@ -1,0 +1,8 @@
+# Development only. Install the pinned torch wheel separately for CUDA/CPU/MPS.
+numpy==2.2.6
+Pillow==11.3.0
+fonttools==4.60.2
+onnx==1.19.1
+onnxruntime==1.31.0
+psutil==7.1.0
+rapidocr==3.10.0

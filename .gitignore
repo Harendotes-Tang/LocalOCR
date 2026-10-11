@@ -1,0 +1,16 @@
+# Training, validation, private handoff and generated packages stay local.
+artifacts/
+models/
+datasets/
+checkpoints/
+.venv/
+__pycache__/
+*.py[cod]
+*.onnx
+*.pt
+*.pth
+*.safetensors
+.env
+.env.*
+# Local requirement-governance artifacts are not release/source dependencies.
+openspec/
