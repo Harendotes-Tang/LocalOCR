@@ -1,0 +1,10 @@
+# Isolated Windows x64 Python 3.11 research environment.
+# CPU ONNX conversion uses requirements-pretrained-paddle-export.txt.
+# Paddle 3.3.0 / Paddle2ONNX 2.1.0 DLL ABI is incompatible on this Windows host.
+# GPU wheel: --index-url https://www.paddlepaddle.org.cn/packages/stable/cu129/
+paddlepaddle-gpu==3.3.0
+numpy==2.4.1
+Pillow==12.1.0
+PyYAML==6.0.2
+opencv-python-headless==4.11.0.86
+pytest==8.3.5

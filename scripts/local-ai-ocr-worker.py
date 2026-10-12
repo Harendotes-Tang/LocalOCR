@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import math
 import os
 from pathlib import Path
@@ -16,13 +17,20 @@ import re
 import unicodedata
 from types import SimpleNamespace
 
+# Direct source invocation must resolve the same audited product identity from
+# any working directory, including Python isolated mode. Frozen execution
+# imports the bundled localocr package through the freezer loader.
+if not getattr(sys, "frozen", False):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from localocr.version import VERSION_TEXT
+
 MODELS = {
     "PP-OCRv6_det_small.onnx": (9929594, "090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f"),
     "PP-OCRv6_rec_small.onnx": (21234383, "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884"),
     "ch_ppocr_mobile_v2.0_cls_mobile.onnx": (585532, "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c"),
 }
 HEADER = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
-VERSION = "MentorRecorder local AI OCR 2; RapidOCR 3.10.0; ONNX Runtime 1.31.0; CPU-only"
+VERSION = VERSION_TEXT
 # Qt limits source files to 20 MiB before decoding. Its owned lossless PNG can
 # be larger than a JPEG source; bound that copy by the already permitted pixels.
 MAX_PIXELS = 50_000_000
@@ -112,7 +120,7 @@ def choose_reread(original, variants):
             if ''.join(text.split()) != ''.join(original.replace('•', '●').split()):
                 continue
         key = "".join(text.split())
-        votes.setdefault(key, []).append((text.strip(), float(score)))
+        votes.setdefault(key, []).append((text, float(score)))
     eligible = [items for key, items in votes.items()
                 if len(items) >= 2 and key != "".join(original.split())]
     if not eligible:
@@ -272,8 +280,19 @@ def reread_symbols(engine, image, result):
 
 
 def deny_network(event, _args):
-    if event in {"socket.connect", "socket.connect_ex", "socket.getaddrinfo", "socket.bind"}:  # BOUNDARY-ALLOW(NET-008): Denied audit event identifier; every matching event raises before I/O.
+    # This process has no network role. Deny socket creation as well as all
+    # audited DNS, TCP and UDP operations (including sendto/sendmsg).
+    # Native-code I/O outside Python audit events still requires an OS sandbox.
+    # platform.system() on Windows queries local gethostname during Shapely import;
+    # that query performs no network I/O and is the only permitted socket event.
+    if event.startswith("socket.") and event != "socket.gethostname":  # BOUNDARY-ALLOW(NET-008): All socket I/O and DNS/creation audit events are denied.
         raise RuntimeError("Offline worker forbids network access")
+    if event in {"subprocess.Popen", "os.system", "os.spawn", "os.posix_spawn",
+                 "os.exec", "os.fork", "os.forkpty", "os.startfile", "os.startfile/2"}:
+        # The inference core has no child-process role. OSError also lets the
+        # pinned Windows platform.win32_ver use getwindowsversion() when its
+        # three shell-based `ver` probes are refused before CreateProcess.
+        raise OSError("Offline worker forbids process execution")
 
 
 def validate_models(root: Path):
@@ -288,10 +307,21 @@ def validate_models(root: Path):
             raise ValueError("OCR model checksum mismatch")
 
 
-def create_engine(root: Path):
+def create_engine(root: Path, manifest: Path | None = None):
     """Load all fixed CPU sessions eagerly so missing/corrupt models cannot hide behind an empty result."""
-    validate_models(root)
     sys.addaudithook(deny_network)
+    names = {"det": "PP-OCRv6_det_small.onnx", "rec": "PP-OCRv6_rec_small.onnx",
+             "cls": "ch_ppocr_mobile_v2.0_cls_mobile.onnx"}
+    if manifest is None:
+        validate_models(root)
+    else:
+        if not root.is_absolute() or not manifest.is_absolute() or manifest != root / "manifest.json":
+            raise ValueError("Absolute bundle manifest under model root is required")
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from localocr.bundles import validate_bundle, verify_runtime
+        bundle = validate_bundle(root)
+        verify_runtime()
+        names = {role: entry["file"] for role, entry in bundle.manifest["models"].items()}
     os.environ["OMP_NUM_THREADS"] = "2"
     os.environ["OPENBLAS_NUM_THREADS"] = "2"
     os.environ["MKL_NUM_THREADS"] = "2"
@@ -306,9 +336,9 @@ def create_engine(root: Path):
         "Global.log_level": "critical",
         "Global.return_word_box": False,
         "Global.return_single_char_box": False,
-        "Det.model_path": str(root / "PP-OCRv6_det_small.onnx"),
-        "Rec.model_path": str(root / "PP-OCRv6_rec_small.onnx"),
-        "Cls.model_path": str(root / "ch_ppocr_mobile_v2.0_cls_mobile.onnx"),
+        "Det.model_path": str(root / names["det"]),
+        "Rec.model_path": str(root / names["rec"]),
+        "Cls.model_path": str(root / names["cls"]),
         "EngineConfig.onnxruntime.intra_op_num_threads": 2,
         "EngineConfig.onnxruntime.inter_op_num_threads": 1,
         "EngineConfig.onnxruntime.use_cuda": False,
@@ -322,7 +352,73 @@ def create_engine(root: Path):
     for load in (engine._load_det_model, engine._load_cls_model, engine._load_rec_model):
         if load().session.session.get_providers() != ["CPUExecutionProvider"]:
             raise RuntimeError("Only the CPU execution provider is permitted")
+    if manifest is not None:
+        sessions = {"det": engine._load_det_model().session.session,
+                    "cls": engine._load_cls_model().session.session,
+                    "rec": engine._load_rec_model().session.session}
+        for role, session in sessions.items():
+            inputs, outputs = session.get_inputs(), session.get_outputs()
+            if len(inputs) != 1 or len(outputs) != 1 or inputs[0].type != "tensor(float)" or outputs[0].type != "tensor(float)":
+                raise ValueError("Unsupported OCR model tensor interface")
+            shape = inputs[0].shape
+            if len(shape) != 4 or shape[1] != 3:
+                raise ValueError("Unsupported OCR model input shape")
+            dynamic = lambda dimension: dimension is None or isinstance(dimension, str)
+            if role == "det":
+                if not (dynamic(shape[0]) or shape[0] == 1) or not dynamic(shape[2]) or not dynamic(shape[3]):
+                    raise ValueError("Detector must support variable image dimensions")
+            elif not dynamic(shape[0]):
+                raise ValueError("Classifier and recognizer must support variable batch sizes")
+            if role == "cls" and (not (dynamic(shape[2]) or shape[2] == 48) or not (dynamic(shape[3]) or shape[3] == 192)):
+                raise ValueError("Classifier must support 48 by 192 preprocessing")
+            if role == "rec" and not dynamic(shape[3]):
+                raise ValueError("Recognizer must support variable crop widths")
+            output_shape = outputs[0].shape
+            if not output_shape or (role != "det" and not dynamic(output_shape[0])):
+                raise ValueError("OCR output must preserve dynamic batch size")
+            if role == "det" and (len(output_shape) != 4 or output_shape[1] != 1 or not dynamic(output_shape[2]) or not dynamic(output_shape[3])):
+                raise ValueError("Unsupported detector output")
+            if role == "cls" and (len(output_shape) != 2 or output_shape[1] != 2):
+                raise ValueError("Unsupported direction classifier output")
+            if role == "rec":
+                metadata = session.get_modelmeta().custom_metadata_map
+                dictionary = engine._load_rec_model().postprocess_op.character
+                if not metadata.get("character") or shape[2] != 48 or len(output_shape) != 3 or not dynamic(output_shape[1]) or output_shape[2] != len(dictionary):
+                    raise ValueError("Incompatible recognizer dictionary or output")
     return engine
+
+
+def probe_engine(engine):
+    """Actually execute all three models with pinned runtime preprocessing.
+
+    Empty detection cannot hide a broken classifier/recognizer: those are invoked
+    independently on synthetic crops, at both single and two-crop batch sizes.
+    Different aspect ratios exercise the dynamic detector and recognizer inputs.
+    No probe image or prediction is included in a package or saved to disk.
+    """
+    import numpy as np
+    from rapidocr.ch_ppocr_rec import TextRecInput
+    detector = engine._load_det_model()
+    classifier = engine._load_cls_model()
+    recognizer = engine._load_rec_model()
+    for height, width in ((64, 96), (96, 64)):
+        image = np.full((height, width, 3), 255, dtype=np.uint8)
+        prepared = detector.get_preprocess()(image)
+        if prepared is None:
+            raise ValueError("Detector probe preprocessing failed")
+        prediction = detector.session(prepared)
+        if not np.isfinite(np.asarray(prediction)).all():
+            raise ValueError("Detector probe returned nonfinite values")
+        detector.postprocess_op(prediction, (height, width))
+    narrow = np.full((48, 320, 3), 255, dtype=np.uint8)
+    wide = np.full((48, 640, 3), 255, dtype=np.uint8)
+    for crops in ([narrow], [narrow, wide]):
+        classified = classifier(crops)
+        if len(classified.cls_res) != len(crops) or any(not math.isfinite(float(score)) for _, score in classified.cls_res):
+            raise ValueError("Classifier execution probe failed")
+        recognized = recognizer(TextRecInput(img=crops, return_word_box=False))
+        if len(recognized.txts) != len(crops) or len(recognized.scores) != len(crops) or any(not math.isfinite(float(score)) for score in recognized.scores):
+            raise ValueError("Recognizer execution probe failed")
 
 
 def serialize_result(result, width: int, height: int) -> bytes:
@@ -351,6 +447,41 @@ def serialize_result(result, width: int, height: int) -> bytes:
     return payload
 
 
+def serialize_json_result(result, width: int, height: int, model_version: str) -> bytes:
+    """Keep recognizer text/scores verbatim and preserve real quadrilateral coordinates.
+
+    rect is the clipped integer envelope for previews; box preserves the engine
+    quadrilateral, including fractional coordinates. Scores are not probabilities.
+    """
+    import numpy as np
+    regions = []
+    if result.boxes is not None:
+        if not (len(result.boxes) == len(result.txts) == len(result.scores)) or len(result.boxes) > 100_000:
+            raise ValueError("Invalid OCR output")
+        for box, text, score in zip(result.boxes, result.txts, result.scores):
+            points = np.asarray(box, dtype=float)
+            if points.shape != (4, 2) or not np.isfinite(points).all() or not math.isfinite(float(score)):
+                raise ValueError("Invalid OCR geometry")
+            if not isinstance(text, str):
+                raise ValueError("Invalid OCR text")
+            x = max(0, math.floor(float(points[:, 0].min())))
+            y = max(0, math.floor(float(points[:, 1].min())))
+            right = min(width, math.ceil(float(points[:, 0].max())))
+            bottom = min(height, math.ceil(float(points[:, 1].max())))
+            if right <= x or bottom <= y:
+                raise ValueError("OCR region lies outside the image")
+            regions.append({"text": text, "box": points.tolist(),
+                            "rect": {"x": x, "y": y, "width": right-x, "height": bottom-y},
+                            "score": float(score)})
+    payload = json.dumps({"schema_version": "localocr.result.v1", "model_version": model_version,
+                          "image": {"width": width, "height": height}, "regions": regions,
+                          "score_semantics": "Uncalibrated recognizer score; symbol rereads use the minimum agreeing-view score. Not a probability."},
+                         ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
+    if len(payload) > 8 * 1024 * 1024:
+        raise ValueError("OCR output exceeds limit")
+    return payload
+
+
 def main():
     parser = argparse.ArgumentParser(description="Offline local CPU OCR")
     parser.add_argument("--version", action="version", version=VERSION)
@@ -358,12 +489,28 @@ def main():
     parser.add_argument("--input")
     parser.add_argument("--output")
     parser.add_argument("--models", required=True)
+    parser.add_argument("--format", choices=("tsv", "json"), default="tsv")
+    parser.add_argument("--manifest")
+    parser.add_argument("--model-version")
     args = parser.parse_args()
     root = Path(args.models)
+    manifest = Path(args.manifest) if args.manifest else None
+    model_version = args.model_version or "legacy-fixed-baseline"
+    if manifest is not None:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from localocr.bundles import validate_bundle
+        bundle = validate_bundle(root)
+        if args.model_version and args.model_version != bundle.version:
+            raise ValueError("Requested model version does not match manifest")
+        model_version = bundle.version
+    elif args.model_version:
+        raise ValueError("Model version requires a manifest")
     if args.self_test:
         if args.input or args.output:
             raise ValueError("Self-test does not accept image or output paths")
-        create_engine(root)
+        engine = create_engine(root, manifest)
+        if manifest is not None:
+            probe_engine(engine)
         print("Local CPU OCR models and dependencies verified.")
         return
     if not args.input or not args.output:
@@ -378,17 +525,18 @@ def main():
     from PIL import Image
     with Image.open(source) as image:
         width, height = image.size
-        if image.format != "PNG" or width <= 0 or height <= 0 or width * height > MAX_PIXELS:
+        if image.format not in (("PNG", "JPEG") if args.format == "json" else ("PNG",)) or getattr(image, "n_frames", 1) != 1 or width <= 0 or height <= 0 or width * height > MAX_PIXELS:
             raise ValueError("Invalid PNG dimensions")
-    engine = create_engine(root)
+    engine = create_engine(root, manifest)
     import cv2
     import numpy as np
     image = cv2.imdecode(np.fromfile(source, dtype=np.uint8), cv2.IMREAD_COLOR)
     if image is None or image.shape[:2] != (height, width):
         raise ValueError("Cannot decode input PNG")
     result = engine(image)
-    serialize_result(result, width, height)  # Validate first-pass vectors before retrying regions.
-    payload = serialize_result(reread_symbols(engine, image, result), width, height)
+    serialize = (lambda value: serialize_json_result(value, width, height, model_version)) if args.format == "json" else (lambda value: serialize_result(value, width, height))
+    serialize(result)  # Validate first-pass vectors before retrying regions.
+    payload = serialize(reread_symbols(engine, image, result))
     temporary = output.with_name(output.name + ".partial")
     try:
         temporary.write_bytes(payload)

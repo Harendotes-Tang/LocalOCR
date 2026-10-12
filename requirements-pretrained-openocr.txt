@@ -1,0 +1,9 @@
+# Independent research venv; these exact distributions are exposed read-only
+# from the previously verified local Torch environment, never installed into it.
+torch==2.10.0+cu128
+numpy==2.2.6
+Pillow==11.3.0
+PyYAML==6.0.3
+onnx==1.19.1
+onnxruntime==1.31.0
+regex==2025.11.3

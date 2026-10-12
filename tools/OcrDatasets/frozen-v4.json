@@ -1,0 +1,13 @@
+{
+  "schema_version": "localocr.frozen-candidate.v1",
+  "identity": "rejected-v4",
+  "model_sha256": "d2bd044deaf4b83fdbb3a7c5eaa23c52cd6378e68d4901624601ae2cad03b54f",
+  "alphabet_sha256": "1163a17b67609572b1e059d971be984edd051ec049994f03e681dc2c2af639ef",
+  "training_sha256": "c24e1e503000be3a49e4628ff60b749541f783a8ca2934348dd2855d09c825e3",
+  "approved_usage": "CPU comparison reference only; rejected for production integration",
+  "display_name": "kaomoji-exp-20261011-004",
+  "historical_marker": "v4",
+  "identity_kind": "experiment",
+  "status": "rejected",
+  "enabled": false
+}

@@ -1,0 +1,8 @@
+# Offline synthesis tools; install during preparation, never at generator runtime.
+fonttools==4.60.2
+uharfbuzz==0.53.3
+freetype-py==2.5.1
+regex==2025.11.3
+Pillow==11.3.0
+numpy==2.2.6
+

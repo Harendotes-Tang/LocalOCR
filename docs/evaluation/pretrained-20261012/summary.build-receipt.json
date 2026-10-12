@@ -1,0 +1,144 @@
+{
+  "schema_version": "localocr.pretrained.summary-build.v1",
+  "fixture": false,
+  "generator_sha256": "199a2de62b2b99858b3814e769115e09c5b1fbf6375f4f6825ca0232a9e92dfc",
+  "dev_report_sha256": "e25f1da9d156f11422717f8d434852c00d535b4bc572f2dea8965b637aefab49",
+  "heldout_report_sha256": "1499732a86b6d0782c72992d6222569561cdc4b9f8369a196f5c0cd60dae5aa2",
+  "sources": [
+    {
+      "role": "dev-evaluation",
+      "sha256": "e25f1da9d156f11422717f8d434852c00d535b4bc572f2dea8965b637aefab49"
+    },
+    {
+      "role": "run-preparation",
+      "sha256": "ba61ab880bcb075c281847de2758fafdf42993fda6422d61cb71197102b98bde"
+    },
+    {
+      "role": "run-curve",
+      "sha256": "d8182dfcd1805a5b376c16d76db127ad6547fcd3b4922c8974d8422ab6222978"
+    },
+    {
+      "role": "run-preparation",
+      "sha256": "ba61ab880bcb075c281847de2758fafdf42993fda6422d61cb71197102b98bde"
+    },
+    {
+      "role": "run-curve",
+      "sha256": "f77efb7dd78d12301fed8a41f969029dd549f3b32938056538319a01fcb7f974"
+    },
+    {
+      "role": "run-preparation",
+      "sha256": "7c693ae55e8e118c55d84afcaf4392cc3ffecf849fd9055cc32c2a15aa1c2d4c"
+    },
+    {
+      "role": "run-curve",
+      "sha256": "7139433c06f7c9169bef9efdccdecd4b5c2f063b62559f22a67530daa48cfaa6"
+    },
+    {
+      "role": "run-freeze",
+      "sha256": "8da0cdc6fb2d40d17fd0d0aa94a53ad0d86d5bb548bd87dc4e6b04aa5009b87b"
+    },
+    {
+      "role": "run-selection",
+      "sha256": "20427b633ac2f56d7c51032ed1f8d6d4680af61811aaf02a9b42c5be717e456b"
+    },
+    {
+      "role": "run-preparation",
+      "sha256": "7c693ae55e8e118c55d84afcaf4392cc3ffecf849fd9055cc32c2a15aa1c2d4c"
+    },
+    {
+      "role": "run-curve",
+      "sha256": "fd2f998f97ab019e4be12907d878278f989ca5d6a18391614ee3cccf6569cfe6"
+    },
+    {
+      "role": "run-freeze",
+      "sha256": "414975820a07a2c3bfa343f1dcdec642e7e8b56408c4fa8caf0e171ded4b4888"
+    },
+    {
+      "role": "run-selection",
+      "sha256": "e5125ea982e6e95c1d2c56557c8e11b6373d168de9cda015b664dbf697dcb9b9"
+    },
+    {
+      "role": "heldout-evaluation",
+      "sha256": "1499732a86b6d0782c72992d6222569561cdc4b9f8369a196f5c0cd60dae5aa2"
+    }
+  ],
+  "run_closures": [
+    {
+      "family": "ppocrv6-tiny",
+      "run_id": "ppocrv6-tiny-exp-20261011-001",
+      "preparation_sha256": "ba61ab880bcb075c281847de2758fafdf42993fda6422d61cb71197102b98bde",
+      "curve_sha256": "d8182dfcd1805a5b376c16d76db127ad6547fcd3b4922c8974d8422ab6222978",
+      "completed": true,
+      "status": "completed",
+      "actual_steps": 17309,
+      "checkpoint_selection": {
+        "outcome": "run-best",
+        "step": 1222,
+        "sha256": "c1b06f601ba2ae1194142a8dae9f01396cf8b0d3e7f68c7785d783779c3b6987"
+      },
+      "selection_scope": "run-local checkpoint; final family selection is separate",
+      "start_checkpoint_sha256": "3f35a8b13a3101691a49016638f39df40dfd22d426124bf1ab4a63e1f5648cb8",
+      "last_checkpoint_sha256": "4ff67b8ab05cc7afc12bbc5099ef60e6ef0d8583ebeea5601516d8490474a174"
+    },
+    {
+      "family": "ppocrv6-tiny",
+      "run_id": "ppocrv6-tiny-exp-20261011-002",
+      "preparation_sha256": "ba61ab880bcb075c281847de2758fafdf42993fda6422d61cb71197102b98bde",
+      "curve_sha256": "f77efb7dd78d12301fed8a41f969029dd549f3b32938056538319a01fcb7f974",
+      "completed": true,
+      "status": "completed",
+      "actual_steps": 7321,
+      "checkpoint_selection": {
+        "outcome": "parent-retained",
+        "step": null,
+        "sha256": "c1b06f601ba2ae1194142a8dae9f01396cf8b0d3e7f68c7785d783779c3b6987"
+      },
+      "selection_scope": "run-local checkpoint; final family selection is separate",
+      "start_checkpoint_sha256": "c1b06f601ba2ae1194142a8dae9f01396cf8b0d3e7f68c7785d783779c3b6987",
+      "last_checkpoint_sha256": "6a9347938f93fc33b4d4ff69d6ce5e4fe3a8450bdbdcb4c9214003659dde1b41"
+    },
+    {
+      "family": "repsvtr-mobile",
+      "run_id": "repsvtr-mobile-exp-20261011-001-run1",
+      "preparation_sha256": "7c693ae55e8e118c55d84afcaf4392cc3ffecf849fd9055cc32c2a15aa1c2d4c",
+      "curve_sha256": "7139433c06f7c9169bef9efdccdecd4b5c2f063b62559f22a67530daa48cfaa6",
+      "completed": false,
+      "status": "failed",
+      "actual_steps": 24050,
+      "checkpoint_selection": {
+        "outcome": "selected-before-failure",
+        "step": 18000,
+        "sha256": "31ecce8c4e1538392655b3385dfcb330efcef58f55b7ebfdb060f3abb51b472a"
+      },
+      "selection_scope": "run-local checkpoint; final family selection is separate",
+      "run_freeze_sha256": "8da0cdc6fb2d40d17fd0d0aa94a53ad0d86d5bb548bd87dc4e6b04aa5009b87b",
+      "selection_sha256": "20427b633ac2f56d7c51032ed1f8d6d4680af61811aaf02a9b42c5be717e456b",
+      "selected_step": 18000,
+      "selected_checkpoint_sha256": "31ecce8c4e1538392655b3385dfcb330efcef58f55b7ebfdb060f3abb51b472a",
+      "failure_type": "PermissionError",
+      "failure_code": "WinError5"
+    },
+    {
+      "family": "repsvtr-mobile",
+      "run_id": "repsvtr-mobile-exp-20261011-002",
+      "preparation_sha256": "7c693ae55e8e118c55d84afcaf4392cc3ffecf849fd9055cc32c2a15aa1c2d4c",
+      "curve_sha256": "fd2f998f97ab019e4be12907d878278f989ca5d6a18391614ee3cccf6569cfe6",
+      "completed": true,
+      "status": "completed",
+      "actual_steps": 13448,
+      "checkpoint_selection": {
+        "outcome": "run-best",
+        "step": 2500,
+        "sha256": "1e4d425279e56224b523f3f80badce4597e35d2ac14cb3f259bd337d3b0301a2"
+      },
+      "selection_scope": "run-local checkpoint; final family selection is separate",
+      "start_checkpoint_sha256": "31ecce8c4e1538392655b3385dfcb330efcef58f55b7ebfdb060f3abb51b472a",
+      "last_checkpoint_sha256": "5b78284462c2fbbda610103d47ac63db9f8b5efbe204f0a4eeb5d547ce2114c2",
+      "selection_sha256": "e5125ea982e6e95c1d2c56557c8e11b6373d168de9cda015b664dbf697dcb9b9",
+      "run_freeze_sha256": "414975820a07a2c3bfa343f1dcdec642e7e8b56408c4fa8caf0e171ded4b4888"
+    }
+  ],
+  "scope": "single synthetic canvas recognizers; excludes automatic candidate localization/fusion and APP acceptance",
+  "raw_images_labels_predictions_paths_exported": false,
+  "summary_sha256": "ed41fc6d9120a2839f5d89d02f3aa379993f755a96c6d301168cd16887cdefec"
+}

@@ -1,0 +1,377 @@
+{
+  "dataset": {
+    "counts": {
+      "dev": {
+        "faces": 120,
+        "scenes": 200
+      },
+      "heldout": {
+        "faces": 280,
+        "scenes": 400
+      }
+    },
+    "sha256": "7abfec1a755d0c171d0e807948dc1ab082b42ccd19ad7b64ca8b16f568cb5008",
+    "split_sha256": {
+      "dev": "05cc72d356fb85f2ef5f143a7c774490d034bc48e992ba5e826b4007364305fb",
+      "heldout": "2af558c7a96a7ab60d749beac101d50211a2067380cfdb2054d2e703206fc2de"
+    }
+  },
+  "dev": {
+    "config_sha256": "d526255bf7b63fb8efae4a63c875b52a68a8ccb2fe146c5637a8bfb1733e4927",
+    "dataset_sha256": "7abfec1a755d0c171d0e807948dc1ab082b42ccd19ad7b64ca8b16f568cb5008",
+    "evaluation_backend": "ONNX Runtime CPU",
+    "evaluation_scope": "automatic whole-scene regional fusion; exact Unicode and whitespace",
+    "first_use_sha256": null,
+    "localization": {
+      "body_regions": 180,
+      "body_regions_routed": 0,
+      "body_regions_with_candidate": 180,
+      "candidate_count": 360,
+      "complete_ink_coverage": 118,
+      "eligible_complete_ink_coverage": 54,
+      "faces": 120,
+      "found_any": 120,
+      "graphic_regions": 40,
+      "graphic_regions_routed": 0,
+      "graphic_regions_with_candidate": 0,
+      "intersecting_body": 230,
+      "intersecting_graphic": 0,
+      "missed": 0,
+      "negative_scenes": 40,
+      "negative_scenes_routed": 0,
+      "negative_scenes_with_candidate": 0,
+      "partial_only": 2,
+      "routed_candidate_count": 56,
+      "routed_candidates_intersecting_body": 0,
+      "routed_candidates_intersecting_graphic": 0,
+      "routed_complete_ink_coverage": 54,
+      "safe_complete_coverage": 117,
+      "safe_routed_complete_coverage": 54
+    },
+    "models": [
+      {
+        "body": {
+          "baseline_correct_to_wrong": 0,
+          "baseline_exact": 104,
+          "body_intersection_transcript_changes": 0,
+          "erroneous_rewrites": 0,
+          "final_exact": 104,
+          "new_body_intersection_errors": 0,
+          "regions": 180
+        },
+        "face_regions": {
+          "character_errors": 783,
+          "characters": 1044,
+          "count": 120,
+          "exact": 3
+        },
+        "family": "production-baseline",
+        "id": "production-baseline",
+        "model_sha256": "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884",
+        "negative": {
+          "blank": {
+            "baseline_nonempty": 0,
+            "final_nonempty": 0,
+            "new_nonempty": 0,
+            "scenes": 20
+          },
+          "graphic-only": {
+            "baseline_nonempty": 20,
+            "final_nonempty": 20,
+            "new_nonempty": 0,
+            "scenes": 20
+          },
+          "graphic_regions": {
+            "baseline_nonempty": 20,
+            "final_nonempty": 20,
+            "new_nonempty": 0,
+            "regions": 40
+          }
+        },
+        "preprocessing_sha256": "28a30bd91959fff29d7852d413ad7dc83f0744e58dc2e8526a526f732e6e855f",
+        "stage": "production",
+        "vocabulary_sha256": "a3f4adfc2587d0ae079efa19533e2c8d280447dcdab2c414efe94af4cb9e896d"
+      },
+      {
+        "body": {
+          "baseline_correct_to_wrong": 0,
+          "baseline_exact": 104,
+          "body_intersection_transcript_changes": 0,
+          "erroneous_rewrites": 0,
+          "final_exact": 104,
+          "new_body_intersection_errors": 0,
+          "regions": 180
+        },
+        "face_regions": {
+          "character_errors": 777,
+          "characters": 1044,
+          "count": 120,
+          "exact": 4
+        },
+        "family": "ppocrv6-tiny",
+        "id": "ppocrv6-tiny-exp-20261011-001",
+        "model_sha256": "5271f2e4d6a566881fab8f615c94201275679bf9824af0faa7175a5c5790fbcf",
+        "negative": {
+          "blank": {
+            "baseline_nonempty": 0,
+            "final_nonempty": 0,
+            "new_nonempty": 0,
+            "scenes": 20
+          },
+          "graphic-only": {
+            "baseline_nonempty": 20,
+            "final_nonempty": 20,
+            "new_nonempty": 0,
+            "scenes": 20
+          },
+          "graphic_regions": {
+            "baseline_nonempty": 20,
+            "final_nonempty": 20,
+            "new_nonempty": 0,
+            "regions": 40
+          }
+        },
+        "preprocessing_sha256": "e61ae6bf7b9276ed90f0209e2b35e2bc4eef6f1e1c0a5a35660d14d445503586",
+        "stage": "final-fusion",
+        "vocabulary_sha256": "ddeb62baa90c042553000c34bcd00ff7eb06bffab7670cb3b16cf8315151518f"
+      },
+      {
+        "body": {
+          "baseline_correct_to_wrong": 0,
+          "baseline_exact": 104,
+          "body_intersection_transcript_changes": 0,
+          "erroneous_rewrites": 0,
+          "final_exact": 104,
+          "new_body_intersection_errors": 0,
+          "regions": 180
+        },
+        "face_regions": {
+          "character_errors": 783,
+          "characters": 1044,
+          "count": 120,
+          "exact": 3
+        },
+        "family": "repsvtr-mobile",
+        "id": "repsvtr-mobile-exp-20261011-001-best",
+        "model_sha256": "17a8402694cc7438dd980e3fae16eeea222d74d35da6f37c1e825e7c10f588b7",
+        "negative": {
+          "blank": {
+            "baseline_nonempty": 0,
+            "final_nonempty": 0,
+            "new_nonempty": 0,
+            "scenes": 20
+          },
+          "graphic-only": {
+            "baseline_nonempty": 20,
+            "final_nonempty": 20,
+            "new_nonempty": 0,
+            "scenes": 20
+          },
+          "graphic_regions": {
+            "baseline_nonempty": 20,
+            "final_nonempty": 20,
+            "new_nonempty": 0,
+            "regions": 40
+          }
+        },
+        "preprocessing_sha256": "901a9e047faf25e4c528a265a5254df7eddeae728e7005bf8f0895069bb10270",
+        "stage": "final-fusion",
+        "vocabulary_sha256": "4fb80932265e363e5dba30ebe5f8837c6d4466e13c19a1887101efd4ca49360c"
+      }
+    ],
+    "pipeline_sha256": "87c82cf9ae72aa30df79bd0898804387516e6c5ebed481829bbd412fdcc40da6",
+    "report_sha256": "03e5c3b20d64e077f9b289953a4ab435d81880e26fbeb67c74468fd821ff5922",
+    "runtime": {
+      "inter_op_threads": 1,
+      "intra_op_threads": 2,
+      "providers": [
+        "CPUExecutionProvider"
+      ]
+    },
+    "scenes": 200,
+    "selection_sha256": "7cc12630656e865d88a1d61fea005b9a28d5eca3851d5b36196d7f1e283a3910",
+    "split_sha256": "05cc72d356fb85f2ef5f143a7c774490d034bc48e992ba5e826b4007364305fb"
+  },
+  "fixture": false,
+  "heldout": {
+    "config_sha256": "d526255bf7b63fb8efae4a63c875b52a68a8ccb2fe146c5637a8bfb1733e4927",
+    "dataset_sha256": "7abfec1a755d0c171d0e807948dc1ab082b42ccd19ad7b64ca8b16f568cb5008",
+    "evaluation_backend": "ONNX Runtime CPU",
+    "evaluation_scope": "automatic whole-scene regional fusion; exact Unicode and whitespace",
+    "first_use_sha256": "9b097056208f6ce57a5dfb2d05057f6923730d0f2264da3607484692afb60b00",
+    "localization": {
+      "body_regions": 400,
+      "body_regions_routed": 0,
+      "body_regions_with_candidate": 400,
+      "candidate_count": 763,
+      "complete_ink_coverage": 274,
+      "eligible_complete_ink_coverage": 0,
+      "faces": 280,
+      "found_any": 279,
+      "graphic_regions": 80,
+      "graphic_regions_routed": 0,
+      "graphic_regions_with_candidate": 0,
+      "intersecting_body": 457,
+      "intersecting_graphic": 0,
+      "missed": 1,
+      "negative_scenes": 80,
+      "negative_scenes_routed": 0,
+      "negative_scenes_with_candidate": 0,
+      "partial_only": 5,
+      "routed_candidate_count": 0,
+      "routed_candidates_intersecting_body": 0,
+      "routed_candidates_intersecting_graphic": 0,
+      "routed_complete_ink_coverage": 0,
+      "safe_complete_coverage": 271,
+      "safe_routed_complete_coverage": 0
+    },
+    "models": [
+      {
+        "body": {
+          "baseline_correct_to_wrong": 0,
+          "baseline_exact": 228,
+          "body_intersection_transcript_changes": 0,
+          "erroneous_rewrites": 0,
+          "final_exact": 228,
+          "new_body_intersection_errors": 0,
+          "regions": 400
+        },
+        "face_regions": {
+          "character_errors": 1679,
+          "characters": 2412,
+          "count": 280,
+          "exact": 8
+        },
+        "family": "production-baseline",
+        "id": "production-baseline",
+        "model_sha256": "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884",
+        "negative": {
+          "blank": {
+            "baseline_nonempty": 0,
+            "final_nonempty": 0,
+            "new_nonempty": 0,
+            "scenes": 40
+          },
+          "graphic-only": {
+            "baseline_nonempty": 40,
+            "final_nonempty": 40,
+            "new_nonempty": 0,
+            "scenes": 40
+          },
+          "graphic_regions": {
+            "baseline_nonempty": 40,
+            "final_nonempty": 40,
+            "new_nonempty": 0,
+            "regions": 80
+          }
+        },
+        "preprocessing_sha256": "28a30bd91959fff29d7852d413ad7dc83f0744e58dc2e8526a526f732e6e855f",
+        "stage": "production",
+        "vocabulary_sha256": "a3f4adfc2587d0ae079efa19533e2c8d280447dcdab2c414efe94af4cb9e896d"
+      },
+      {
+        "body": {
+          "baseline_correct_to_wrong": 0,
+          "baseline_exact": 228,
+          "body_intersection_transcript_changes": 0,
+          "erroneous_rewrites": 0,
+          "final_exact": 228,
+          "new_body_intersection_errors": 0,
+          "regions": 400
+        },
+        "face_regions": {
+          "character_errors": 1679,
+          "characters": 2412,
+          "count": 280,
+          "exact": 8
+        },
+        "family": "ppocrv6-tiny",
+        "id": "ppocrv6-tiny-exp-20261011-001",
+        "model_sha256": "5271f2e4d6a566881fab8f615c94201275679bf9824af0faa7175a5c5790fbcf",
+        "negative": {
+          "blank": {
+            "baseline_nonempty": 0,
+            "final_nonempty": 0,
+            "new_nonempty": 0,
+            "scenes": 40
+          },
+          "graphic-only": {
+            "baseline_nonempty": 40,
+            "final_nonempty": 40,
+            "new_nonempty": 0,
+            "scenes": 40
+          },
+          "graphic_regions": {
+            "baseline_nonempty": 40,
+            "final_nonempty": 40,
+            "new_nonempty": 0,
+            "regions": 80
+          }
+        },
+        "preprocessing_sha256": "e61ae6bf7b9276ed90f0209e2b35e2bc4eef6f1e1c0a5a35660d14d445503586",
+        "stage": "final-fusion",
+        "vocabulary_sha256": "ddeb62baa90c042553000c34bcd00ff7eb06bffab7670cb3b16cf8315151518f"
+      },
+      {
+        "body": {
+          "baseline_correct_to_wrong": 0,
+          "baseline_exact": 228,
+          "body_intersection_transcript_changes": 0,
+          "erroneous_rewrites": 0,
+          "final_exact": 228,
+          "new_body_intersection_errors": 0,
+          "regions": 400
+        },
+        "face_regions": {
+          "character_errors": 1679,
+          "characters": 2412,
+          "count": 280,
+          "exact": 8
+        },
+        "family": "repsvtr-mobile",
+        "id": "repsvtr-mobile-exp-20261011-001-best",
+        "model_sha256": "17a8402694cc7438dd980e3fae16eeea222d74d35da6f37c1e825e7c10f588b7",
+        "negative": {
+          "blank": {
+            "baseline_nonempty": 0,
+            "final_nonempty": 0,
+            "new_nonempty": 0,
+            "scenes": 40
+          },
+          "graphic-only": {
+            "baseline_nonempty": 40,
+            "final_nonempty": 40,
+            "new_nonempty": 0,
+            "scenes": 40
+          },
+          "graphic_regions": {
+            "baseline_nonempty": 40,
+            "final_nonempty": 40,
+            "new_nonempty": 0,
+            "regions": 80
+          }
+        },
+        "preprocessing_sha256": "901a9e047faf25e4c528a265a5254df7eddeae728e7005bf8f0895069bb10270",
+        "stage": "final-fusion",
+        "vocabulary_sha256": "4fb80932265e363e5dba30ebe5f8837c6d4466e13c19a1887101efd4ca49360c"
+      }
+    ],
+    "pipeline_sha256": "87c82cf9ae72aa30df79bd0898804387516e6c5ebed481829bbd412fdcc40da6",
+    "report_sha256": "d8c8034d7998aa160ab4ffa1e18e9aeb6b08801648a59d95ea3e68396c32aa5a",
+    "runtime": {
+      "inter_op_threads": 1,
+      "intra_op_threads": 2,
+      "providers": [
+        "CPUExecutionProvider"
+      ]
+    },
+    "scenes": 400,
+    "selection_sha256": "7cc12630656e865d88a1d61fea005b9a28d5eca3851d5b36196d7f1e283a3910",
+    "split_sha256": "2af558c7a96a7ab60d749beac101d50211a2067380cfdb2054d2e703206fc2de"
+  },
+  "plot_font": {
+    "license": "OFL-1.1",
+    "sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b"
+  },
+  "schema_version": "localocr.region.readme-evaluation.v1"
+}

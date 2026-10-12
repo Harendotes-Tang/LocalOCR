@@ -1,0 +1,34 @@
+{
+  "schema_version": "localocr.pretrained.plot-receipt.v1",
+  "fixture": false,
+  "summary_sha256": "ed41fc6d9120a2839f5d89d02f3aa379993f755a96c6d301168cd16887cdefec",
+  "generator_sha256": "0265e9588fad0ed599973ba1a9c3e49f00ed16911d37a391b8e899d7b68d008f",
+  "font_sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b",
+  "font_license": "OFL-1.1",
+  "matplotlib": "3.10.8",
+  "training_evaluation_backend": "CUDA-native",
+  "heldout_evaluation_backend": "ONNX Runtime CPU",
+  "figures": [
+    {
+      "file": "pretrained-development.svg",
+      "sha256": "e70c13ee27c26508f6f8212ee78b7db6a1d9c6fde4c4a7ad112e752b04c12d2e",
+      "bytes": 234139
+    },
+    {
+      "file": "pretrained-heldout-cer.svg",
+      "sha256": "a4df26c059ed33dcc49030f1ef5e6b7b26a8ecfc6707da233a045b04ef7b466f",
+      "bytes": 137532
+    },
+    {
+      "file": "pretrained-heldout-exact.svg",
+      "sha256": "546fa49b3f2d7f4ce0aeb7280cd2cbb5fceec830ddffde6db4aacdc511afca93",
+      "bytes": 135959
+    },
+    {
+      "file": "pretrained-protection.svg",
+      "sha256": "7a0aea35eb479460f4ee5f508526cc293e4bdbd13e1e034e4fc7cfae9b1b70f2",
+      "bytes": 179080
+    }
+  ],
+  "external_or_active_svg_references": 0
+}
