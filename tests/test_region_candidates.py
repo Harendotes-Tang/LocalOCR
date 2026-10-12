@@ -157,3 +157,192 @@ def test_mixed_candidate_binds_actual_parent_raw_text():
     changed=next(item for item in c.locate_candidates(image,baseline)['candidates'] if item['candidate_id']==mixed['candidate_id'])
     assert changed['bbox']==mixed['bbox'] and changed['context_crops']==mixed['context_crops']
     assert changed['baseline_parent_sha256']!=mixed['baseline_parent_sha256']
+
+
+
+def angular_face_fixture(height=24, stroke=1, style='square'):
+    """Original pixel controls; no font/model or expected-coordinate input."""
+    top=10; left=10; right=left+height*2; bottom=top+height-1
+    image=Image.new('RGB',(right+20,bottom+20),'white'); draw=ImageDraw.Draw(image)
+    cap=max(3,height//4)
+    if style=='square':
+        draw.line([(left+cap-1,top),(left,top),(left,bottom),(left+cap-1,bottom)],fill='black',width=stroke)
+        draw.line([(right-cap+1,top),(right,top),(right,bottom),(right-cap+1,bottom)],fill='black',width=stroke)
+    elif style=='small-curve':
+        points=[(left+(1 if y in (top,bottom) else 0),y) for y in range(top,bottom+1)]
+        draw.line(points,fill='black',width=1)
+        draw.line([(right-(x-left),y) for x,y in points],fill='black',width=1)
+    elif style=='brace':
+        mid=(top+bottom)//2
+        draw.line([(left+cap-1,top),(left+2,top+2),(left+2,mid-3),(left,mid),(left+2,mid+3),(left+2,bottom-2),(left+cap-1,bottom)],fill='black',width=stroke)
+        draw.line([(right-(x-left),y) for x,y in [(left+cap-1,top),(left+2,top+2),(left+2,mid-3),(left,mid),(left+2,mid+3),(left+2,bottom-2),(left+cap-1,bottom)]],fill='black',width=stroke)
+    else:
+        raise AssertionError('unknown control style')
+    eye_y=top+max(2,height//3)
+    for x in (left+height*2//3,left+height*4//3):
+        draw.rectangle((x,eye_y,x+1,eye_y+1),fill='black')
+    draw.line((left+height-1,top+height-3,left+height+1,top+height-3),fill='black',width=1)
+    return np.asarray(image)
+
+
+@pytest.mark.parametrize('height,stroke', [(8,1),(12,1),(16,1),(24,1),(32,2)])
+def test_quality_thin_right_angle_pair_has_auditable_pixel_support(height,stroke):
+    image=angular_face_fixture(height,stroke)
+    output=c.locate_candidates(image,[])
+    qualified=[item for item in output['candidates'] if item['route_eligible']]
+    assert qualified
+    assert any(item['evidence']['bracket_shape_counts']['right-angle']>=1 for item in qualified)
+    assert all(item['evidence']['extra_shape_support'] for item in qualified)
+    pair=next(p for item in qualified for p in item['evidence']['paired_bracket_shapes'] if 'right-angle' in p['shape_kinds'])
+    assert pair['left_shape']['measurements']['stem_coverage']>=.85
+    assert pair['right_shape']['measurements']['top_cap_extension']>=2
+    assert pair['right_shape']['measurements']['bottom_cap_extension']>=2
+    assert c.DEFAULT_CONFIG['minimum_height']==7
+
+
+def test_quality_small_curved_extrema_are_separate_from_global_curvature():
+    output=c.locate_candidates(angular_face_fixture(13,style='small-curve'),[])
+    selected=[item for item in output['candidates'] if item['route_eligible']]
+    assert selected
+    assert any(item['evidence']['bracket_shape_counts']['small-curve'] for item in selected)
+    assert all(item['evidence']['bracket_shape_counts']['right-angle']==0 for item in selected)
+
+
+def test_quality_old_curve_evidence_and_brace_strokes_remain_observed():
+    for image in (face_fixture(),angular_face_fixture(24,style='brace')):
+        selected=[item for item in c.locate_candidates(image,[])['candidates'] if item['route_eligible']]
+        assert selected
+        assert any(item['evidence']['bracket_shape_counts']['curve'] for item in selected)
+
+
+@pytest.mark.parametrize('pair', c.BRACKETS)
+def test_quality_all_declared_brackets_and_numeric_mouth_are_role_limited(pair):
+    left,right=pair
+    assert c.is_face_text(left+'ω3ω'+right)
+    assert c.is_face_text(left+'Д益Д'+right)
+    for part in ('123','333','3_3','o','ABC','o  ω3ω','ω3ω  o'):
+        assert not c.is_face_text(left+part+right)
+    assert not c.is_face_text('3'+left+'ω3ω'+right)
+    assert not c.is_face_text(left+'ω3ω'+right+'3')
+    assert '3' not in c.FACE_LETTERS
+
+
+@pytest.mark.parametrize('ordinary', ['[123]','[333]','[ABC]','[o]','[T]','o [ω3ω]','[ω3ω] o'])
+def test_quality_right_angles_never_bypass_ordinary_body_anchor_guard(ordinary):
+    image=angular_face_fixture()
+    baseline=[{'bbox':[10,10,59,34],'text':ordinary,'score':.1}]
+    output=c.locate_candidates(image,baseline)
+    assert output['candidates']
+    assert not any(item['route_eligible'] for item in output['candidates'])
+
+
+def test_quality_straight_stems_without_two_caps_and_closed_frames_are_not_faces():
+    image=Image.fromarray(angular_face_fixture()); draw=ImageDraw.Draw(image)
+    # Remove bottom caps: two L-like stems do not provide paired closed brackets.
+    draw.rectangle((11,33,15,33),fill='white');draw.rectangle((53,33,57,33),fill='white')
+    evidence=c.pixel_evidence(np.asarray(image),[5,5,64,40])
+    assert not evidence['extra_shape_support']
+    image=Image.new('RGB',(90,55),'white'); draw=ImageDraw.Draw(image)
+    draw.rectangle((10,10,58,33),outline='black',width=1)
+    draw.rectangle((25,18,26,19),fill='black');draw.rectangle((42,18,43,19),fill='black')
+    draw.line((32,29,35,29),fill='black')
+    evidence=c.pixel_evidence(np.asarray(image),[5,5,64,40])
+    assert not evidence['extra_shape_support']
+
+
+def test_quality_right_angle_crop_clipping_and_tight_neighbor_keep_refusal():
+    image=angular_face_fixture()
+    clipped=c.locate_candidates(image[:,10:],[])
+    assert not any(item['route_eligible'] for item in clipped['candidates'])
+    extended=Image.fromarray(image);ImageDraw.Draw(extended).rectangle((62,16,70,30),fill='black')
+    baseline=[{'bbox':[9,8,75,37],'text':'BODY [ω3ω] 123','score':.6}]
+    output=c.locate_candidates(np.asarray(extended),baseline)
+    assert not any(item['route_eligible'] for item in output['candidates'])
+
+
+def thick_cap_mask(height, width, stem_width, cap_rows):
+    """Pixel geometry reproducing the observed thick CJK square stem ties."""
+    mask=np.zeros((height,width),dtype=np.uint8)
+    mask[:,:stem_width]=1
+    mask[:cap_rows,:]=1
+    mask[-cap_rows:,:]=1
+    return mask
+
+
+def thick_cap_face_fixture(height, width, stem_width, cap_rows):
+    mask=thick_cap_mask(height,width,stem_width,cap_rows)
+    right=10+height*2
+    canvas=np.full((height+20,right+width+10,3),255,dtype=np.uint8)
+    for x,part in ((10,mask),(right,np.fliplr(mask))):
+        canvas[10:10+height,x:x+width][part.astype(bool)]=0
+    canvas[10+height//3:12+height//3,10+height*2//3:12+height*2//3]=0
+    canvas[10+height//3:12+height//3,10+height*4//3:12+height*4//3]=0
+    canvas[10+height-3,10+height:13+height]=0
+    return canvas
+
+
+@pytest.mark.parametrize('height,width,stem_width,cap_rows',
+                         [(23,6,3,2),(12,3,2,1),(8,3,2,1),(32,8,3,2)])
+def test_quality_thick_square_stem_ties_are_mirror_symmetric(height,width,stem_width,cap_rows):
+    left=thick_cap_mask(height,width,stem_width,cap_rows)
+    left_profile=c._right_angle_profile(left)
+    right_profile=c._right_angle_profile(np.fliplr(left))
+    assert left_profile is not None and right_profile is not None
+    assert left_profile['direction']=='left'
+    assert right_profile['direction']=='right'
+    first=left_profile['measurements'];second=right_profile['measurements']
+    assert first['stem_column']<stem_width
+    assert second['stem_column']>=width-stem_width
+    assert first['stem_coverage']==second['stem_coverage']==1.
+    required=max(2,int(np.ceil(width*.50)))
+    assert min(first['top_cap_extension'],second['top_cap_extension'])>=required
+    assert min(first['bottom_cap_extension'],second['bottom_cap_extension'])>=required
+    assert first['maximum_middle_ink_width']==second['maximum_middle_ink_width']==stem_width
+
+
+@pytest.mark.parametrize('height,width,stem_width,cap_rows',
+                         [(23,6,3,2),(12,3,2,1),(8,3,2,1),(32,8,3,2)])
+def test_quality_thick_square_pair_routes_from_complete_original_pixels(height,width,stem_width,cap_rows):
+    image=thick_cap_face_fixture(height,width,stem_width,cap_rows)
+    candidates=c.locate_candidates(image,[])['candidates']
+    eligible=[item for item in candidates if item['route_eligible']]
+    assert eligible
+    full=[item for item in eligible if item['bbox'][0]<=10 and item['bbox'][2]>=10+height*2+width]
+    assert full
+    assert any(item['evidence']['bracket_shape_counts']['right-angle'] for item in full)
+    assert all(not item['evidence']['edge_ink'] and not item['evidence']['neighbor_body_overlap'] for item in full)
+
+
+@pytest.mark.parametrize('ordinary',['[ABC]','[123]','[333]','[o]','o [ω3ω]','[ω3ω] o'])
+def test_quality_thick_square_pixel_confirmation_preserves_body_refusal(ordinary):
+    image=thick_cap_face_fixture(23,6,3,2)
+    baseline=[{'bbox':[10,10,62,33],'text':ordinary,'score':.01}]
+    result=c.locate_candidates(image,baseline)
+    assert any(item['evidence']['bracket_shape_counts']['right-angle'] for item in result['candidates'])
+    assert result['route_eligible_count']==0
+
+
+def test_quality_thick_square_tie_cannot_manufacture_caps_or_closed_frame():
+    left=thick_cap_mask(23,6,3,2)
+    left[-2:]=0;left[-2:,:3]=1
+    assert c._right_angle_profile(left) is None
+    assert c._right_angle_profile(np.fliplr(left)) is None
+    closed=thick_cap_mask(23,6,3,2)
+    closed[:,-2:]=1
+    assert c._right_angle_profile(closed) is None
+    assert c._right_angle_profile(np.fliplr(closed)) is None
+
+
+def test_quality_thick_square_tie_keeps_adjacent_expressions_separate():
+    image=thick_cap_face_fixture(23,6,3,2)
+    joined=np.full((image.shape[0],image.shape[1]*2+18,3),255,dtype=np.uint8)
+    joined[:,:image.shape[1]]=image
+    offset=image.shape[1]+18
+    joined[:,offset:offset+image.shape[1]]=image
+    baseline=[{'bbox':[10,10,62,33],'text':'[ω3ω]','score':.1},
+              {'bbox':[10+offset,10,62+offset,33],'text':'[Д益Д]','score':.1}]
+    result=c.locate_candidates(joined,baseline)
+    qualified=[item for item in result['candidates'] if item['route_eligible']]
+    assert qualified
+    assert all(len(item['baseline_indices'])<=1 for item in qualified)
+    assert all(item['baseline_text'] in ('[ω3ω]','[Д益Д]') for item in qualified)

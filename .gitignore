@@ -4,12 +4,16 @@ models/
 datasets/
 checkpoints/
 .venv/
+/.pytest_cache/
+/.serial_mcp/
 __pycache__/
 *.py[cod]
 *.onnx
 *.pt
 *.pth
 *.safetensors
+*.pdparams
+*.pdopt
 .env
 .env.*
 # Local requirement-governance artifacts are not release/source dependencies.

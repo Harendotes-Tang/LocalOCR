@@ -23,7 +23,7 @@ import traceback
 import zipfile
 from pathlib import Path
 
-from tools.PretrainedOcr import common
+from tools.PretrainedOcr import common, quality_selection
 
 COMMIT = '1ccfc6ee6161f7133b192e16af3a9265273997ba'
 SOURCE_SHA = 'c7ffe75b07ffc50f23dd38320e5607db50babf32536e23abcffae6d2fb625334'
@@ -412,7 +412,7 @@ def predict_dev(model, tokens, info, rows, batch, deadline):
     return results
 
 
-def dev_statistics(rows, predictions, original=None):
+def dev_statistics(rows, predictions, original=None, quality=False):
     from tools.OcrDatasets.evaluate import distance
     kinds = {}
     for index, (row, prediction) in enumerate(zip(rows, predictions)):
@@ -430,7 +430,9 @@ def dev_statistics(rows, predictions, original=None):
     for value in kinds.values():
         value['exact_accuracy'] = value['exact_correct'] / value['samples']
         value['cer'] = value['edit_distance'] / value['reference_codepoints'] if value['reference_codepoints'] else None
-    return {'exact_accuracy': sum(x['exact_correct'] for x in kinds.values()) / max(1, len(rows)), 'by_kind': kinds}
+    result = {'exact_accuracy': sum(x['exact_correct'] for x in kinds.values()) / max(1, len(rows)), 'by_kind': kinds}
+    if quality: result['quality'] = quality_selection.summarize(rows, predictions, reference=original)
+    return result
 
 
 REGION_SAMPLING = {'face': 0.4, 'punctuation': 0.2, 'plain': 0.2, 'emoji': 0.1, 'negative': 0.1}
@@ -457,9 +459,23 @@ def sampling_order(rows, policy, rng):
     return rng.choices(range(len(rows)), weights=weights, k=len(rows))
 
 
+def development_better(candidate, incumbent, policy='legacy'):
+    if policy == 'face-pareto':
+        quality_selection.validate_summary(candidate.get('quality'))
+        return incumbent is None or quality_selection.face_better(candidate['quality'], incumbent.get('quality'))
+    if policy != 'legacy': raise ValueError('Unknown development selection policy')
+    return incumbent is None or candidate['exact_accuracy'] > incumbent['exact_accuracy']
+
+
 def train(args, probe=False):
+    selection_policy = getattr(args, 'selection_policy', 'legacy')
+    if selection_policy not in ('legacy', 'face-pareto'):
+        raise ValueError('Unknown development selection policy')
+    specialist = not probe and selection_policy == 'face-pareto'
     import torch
     directory = Path(args.prepared)
+    if specialist and any((directory / name).exists() for name in ('training.json', 'best.pth', 'best-selection.json')):
+        raise ValueError('Specialist training run must be fresh')
     torch.set_num_threads(2)
     model, tokens, info = load_prepared(directory)
     if not torch.cuda.is_available():
@@ -488,7 +504,14 @@ def train(args, probe=False):
         rows = positive + negative
     sampling_policy = getattr(args, 'sampling_policy', 'uniform')
     if not probe: sampling_order(rows, sampling_policy, random.Random(rng_seed))
-    history = []; steps = 0; best = -1; nonzero = False
+    coverage = None
+    if specialist:
+        fixed_source, _, _ = validate_inputs(info['inputs_receipt'])
+        coverage = quality_selection.original_class_coverage(rows, original_tokens(fixed_source))
+        snapshot = directory / 'quality-selection-source.py'
+        if snapshot.exists(): raise ValueError('Specialist training source snapshot must be fresh')
+        snapshot.write_bytes(Path(quality_selection.__file__).read_bytes())
+    history = []; steps = 0; best = -1; nonzero = False; best_stats = None; initial_quality = None
     maximum_steps = 2 if probe else args.steps
     with common.GPUBudget(args.budget).run('openocr-probe' if probe else 'openocr-train',
                                          limit_seconds=min(120, getattr(args, 'seconds', 120)) if probe else args.seconds) as deadline:
@@ -512,6 +535,15 @@ def train(args, probe=False):
                     'checkpoint_sha256': WEIGHT_SHA, 'dev_split_sha256': info['dataset_binding']['split_sha256']['dev']})
                 original_model = None
                 torch.cuda.empty_cache()
+                if specialist:
+                    model.eval()
+                    initial_predictions = predict_dev(model, tokens, info, dev, args.batch, deadline)
+                    if initial_predictions is None: raise RuntimeError('Lease exhausted before specialist initial development reference')
+                    best_stats = dev_statistics(dev, initial_predictions, original_predictions, quality=True)
+                    initial_quality = best_stats['quality']; best = best_stats['exact_accuracy']
+                    common.write(directory / 'quality-initial-dev.json', {'metrics': best_stats, 'predictions': initial_predictions,
+                        'checkpoint_sha256': initial_sha, 'dev_split_sha256': info['dataset_binding']['split_sha256']['dev']})
+                    model.train()
             while deadline.remaining() > (0 if probe else 30) and steps < maximum_steps:
                 order = list(range(len(rows))) if probe else sampling_order(rows, sampling_policy, random)
                 run_batch = args.batch
@@ -552,14 +584,16 @@ def train(args, probe=False):
                         model.eval()
                         predictions = predict_dev(model, tokens, info, dev, args.batch, deadline)
                         if predictions is not None:
-                            stats = dev_statistics(dev, predictions, original_predictions)
+                            stats = dev_statistics(dev, predictions, original_predictions, quality=specialist)
                             acc = stats['exact_accuracy']; history[-1]['dev_metrics'] = stats
-                            if acc > best:
-                                best = acc; save_checkpoint(directory / 'best.pth', model, info['vocabulary_sha256'], steps)
+                            if (development_better(stats, best_stats, selection_policy) if specialist else acc > best):
+                                best = acc; best_stats = stats; save_checkpoint(directory / 'best.pth', model, info['vocabulary_sha256'], steps)
                                 common.write(directory / 'best-dev.json', {'predictions': predictions, 'metrics': stats})
                                 common.write(directory / 'best-selection.json', {'step': steps, 'dev_exact': acc,
                                     'dev_metrics': stats, 'checkpoint_sha256': common.digest(directory / 'best.pth'),
-                                    'dev_split_sha256': info['dataset_binding']['split_sha256']['dev']})
+                                    'dev_split_sha256': info['dataset_binding']['split_sha256']['dev'],
+                                    'selection_policy': selection_policy, 'quality': stats.get('quality'),
+                                    'quality_selection_sha256': common.digest(Path(quality_selection.__file__)) if specialist else None})
                         model.train()
             torch.cuda.synchronize()
             peak = torch.cuda.max_memory_allocated()
@@ -624,6 +658,10 @@ def train(args, probe=False):
          'negative_target_weight': getattr(args, 'negative_weight', 1.0),
          'learning_rate': args.lr, 'training_batch_size': args.batch, 'optimizer': 'Adam', 'optimizer_reset': True,
          'sampling_policy': sampling_policy, 'target_sampling_distribution': REGION_SAMPLING if sampling_policy == 'region-balanced' else None,
+         'selection_policy': selection_policy, 'original_class_coverage': coverage,
+         'initial_quality': initial_quality, 'selected_quality': best_stats.get('quality') if best_stats else None,
+         'specialist_checkpoint_selected': specialist and (directory / 'best.pth').exists(),
+         'quality_selection_sha256': common.digest(Path(quality_selection.__file__)) if specialist else None,
          'actual_sample_kind_counts': {kind: sum(item['sample_kind_counts'].get(kind, 0) for item in history)
                                      for kind in sorted({key for item in history for key in item['sample_kind_counts']})},
          'probe_tensor_width': getattr(args, 'probe_width', None) if probe else None,
@@ -664,7 +702,7 @@ def finetune_evidence(directory, checkpoint):
     if not changed:
         raise ValueError('Finetuned checkpoint has no actual tensor update')
     checkpoint_sha = common.digest(path)
-    files = []
+    files = []; selection = None
     if (directory / 'run-freeze.json').exists():
         receipt = common.read(directory / 'run-freeze.json')
         inventory = {item['file']: item for item in receipt['files']}
@@ -702,6 +740,40 @@ def finetune_evidence(directory, checkpoint):
                 if common.digest(common.confined(directory, record['file'])) != record['sha256']:
                     raise ValueError('Warm-start ancestor evidence differs')
                 files.append(record['file'])
+    declared = {value for value in (receipt.get('selection_policy'), (selection or {}).get('selection_policy')) if value is not None}
+    if len(declared) > 1 or not declared <= {'legacy', 'face-pareto'}:
+        raise ValueError('Development selection policy evidence conflicts')
+    policy = next(iter(declared), 'legacy')
+    if (directory / 'quality-selection-source.py').exists() and policy != 'face-pareto':
+        raise ValueError('Specialist source evidence cannot use legacy selection')
+    if policy == 'face-pareto':
+        selection = common.read(directory / 'best-selection.json')
+        initial_record = common.read(directory / 'quality-initial-dev.json')
+        if selection.get('checkpoint_sha256') != checkpoint_sha or selection.get('step') != saved['steps']:
+            raise ValueError('Specialist export requires the selected best checkpoint')
+        source_sha = selection.get('quality_selection_sha256')
+        if (common.digest(directory / 'quality-selection-source.py') != source_sha
+                or common.digest(Path(quality_selection.__file__)) != source_sha
+                or (completed and receipt.get('quality_selection_sha256') != source_sha)):
+            raise ValueError('Specialist selection source binding differs')
+        if not completed:
+            for name in ('quality-selection-source.py', 'quality-initial-dev.json'):
+                if name not in inventory or common.digest(directory / name) != inventory[name]['sha256']:
+                    raise ValueError('Frozen specialist development evidence differs: ' + name)
+        original = initial_record.get('metrics', {}).get('quality')
+        if (initial_record.get('checkpoint_sha256') != common.digest(directory / 'initial.pth')
+                or (completed and original != receipt.get('initial_quality'))):
+            raise ValueError('Specialist actual initialization evidence differs')
+        history = receipt['history'] if completed else failure['history']
+        selected_point = next((point for point in history if point.get('step') == saved['steps']), None)
+        point_quality = (selected_point or {}).get('dev_metrics', {}).get('quality')
+        if selection.get('quality') != point_quality or selection.get('dev_metrics', {}).get('quality') != point_quality:
+            raise ValueError('Specialist selected quality differs from actual training history')
+        if not quality_selection.face_better(selection.get('quality'), original):
+            raise ValueError('Specialist selected checkpoint did not improve its actual initialization')
+        files.extend(name for name in ('quality-selection-source.py', 'quality-initial-dev.json', 'best-selection.json') if name not in files)
+    elif policy != 'legacy':
+        raise ValueError('Unknown development selection policy in training evidence')
     return {'steps': saved['steps'], 'changed_tensors': changed, 'run_completed': completed}, files
 
 
@@ -822,7 +894,7 @@ def warm_start(args):
     validate_warm_start(output, info)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     prepare_parser = sub.add_parser('prepare'); prepare_parser.add_argument('--inputs-receipt', required=True)
@@ -838,12 +910,13 @@ def main():
         p.add_argument('--eval-every', type=int, default=500); p.add_argument('--seed', type=int)
         p.add_argument('--negative-weight', type=float, default=1.0)
         p.add_argument('--sampling-policy', choices=('uniform', 'region-balanced'), default='uniform')
+        p.add_argument('--selection-policy', choices=('legacy', 'face-pareto'), default='legacy')
         if name == 'probe': p.add_argument('--probe-width', type=int, help='Capacity-only normalized zero padding within frozen width policy')
     p = sub.add_parser('export'); p.add_argument('--prepared'); p.add_argument('--inputs-receipt'); p.add_argument('--output', required=True)
     p.add_argument('--checkpoint', default='initial.pth'); p.add_argument('--original', action='store_true')
     p.add_argument('--threads', type=int, default=1)
     p.add_argument('--candidate-id', help='Unique research experiment identity for later warm-start runs')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if getattr(args, 'batch', 1) < 1 or getattr(args, 'eval_every', 1) < 1 or getattr(args, 'steps', 1) < 1:
         parser.error('batch, steps and eval-every must be positive')
     if getattr(args, 'seconds', 1) <= 0 or getattr(args, 'lr', 1) <= 0:

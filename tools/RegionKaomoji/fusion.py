@@ -156,7 +156,7 @@ def _context_splice(image, candidate, baseline, records, specialist):
         end-=1
     observed=original[start:end]
     ordinary=anchors(observed)
-    if any(char not in c.FACE_LETTERS for char in ordinary):
+    if any(char not in c.FACE_LETTERS for char in ordinary) and not c.is_face_text(observed, allow_arms=False):
         return None,'mixed-region-ordinary-letter-number-protected',None
     # A FACE_LETTERS membership test is insufficient: an omitted independent
     # body token such as "o" must never be absorbed into the regional edit.
@@ -236,9 +236,10 @@ def fuse_candidates(image, baseline, candidates, views, config=None, candidate_c
             reason='multiple-baseline-regions-not-one-face-expression'
         if reason is None and indices:
             # Every ordinary letter/number remains an anchor. Face-letter
-            # exceptions require BOTH the original face grammar and pixels;
+            # exceptions require BOTH complete original/replacement face roles
+            # and pixels; numeric 3 is accepted only in the central mouth role;
             # a low-confidence body box or ordinary (o) does not qualify.
-            if anchors(original) != anchors(text) and not (c.is_face_text(original) and all(char in c.FACE_LETTERS for char in anchors(original)+anchors(text))):
+            if anchors(original) != anchors(text) and not (c.is_face_text(original) and c.is_face_text(text)):
                 reason='ordinary-letter-number-anchor-change'
             elif anchors(original)==anchors(text) and not c.is_face_text(original) and any(unicodedata.category(char)[0] in 'LN' for char in original):
                 reason='ordinary-body-region-protected'

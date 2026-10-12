@@ -1,0 +1,225 @@
+{
+  "schema_version": "localocr.quality-optimization.assets-build.v1",
+  "fixture": false,
+  "builder_sha256": "74334c20e6ab58722a28d912af12bbbcc63481c6624a55c9c5da10f22eb9871a",
+  "matplotlib_version": "3.10.8",
+  "font": {
+    "id": "cjk",
+    "license": "OFL-1.1",
+    "sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b",
+    "source_commit": "f8d157532fbfaeda587e826d4cd5b21a49186f7c"
+  },
+  "sources": [
+    {
+      "role": "chart_builder_source",
+      "sha256": "74334c20e6ab58722a28d912af12bbbcc63481c6624a55c9c5da10f22eb9871a"
+    },
+    {
+      "role": "tiny_training",
+      "sha256": "ac5fcab3998282556c8ac0b01a6c279e4c1932abf4ebcd967b8d4fc10fd4e4d5"
+    },
+    {
+      "role": "tiny_selected",
+      "sha256": "3134b58dd0adb2b41d67131fcf0d99b49492ed26ef7e6e69ebec49b54a562f77"
+    },
+    {
+      "role": "repsvtr_training",
+      "sha256": "e10b2fde4187e0f8d83a7c9374576f48c8a89f435c8f219b208185b145afc5a7"
+    },
+    {
+      "role": "repsvtr_selected",
+      "sha256": "662cc87e596a1acef71992a05b175c96fd121fd6f3200566edb094a2aae7cab6"
+    },
+    {
+      "role": "crop_cpu_development",
+      "sha256": "c5b0bc3965e67eac428168277ef75421d8719a7b9cd16583077e1fcda83880bd"
+    },
+    {
+      "role": "gpu_budget_snapshot",
+      "sha256": "b7d8f5186d7c19ca6464ea07d72e19eb31146b0a8a1a80418d6bc5f3d10174b3"
+    },
+    {
+      "role": "font_registry",
+      "sha256": "9e694cb457492167b892c764b8cc5575b6b53fe928709bb2d36618784e59bae4"
+    },
+    {
+      "role": "native_metric_definition",
+      "sha256": "d54f246811f24d5362790be7da9b5ed0aeb674802f90a21f080ec91b8a60bb8e"
+    },
+    {
+      "role": "scene_cpu_development_001",
+      "sha256": "0b984ca1d8a856a3495e5a6fcdeea9804d6e60e233277aba54a428ac061ca8d1"
+    },
+    {
+      "role": "scene_cpu_development_002",
+      "sha256": "82d467b240afa1f0bcfb58e42e50bd11c07b4e6deaf5972274dab4e609c8f9c8"
+    },
+    {
+      "role": "scene_cpu_development_003",
+      "sha256": "1e7530f2c58e122ec0fd96cca41332161d12eb45ac1f87dca0abc3eb9fc168fc"
+    },
+    {
+      "role": "crop_cpu_heldout",
+      "sha256": "89a45b024e6b97a9fb66345f2af2fe40210338896c141e24e53ec43a99b2b20e"
+    },
+    {
+      "role": "scene_cpu_heldout",
+      "sha256": "7e04c1f346ea7fa061bb81d6b130e83ae64c896c16235ac42cd46191458f5434"
+    },
+    {
+      "role": "crop_heldout_first_use",
+      "sha256": "d8e528da593202ce7ad09bedeb32fe2fef927213e489b7b6dfd7d6149c0616e2"
+    },
+    {
+      "role": "crop_heldout_selection",
+      "sha256": "60fd15e4a663e67ca1ed9468d86ea28c318e7f63d74a2fc2361653499bed6035"
+    },
+    {
+      "role": "crop_heldout_dual_freeze",
+      "sha256": "cc2191c73f402df53dff7f548fc265679a69b2460d9aaa9221b5b4ca21c3dd4e"
+    },
+    {
+      "role": "crop_heldout_development_report",
+      "sha256": "c5b0bc3965e67eac428168277ef75421d8719a7b9cd16583077e1fcda83880bd"
+    },
+    {
+      "role": "scene_heldout_first_use",
+      "sha256": "a051e667a6908672eafffe1ab1fa14899ed27aa352825271cdf4790fca005629"
+    },
+    {
+      "role": "scene_heldout_selection",
+      "sha256": "8d2563b7c1db3344668b5d5ceb88650eb72f6d454f4d2fa882a808337d2fab37"
+    },
+    {
+      "role": "scene_heldout_dual_freeze",
+      "sha256": "cc2191c73f402df53dff7f548fc265679a69b2460d9aaa9221b5b4ca21c3dd4e"
+    }
+  ],
+  "outputs": [
+    {
+      "file": "summary.json",
+      "bytes": 81209,
+      "sha256": "629bc5b2d69c889a62f95e5fbb7da197b2110aa6c4778229bc0bc3f815dc3d05"
+    },
+    {
+      "file": "build_charts.py",
+      "bytes": 57433,
+      "sha256": "74334c20e6ab58722a28d912af12bbbcc63481c6624a55c9c5da10f22eb9871a"
+    },
+    {
+      "file": "figures/cpu-dev-face-cer.svg",
+      "bytes": 115603,
+      "sha256": "c6a6363f08e9c0a3776b2773f6809d544df5534b819c047be6652516e2a91b82"
+    },
+    {
+      "file": "figures/cpu-dev-face-exact-accuracy.svg",
+      "bytes": 111210,
+      "sha256": "eede3e99a7eddcaeae33366da85a7826dbf836398b5d8b04307e1fba35851d0c"
+    },
+    {
+      "file": "figures/cpu-dev-face-ps-cer.svg",
+      "bytes": 116837,
+      "sha256": "e68fa683ca6046b1f4aa08d107c1f52cf9a3b53a14d19b78323276edb28b264c"
+    },
+    {
+      "file": "figures/cpu-dev-resources.svg",
+      "bytes": 139082,
+      "sha256": "ac36b1c688044a6b3326674f9576d1525b01b5e9e2d6d51a29133d0bc72bb9a0"
+    },
+    {
+      "file": "figures/cpu-heldout-face-cer.svg",
+      "bytes": 118167,
+      "sha256": "df965173035d499b7c4593ab2249f239648801943f626ed8c792cc2391db2313"
+    },
+    {
+      "file": "figures/cpu-heldout-face-exact-accuracy.svg",
+      "bytes": 112685,
+      "sha256": "dd8410ba24e751cee85050e096c9d1dfae078fbf79c5840a083834a53514e4f9"
+    },
+    {
+      "file": "figures/cpu-heldout-face-ps-cer.svg",
+      "bytes": 118062,
+      "sha256": "00734570e6012a22585c7df0c7bf8e23bd6e592a20970cfd2ad385966d37988b"
+    },
+    {
+      "file": "figures/cpu-heldout-resources.svg",
+      "bytes": 141883,
+      "sha256": "3d64227320708634e55bb8dfe5db2c224af2facdcdf82b181a1cfef58e7c9b7b"
+    },
+    {
+      "file": "figures/native-repsvtr-development.svg",
+      "bytes": 133552,
+      "sha256": "31f0867372b90a46d0c7c1ad3db90b29faf5104a0a1320327e9423ef5c7af008"
+    },
+    {
+      "file": "figures/native-tiny-development.svg",
+      "bytes": 119569,
+      "sha256": "888de3679fd44e0f979c0c76f107653c7a135cc764ca069cdba7c560f33a4feb"
+    },
+    {
+      "file": "figures/scene-dev-face-cer.svg",
+      "bytes": 116088,
+      "sha256": "0ee13c28d27fb9cc287151b3d6dcc13aede93ac0010960d4e88be4ad53533824"
+    },
+    {
+      "file": "figures/scene-dev-face-exact-accuracy.svg",
+      "bytes": 120726,
+      "sha256": "2af6648d319a622b0bc71ac7d732dc52cce4725e3981035bc73a77f1f0fa0caf"
+    },
+    {
+      "file": "figures/scene-dev-face-ps-cer.svg",
+      "bytes": 118127,
+      "sha256": "75bdc1a68b403cc64f846b44a981afed3b1db23bf503a3eebd7d9c84bab09de9"
+    },
+    {
+      "file": "figures/scene-dev-localization.svg",
+      "bytes": 90507,
+      "sha256": "21f42826f50afb120cfaed97f1393536b6c6b933a85db37f4cf5a8c45a1736b7"
+    },
+    {
+      "file": "figures/scene-dev-resources.svg",
+      "bytes": 132719,
+      "sha256": "85bf60d02101c8cad0d48fc898bbb618e47ab1f8fd9c885890e195612156c853"
+    },
+    {
+      "file": "figures/scene-dev-routing-protection.svg",
+      "bytes": 147027,
+      "sha256": "73a5cb439ace27e326ea42a20af82499f3b175ef3d538c4c60a29eb4d51bbdc5"
+    },
+    {
+      "file": "figures/scene-heldout-face-cer.svg",
+      "bytes": 104431,
+      "sha256": "9c1b1a51913ceb5c75a34850161a03eb2003ba86f562e9b565b00cea2a28ac17"
+    },
+    {
+      "file": "figures/scene-heldout-face-exact-accuracy.svg",
+      "bytes": 104555,
+      "sha256": "d60e8d08a616790e87117a67bb6325bfc608c642264bd5784058c7e1d0a88d82"
+    },
+    {
+      "file": "figures/scene-heldout-face-ps-cer.svg",
+      "bytes": 106444,
+      "sha256": "8465c3b94ce3d2aed0d788a4eeea16a4f2851aea78b425da12761a46f939d771"
+    },
+    {
+      "file": "figures/scene-heldout-localization.svg",
+      "bytes": 86972,
+      "sha256": "a98f728b0308513fccb20d3c001f26739ddd605a1098ee5449f770146f14431f"
+    },
+    {
+      "file": "figures/scene-heldout-resources.svg",
+      "bytes": 121036,
+      "sha256": "03026d32e47f0391917c31576a1b5c7ce89a3204fc9558743c04276c8088c65c"
+    },
+    {
+      "file": "figures/scene-heldout-routing-protection.svg",
+      "bytes": 127664,
+      "sha256": "90177b33bd182fc748166dff86c03c2c214cafe3bc61b39abafe80e7109c77c1"
+    }
+  ],
+  "rendered_sizes": {
+    "normal_png_dpi": 110,
+    "narrow_png_width_pixels": 375
+  },
+  "privacy": "Aggregate counts and hashes only; no images, labels, predictions, weights, or font files copied"
+}

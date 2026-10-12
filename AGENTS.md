@@ -4,7 +4,7 @@
 - 只修改本仓库。可读取原项目的冻结证据，但不得写入、回退、提交或切换导随记录的代码与分支。
 - 在 main 继续；未经用户明确授权不得新建分支。保护既有改动。
 - 新 API、模型更新与可见行为变更按 my-canonical-check -> grill-with-docs -> openspec-propose -> openspec-apply-change -> openspec-verify-change。复用已明确确认的决策，不重问离线优先、本机接口和手动模型包更新。
-- add-local-ocr-api、add-reproducible-ocr-datasets、add-selfcontained-ocr-runtime 已完成本机实现与验收，历史证据见各 change 的 verification.md。standardize-ocr-version-identities 已完成规范命名与全新构建：软件 0.1.0-rc.1、模型 text-ppocrv6-1.0.0、协议保持 v1。当前交付索引 artifacts/localocr-delivery-0.1.0-rc.1.json；真实 EXE/SDK、ZIP 推理、无 .git 源码包完整重建证据见该 change verification.md。旧 v1/v2 产物和共享活动模型保留。严格校验后实现，任务仅凭完整验证证据勾选；不提前同步主规格或归档。
+- add-local-ocr-api、add-reproducible-ocr-datasets、add-selfcontained-ocr-runtime 已完成本机实现与验收，历史证据见各 change 的 verification.md。当前软件版本为 0.1.0-rc.2，模型 text-ppocrv6-1.0.0、协议保持 v1；版本事实源为 localocr/version.py，交付索引为 artifacts/delivery-0.1.0-rc.2/localocr-delivery-0.1.0-rc.2.json，本机验证见同目录 verified-handoff-0.1.0-rc.2.json。standardize-ocr-version-identities 的 rc.1 命名与全新构建证据保留在该 change verification.md 和 artifacts/localocr-delivery-0.1.0-rc.1.json。旧 v1/v2 产物和共享活动模型保留。严格校验后实现，任务仅凭完整验证证据勾选；不提前同步主规格或归档。
 - 推理只用本机 CPU，默认禁止上传、云端回退和运行时下载。API 仅监听 127.0.0.1，输入仅为 Base64 图片，不抓取远程 URL。
 - API 与禁止联网的 worker 分进程；保留图片/输出上限、线程限制、超时、取消和临时文件清理。不能用未验证的模拟响应冒充真实推理或 SDK 兼容性。
 - 私人原图、裁片、标签、网页 HTML/语料、预测、字体、模型权重和训练产物仅存 artifacts 等忽略目录；不得提交 GitHub 或放入发布包。

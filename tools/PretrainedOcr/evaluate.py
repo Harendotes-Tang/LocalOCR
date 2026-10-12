@@ -27,7 +27,7 @@ from PIL import Image
 import regex
 
 from .common import confined, dataset_binding, digest, disk_guard, read, read_split, utc, write
-from tools.OcrDatasets.evaluate import metrics
+from tools.PretrainedOcr.quality_evaluate import exact_metrics as metrics, raw_crop_gate, round_write_guard, is_round, verify_dual
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 ARTIFACTS = REPOSITORY / 'artifacts'
@@ -40,7 +40,7 @@ STAGES = ('official-pretrained', 'expanded-head-initialization', 'finetuned')
 def evaluator_source_inventory():
     paths = ('tools/PretrainedOcr/evaluate.py', 'tools/PretrainedOcr/common.py',
              'tools/OcrDatasets/evaluate.py', 'scripts/local-ai-ocr-worker.py',
-             'localocr/bundles.py')
+             'localocr/bundles.py', 'tools/PretrainedOcr/quality_evaluate.py')
     return [{'file': name, 'size': (REPOSITORY / name).stat().st_size,
              'sha256': digest(REPOSITORY / name)} for name in paths]
 
@@ -123,10 +123,11 @@ def local_output(path):
 
 def write_new(path, value):
     path = local_output(path)
+    payload = (json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False) + '\n').encode('utf-8')
+    round_write_guard(path, len(payload))
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open('x', encoding='utf-8') as stream:
-        json.dump(value, stream, ensure_ascii=False, indent=2, allow_nan=False)
-        stream.write('\n')
+    with path.open('xb') as stream:
+        stream.write(payload)
         stream.flush()
         os.fsync(stream.fileno())
 
@@ -567,6 +568,8 @@ def add_comparisons_and_gates(models):
             'face_improvement': bool(face.get('count')) and gains['exact_gain'] > 0 and gains['cer_reduction'] is not None and gains['cer_reduction'] > 0 and gains['symbol_cer_reduction'] is not None and gains['symbol_cer_reduction'] > 0,
             'emoji_threshold': None, 'production_delivery_qualified': False,
             'delivery_limit': 'research only; synthetic crops do not verify real ROI/APP/production resources/license'}
+        if all(k in categories for k in ('face','plain','punctuation','blank','graphic')):
+            model['research_quality_gates']=raw_crop_gate(models['production-baseline'],model)
 
 
 def private_rows(manifest):
@@ -613,7 +616,9 @@ def private_evaluate(args):
     return report
 
 
-def selection_for_heldout(dataset, selection_path, candidates, baseline, output_dir=None):
+def selection_for_heldout(dataset, selection_path, candidates, baseline, output_dir=None, dual_freeze=None):
+    dual=verify_dual(dual_freeze,'crop',selection_path,dataset) if is_round(dataset) and dual_freeze else None
+    if is_round(dataset) and dual is None:raise ValueError('New round heldout requires dual freeze before access')
     receipt = read(selection_path)
     frozen = dataset_binding(dataset)
     if (receipt.get('schema_version') != SELECTION_SCHEMA or receipt.get('dataset_binding') != frozen
@@ -646,11 +651,8 @@ def selection_for_heldout(dataset, selection_path, candidates, baseline, output_
     claim = {'schema_version': 'localocr.pretrained.heldout-first-use.v1', 'claimed_utc': utc(),
              'selection_file': str(local_path(selection_path)), 'selection_sha256': digest(selection_path), 'seal_sha256': digest(seal_path),
              'dataset_binding': frozen, 'status': 'consumed-before-reading; failures remain consumed', 'pid': os.getpid(),
-             'worker_slots': slots}
-    with usage.open('x', encoding='utf-8') as stream:
-        json.dump(claim, stream, ensure_ascii=False, indent=2)
-        stream.flush()
-        os.fsync(stream.fileno())
+             'worker_slots': slots, 'dual_freeze':dual}
+    write_new(usage, claim)
     return {'file': str(usage), 'sha256': digest(usage), 'selection_sha256': digest(selection_path)}
 
 
@@ -680,6 +682,9 @@ def validate_worker_heldout(dataset, expected_usage_sha256, candidate, baseline,
     if claim.get('schema_version') != 'localocr.pretrained.heldout-first-use.v1' or claim.get('dataset_binding') != frozen:
         raise ValueError('Heldout worker claim differs')
     selection_path = local_path(claim['selection_file'])
+    if is_round(dataset):
+        proof=claim.get('dual_freeze')
+        if not proof or digest(proof['file'])!=proof['sha256'] or verify_dual(proof['file'],'crop',selection_path,dataset)!=proof:raise ValueError('Worker dual freeze differs')
     if digest(selection_path) != claim.get('selection_sha256'):
         raise ValueError('Heldout worker selection changed')
     receipt = read(selection_path)
@@ -743,7 +748,7 @@ def evaluate(args):
     if args.split == 'heldout':
         if not args.selection:
             raise ValueError('Heldout requires selection receipt before any heldout access')
-        first_use = selection_for_heldout(dataset, local_path(args.selection), bindings, baseline, output_dir=output)
+        first_use = selection_for_heldout(dataset, local_path(args.selection), bindings, baseline, output_dir=output, dual_freeze=getattr(args,'dual_freeze',None))
     rows = read_split(dataset, args.split, allow_heldout=args.split == 'heldout')
     if not rows:
         raise ValueError('Evaluation needs rows')
@@ -817,11 +822,7 @@ def freeze_selection(args):
              'usage': 'research-only-selected-for-evaluation', 'promote': False,
              'all_bound_candidates_evaluated_together': True,
              'quality_gate_snapshot': {entry['id']: report['models'][entry['id']].get('quality_gates') for entry in current}}
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open('x', encoding='utf-8') as stream:
-        json.dump(value, stream, ensure_ascii=False, indent=2, allow_nan=False)
-        stream.flush()
-        os.fsync(stream.fileno())
+    write_new(output, value)
     return value
 
 
@@ -837,6 +838,7 @@ def main(argv=None):
             command.add_argument('--candidate', action='append', default=[])
             command.add_argument('--baseline-models', required=True)
             command.add_argument('--selection')
+            command.add_argument('--dual-freeze')
         else:
             choice = command.add_mutually_exclusive_group(required=True)
             choice.add_argument('--candidate')

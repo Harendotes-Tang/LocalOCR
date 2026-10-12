@@ -22,7 +22,7 @@ from PIL import Image
 from tools.PretrainedOcr import common
 from tools.PretrainedOcr.evaluate import (Recognizer, baseline_binding, candidate_binding,
                                          MemoryMeasurement, percentiles)
-from tools.OcrDatasets.evaluate import metrics
+from tools.PretrainedOcr.quality_evaluate import exact_metrics as metrics, scene_gate, ROUND, is_round, round_write_guard, verify_dual, validate_owned_cpu_capture
 from tools.RegionKaomoji import candidates as c, fusion as f
 
 REPO = Path(__file__).resolve().parents[2]
@@ -66,7 +66,7 @@ def confined(root, name):
 
 
 def output_path(path):
-    path, root = safe_path(path), safe_path(EVALUATION_ROOT)
+    path=safe_path(path); root=safe_path(ROUND if is_round(path) else EVALUATION_ROOT)
     if path == root or not path.is_relative_to(root) or not path.relative_to(root).parts[0].startswith('evaluation'):
         raise ValueError('Output must belong to this research evaluation namespace')
     return path
@@ -75,11 +75,12 @@ def output_path(path):
 def write_new(path, value):
     path = output_path(path)
     common.disk_guard(path)
+    payload = (json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False) + '\n').encode('utf-8')
+    round_write_guard(path,len(payload))
     path.parent.mkdir(parents=True, exist_ok=True)
     safe_path(path.parent)
-    with path.open('x', encoding='utf-8', newline='\n') as stream:
-        json.dump(value, stream, ensure_ascii=False, indent=2, allow_nan=False)
-        stream.write('\n'); stream.flush(); os.fsync(stream.fileno())
+    with path.open('xb') as stream:
+        stream.write(payload); stream.flush(); os.fsync(stream.fileno())
 
 
 def hash_object(value):
@@ -169,7 +170,7 @@ def implementation_binding():
     names = ['scripts/local-ai-ocr-worker.py', 'localocr/__init__.py', 'localocr/bundles.py', 'localocr/version.py',
              'tools/RegionKaomoji/__init__.py', 'tools/RegionKaomoji/evaluate.py',
              'tools/RegionKaomoji/candidates.py', 'tools/RegionKaomoji/fusion.py',
-             'tools/PretrainedOcr/__init__.py', 'tools/PretrainedOcr/common.py', 'tools/PretrainedOcr/evaluate.py',
+             'tools/PretrainedOcr/quality_evaluate.py', 'tools/PretrainedOcr/__init__.py', 'tools/PretrainedOcr/common.py', 'tools/PretrainedOcr/evaluate.py',
              'tools/OcrDatasets/__init__.py', 'tools/OcrDatasets/evaluate.py',
              'tools/OcrDatasets/validate.py', 'tools/OcrDatasets/private.py']
     return {name: common.digest(safe_path(REPO / name)) for name in names}
@@ -355,7 +356,7 @@ def _timestamp(value):
 
 
 def usage_path(binding):
-    return output_path(EVALUATION_ROOT / ('evaluation-heldout-first-use-' + binding['dataset']['split_sha256']['heldout'] + '.json'))
+    return output_path((ROUND if is_round(binding['inputs']['file']) else EVALUATION_ROOT) / ('evaluation-heldout-first-use-' + binding['dataset']['split_sha256']['heldout'] + '.json'))
 
 
 def validate_budget(budget):
@@ -399,6 +400,11 @@ def verify_dev_evidence(path, binding):
             or actual.get('actual_specialist_models') != len(binding['models'])
             or actual.get('no_python_children_or_socket_io') is not True):
         raise ValueError('Development report lacks bound actual isolated CPU resources')
+    if is_round(path):
+        validate_owned_cpu_capture(actual)
+        proof=actual.get('worker_ownership',{})
+        verify_worker_proof(proof,proof.get('launcher_pid'),proof.get('owner_pid'))
+        if actual['worker_pid']!=proof['worker_pid']:raise ValueError('Measured worker PID differs from verified chain')
     verify_baseline_runtime(actual['baseline_runtime'])
     return dev
 
@@ -428,7 +434,9 @@ def verify_selection(path, binding):
     return {'file': str(path), 'sha256': hashlib.sha256(raw).hexdigest(), 'value': value}
 
 
-def claim_heldout(root, selection, binding, output):
+def claim_heldout(root, selection, binding, output, dual_freeze=None):
+    dual=verify_dual(dual_freeze,'scene',selection,root) if is_round(root) and dual_freeze else None
+    if is_round(root) and dual is None:raise ValueError('New scene heldout requires dual freeze before access')
     evidence = verify_selection(selection, binding)
     seal_path = safe_path(root) / 'heldout-seal.json'; seal = common.read(seal_path)
     if (seal.get('schema_version') != 'localocr.region-scenes.seal.v1'
@@ -441,21 +449,46 @@ def claim_heldout(root, selection, binding, output):
              'pipeline_binding': binding, 'seal_sha256': common.digest(seal_path),
              'output': str(output), 'worker_output': str(output / '.worker/predictions.jsonl'),
              'worker_jobs': str(output / '.worker/jobs.json'),
-             'status': 'claimed-before-reading-heldout-images-or-truth; failure remains consumed'}
+             'status': 'claimed-before-reading-heldout-images-or-truth; failure remains consumed','dual_freeze':dual}
     path = usage_path(binding); write_new(path, value)
     return {'file': str(path), 'sha256': common.digest(path)}
 
 
-def owned_parent(owner):
+def owned_parent(owner, action="_worker"):
     if os.getppid() == owner: return True
     if sys.platform != 'win32': return False
     import psutil
     try:
         parent = psutil.Process(os.getppid()); command = parent.cmdline()
         return (parent.ppid() == owner and safe_path(parent.exe()) == safe_path(sys.executable)
-                and command[1:4] == ['-m', 'tools.RegionKaomoji.evaluate', '_worker'])
+                and command[1:4] == ['-m', 'tools.RegionKaomoji.evaluate', action])
     except (psutil.Error, OSError):
         return False
+
+
+def owned_worker_proof(owner, action='_worker'):
+    """Capture the live direct/venv-redirector parent, before its PID disappears."""
+    if type(owner) is not int or owner<=0 or not owned_parent(owner,action):
+        raise ValueError('CPU worker is not owned by the declared launcher owner')
+    parent=os.getppid()
+    return {'owner_pid':owner,'worker_pid':os.getpid(),'worker_parent_pid':parent,
+            'launcher_pid':os.getpid() if parent==owner else parent,
+            'relation':'direct-child' if parent==owner else 'windows-venv-redirector',
+            'owner_chain_verified':True}
+
+
+def verify_worker_proof(proof, launcher_pid, owner_pid):
+    if not isinstance(proof,dict) or proof.get('owner_chain_verified') is not True:
+        raise ValueError('Missing actual owned CPU parent-chain proof')
+    for key in ('owner_pid','worker_pid','worker_parent_pid','launcher_pid'):
+        if type(proof.get(key)) is not int or proof[key]<=0:raise ValueError('Invalid worker parent-chain PID')
+    if proof['owner_pid']!=owner_pid or proof['launcher_pid']!=launcher_pid:
+        raise ValueError('CPU worker launcher/owner differs')
+    direct=(proof['relation']=='direct-child' and proof['worker_pid']==launcher_pid and proof['worker_parent_pid']==owner_pid)
+    redirected=(sys.platform=='win32' and proof['relation']=='windows-venv-redirector'
+                and proof['worker_pid']!=launcher_pid and proof['worker_parent_pid']==launcher_pid)
+    if not (direct or redirected):raise ValueError('CPU worker parent-chain relation differs')
+    return proof
 
 
 def consume_heldout(root, usage, binding, jobs, output):
@@ -468,6 +501,9 @@ def consume_heldout(root, usage, binding, jobs, output):
             or safe_path(value['worker_jobs']) != safe_path(jobs)):
         raise ValueError('Heldout worker owner, slot or pipeline differs')
     verify_selection(value['selection']['file'], binding)
+    if is_round(root):
+        proof=value.get('dual_freeze')
+        if not proof or common.digest(proof['file'])!=proof['sha256'] or verify_dual(proof['file'],'scene',value['selection']['file'],root)!=proof:raise ValueError('Worker dual freeze differs')
     if common.digest(value['selection']['file']) != value['selection']['sha256']:
         raise ValueError('Heldout worker selection bytes changed')
     seal_path = safe_path(root) / 'heldout-seal.json'
@@ -480,6 +516,7 @@ def consume_heldout(root, usage, binding, jobs, output):
 
 
 def worker(args):
+    ownership=owned_worker_proof(args.owner_pid)
     root, output, jobs_path = safe_path(args.dataset), output_path(args.output), safe_path(args.jobs)
     if output.exists(): raise ValueError('CPU worker output already exists')
     config = configuration(args.config)
@@ -525,8 +562,10 @@ def worker(args):
                 image = image_for_job(root, job); at = time.perf_counter(); prediction = predict_scene(image, baseline, models, config)
                 elapsed = time.perf_counter() - at; timings.append(elapsed)
                 common.disk_guard(output)
-                stream.write(json.dumps({'id':job['id'],'image_sha256':job['sha256'],'pixel_sha256':job['pixel_sha256'],
-                                         'prediction':prediction,'seconds':elapsed}, ensure_ascii=False, allow_nan=False) + '\n')
+                line=json.dumps({'id':job['id'],'image_sha256':job['sha256'],'pixel_sha256':job['pixel_sha256'],
+                                 'prediction':prediction,'seconds':elapsed}, ensure_ascii=False, allow_nan=False) + '\n'
+                round_write_guard(output,len(line.encode('utf-8')))
+                stream.write(line)
                 stream.flush(); timer.cancel(); timer.join()
             os.fsync(stream.fileno())
         if (pipeline_binding(root, args.candidate, args.baseline_models, config, args.inputs) != binding
@@ -538,7 +577,7 @@ def worker(args):
                      'scene_timeout_seconds':90,'actual_baseline_detection':True,
                      'actual_specialist_models':len(models),'no_python_children_or_socket_io':True,
                      'onnxruntime_version':__import__('onnxruntime').__version__,
-                     'baseline_runtime':baseline.runtime_receipt}
+                     'baseline_runtime':baseline.runtime_receipt,'worker_pid':os.getpid(),'worker_ownership':ownership}
         write_new(output.with_suffix('.resources.json'), {'pipeline_binding':binding,'resources':resources})
     finally:
         timer.cancel(); timer.join()
@@ -580,6 +619,7 @@ def diagnostic_tail(path):
 def copy_new(source,destination):
     destination=output_path(destination)
     common.disk_guard(destination)
+    round_write_guard(destination,safe_path(source).stat().st_size)
     with safe_path(source).open('rb') as src, destination.open('xb') as target:
         shutil.copyfileobj(src,target,1024*1024)
         target.flush(); os.fsync(target.fileno())
@@ -610,7 +650,7 @@ def run_worker(args, output, binding, jobs, usage=None):
                                  'pipeline_sha256':hash_object(binding),'jobs':jobs})
         write_new(paths['config'], binding['config']); write_new(paths['binding'], binding)
         command = [sys.executable,'-m','tools.RegionKaomoji.evaluate','_worker','--dataset',str(safe_path(args.dataset)),
-                   '--inputs',binding['inputs']['file'],'--split',args.split,'--baseline-models',str(safe_path(args.baseline_models)),
+                   '--owner-pid',str(os.getpid()),'--inputs',binding['inputs']['file'],'--split',args.split,'--baseline-models',str(safe_path(args.baseline_models)),
                    '--output',str(paths['predictions']),'--jobs',str(paths['jobs']),'--jobs-sha256',common.digest(paths['jobs']),
                    '--config',str(paths['config']),'--binding',str(paths['binding']),'--binding-sha256',common.digest(paths['binding'])]
         for path in args.candidate: command += ['--candidate',str(safe_path(path))]
@@ -627,6 +667,10 @@ def run_worker(args, output, binding, jobs, usage=None):
         predictions=read_predictions(paths['predictions'],jobs)
         resources=common.read(paths['predictions'].with_suffix('.resources.json'))
         if resources['pipeline_binding']!=binding: raise ValueError('Actual CPU binding differs')
+        proof=verify_worker_proof(resources['resources'].get('worker_ownership'),process.pid,os.getpid())
+        if resources['resources'].get('worker_pid')!=proof['worker_pid']:raise ValueError('Actual CPU worker PID differs from its verified parent chain')
+        resources['resources']['worker_exit_code']=code
+        resources['resources']['capture']='successful-owned-subprocess'
         resources['resources']['process_wall_seconds']=time.perf_counter()-started
         copy_new(paths['predictions'],output/'predictions.jsonl')
         write_new(output/'resources.json',resources)
@@ -735,12 +779,24 @@ def body_preserving_splices(before, after, body_mask):
     return consumed == expected and splices > 0, splices
 
 
+def effective_face_change(model, baseline_scene_text, mask):
+    """Post-inference metric only: accepted, changed face bytes in this ink region."""
+    if model['text']==baseline_scene_text:return False
+    for decision in model.get('decisions',[]):
+        if decision.get('accepted') is not True or not mask_pixels(mask,decision['bbox']):continue
+        splice=decision.get('splice') or {}
+        old=splice.get('original_face_text',decision.get('original_text'))
+        new=decision.get('specialist_text')
+        if isinstance(old,str) and isinstance(new,str) and old!=new:return True
+    return False
+
+
 def summarize(root,rows,predictions,config,model_ids):
     if len(rows) != len(predictions): raise ValueError('Scene prediction count differs')
     localization=Counter(); candidates_by_source=Counter(); baseline_pairs=[]; pairs={key:[] for key in model_ids}
     body={key:Counter() for key in model_ids}; faces={key:[] for key in model_ids}; base_faces=[]
     negatives={key:Counter() for key in model_ids}; crop_pairs={key:[] for key in model_ids}
-    kind_counts=Counter(); details=[]; ious=[]; coverage_values=[]
+    kind_counts=Counter(); details=[]; ious=[]; coverage_values=[]; effectiveness={key:Counter(actual_routed_candidates=0,face_wrong_to_exact=0,isolated_face_wrong_to_exact=0,face_exact_to_wrong=0) for key in model_ids}
     for row,record in zip(rows,predictions):
         if record['id']!=row['id'] or record['image_sha256']!=row['sha256'] or record['pixel_sha256']!=row['pixel_sha256']:
             raise ValueError('Measured scene is not the actual inferred image')
@@ -752,6 +808,8 @@ def summarize(root,rows,predictions,config,model_ids):
         for region,mask in zip(row['regions'],masks):
             if region['kind']=='body': body_union|=mask
             elif region['kind']=='graphic': graphic_union|=mask
+        for identity in model_ids:
+            effectiveness[identity]['actual_routed_candidates']+=sum(bool(views) for views in prediction['models'][identity]['views'].values())
         routed_ids={key for identity in model_ids for key,views in prediction['models'][identity]['views'].items() if views}
         routed=[item for item in routing if item['candidate_id'] in routed_ids]
         eligible=[item for item in routing if item.get('route_eligible',False)]
@@ -797,6 +855,10 @@ def summarize(root,rows,predictions,config,model_ids):
                 for identity in model_ids:
                     final_text,final_mixed=aligned_region(prediction['models'][identity]['regions'],index,masks,config)
                     faces[identity].append({'label':truth['text'],'prediction':final_text})
+                    improved=baseline_text!=truth['text'] and final_text==truth['text']
+                    effectiveness[identity]['isolated_face_wrong_to_exact']+=int(improved)
+                    effectiveness[identity]['face_wrong_to_exact']+=int(improved and effective_face_change(prediction['models'][identity],prediction['baseline_text'],mask))
+                    effectiveness[identity]['face_exact_to_wrong']+=int(baseline_text==truth['text'] and final_text!=truth['text'])
                     if best and complete and not swallowing and not contamination:
                         views=prediction['models'][identity]['views'].get(best['candidate_id'],[])
                         raw=next((view['text'] for view in views if view['transform']=='raw'),None)
@@ -863,11 +925,16 @@ def summarize(root,rows,predictions,config,model_ids):
         protection=body[identity];negative=negatives[identity]
         result['models'][identity]={'whole_scene':metrics(pairs[identity],'prediction'),
           'isolated_kaomoji':metrics(faces[identity],'prediction'),'safe_complete_specialist_crops':metrics(crop_pairs[identity],'prediction'),
-          'body':dict(protection),'negative':dict(negative),
+          'body':dict(protection),'negative':dict(negative),'routing_effectiveness':dict(effectiveness[identity]),
           'quality_gates':{'no_new_body_errors':not (protection['baseline_correct_to_wrong'] or protection['erroneous_rewrites'] or protection['new_body_intersection_errors']),
                            'no_new_negative_outputs':not (negative['new_nonempty_scenes'] or negative['new_graphic_nonempty']),
                            'localization_recall_threshold':'not specified; measured only',
                            'app_acceptance':False,'production_enabled':False}}
+        if result['baseline']['isolated_kaomoji']['count'] and protection['regions'] and negative['negative_scenes'] and negative['graphic_regions']:
+            # Explicit zero counters: missing fields cannot silently waive protection.
+            for key in ('baseline_correct_to_wrong','erroneous_rewrites','new_body_intersection_errors','body_literal_deleted'):result['models'][identity]['body'].setdefault(key,0)
+            for key in ('new_nonempty_scenes','new_graphic_nonempty'):result['models'][identity]['negative'].setdefault(key,0)
+            result['models'][identity]['research_quality_gates']=scene_gate(result,identity)
     return result,details
 
 
@@ -878,7 +945,7 @@ def evaluate(args):
     usage=None
     if args.split=='heldout':
         if not args.selection: raise ValueError('Heldout requires frozen whole-scene selection before any images or truth')
-        usage=claim_heldout(root,safe_path(args.selection),binding,output)
+        usage=claim_heldout(root,safe_path(args.selection),binding,output,getattr(args,'dual_freeze',None))
     jobs=image_jobs(root,args.split,args.inputs,allow_heldout=usage is not None)
     common.disk_guard(output); output.mkdir(parents=True)
     predictions,resources=run_worker(args,output,binding,jobs,usage)
@@ -935,13 +1002,19 @@ def main(argv=None):
         command.add_argument('--inputs'); command.add_argument('--config')
         if name in ('evaluate','_worker'):
             command.add_argument('--split',choices=('dev','heldout'),default='dev')
-        if name=='evaluate': command.add_argument('--selection')
+        if name=='evaluate':
+            command.add_argument('--selection'); command.add_argument('--dual-freeze')
         elif name=='_worker':
             for key in ('jobs','jobs-sha256','binding','binding-sha256'): command.add_argument('--'+key,required=True)
+            command.add_argument('--owner-pid',type=int,required=True)
             command.add_argument('--usage-sha256')
         else:
             for key in ('dev-report','budget-receipt','selected-id','reason'): command.add_argument('--'+key,required=True)
+    probe=commands.add_parser('_ownership-probe',help=argparse.SUPPRESS)
+    probe.add_argument('--owner-pid',type=int,required=True)
     args=parser.parse_args(argv)
+    if args.action=='_ownership-probe':
+        print(json.dumps({'schema_version':'localocr.cpu-owner-probe.v1','proof':owned_worker_proof(args.owner_pid,'_ownership-probe'),'model_inference':False,'GPU_used':False}));return 0
     if args.action=='_worker': worker(args); return 0
     value=evaluate(args) if args.action=='evaluate' else freeze_selection(args)
     print(json.dumps({'schema_version':value['schema_version'],'split':value.get('split'),'enabled':False,

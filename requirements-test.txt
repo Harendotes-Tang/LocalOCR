@@ -1,4 +1,6 @@
 # SDK and verification dependencies, separate from inference runtime.
+-r requirements-datasets.txt
+-r requirements-docs.txt
 openai==3.28.0
 httpx==0.28.1
 pytest==9.1.1

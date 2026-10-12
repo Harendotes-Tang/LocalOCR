@@ -19,7 +19,7 @@ from PIL import Image
 from verify_runtime_live import Evidence, owned_output, digest, write, read, sample_image, assert_json_result, ROOT
 
 MAX_OWNED_BYTES=201048576
-SOURCE=Path(r'D:\PRJ\导随记录\artifacts\localocr-app-20261011\owned-png-boundary')
+SOURCE=ROOT/'artifacts/owned-png-boundary'
 
 
 def clean_request(output):
@@ -78,7 +78,8 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime',type=Path,default=ROOT/'artifacts/localocr-runtime-win-x64-v2')
     parser.add_argument('--models',type=Path,default=ROOT/'artifacts/runtime-verification-v2/model-store/versions/runtime-baseline-1')
-    parser.add_argument('--source',type=Path,default=SOURCE)
+    parser.add_argument('--source',type=Path,default=SOURCE,
+                        help='Caller-created synthetic JPEG/PNG/facts directory; read only')
     parser.add_argument('--fonts',type=Path,default=ROOT/'artifacts/ocr-data-fonts-v1')
     parser.add_argument('--output',type=Path,default=ROOT/'artifacts/runtime-owned-png-verification-v2')
     args=parser.parse_args()

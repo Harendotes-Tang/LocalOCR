@@ -1,8 +1,28 @@
 # LocalOCR
 
-本机 OCR 训练、评测、推理服务与独立 CPU 运行时。工程维护文字识别基线、合成数据工具、模型包和接口契约；APP 集成、界面、命名管道及安装器由应用工程维护。
+LocalOCR 提供本机 OCR 推理服务、Windows x64 CPU 独立运行时，以及合成数据生成、模型训练和评测工具。仓库维护 OCR 结果结构、离线模型包和模型管理接口；应用界面、命名管道、结果预览及安装器由应用工程维护。
 
-CPU HTTP 服务、保真 JSON 输出、离线模型安装与回退、Windows x64 独立运行时已完成本机验证。历史颜文字实验候选未通过质量门禁。通用识别器微调与自动整图链路已完成预算内研究、新保留集首测及本机验证。两项研究均未满足模型接入质量要求；研究模型未启用，生产运行时与活动模型保持原版本。
+当前软件版本为 **0.1.0-rc.2**，属于候选交付。文字基线的服务接口、模型管理和独立运行时已有本机验证记录；识别质量按具体模型、数据集和评测链路分别报告。研究模型未满足接入条件，未替换当前文字基线。
+
+## 当前状态
+
+| 项目 | 状态 | 验证范围 |
+| --- | --- | --- |
+| CPU 推理与 HTTP 服务 | 已完成本机验证 | 固定本地模型、JSON 区域结果、认证及请求生命周期 |
+| 离线模型管理 | 已完成本机验证 | 手动导入、完整性校验、CPU 探针、启用和回退 |
+| Windows x64 独立运行时 | 已完成本机验证 | 双 EXE 冻结、解压运行、源码包重建和进程审计 |
+| 颜文字、通用识别器微调与区域融合研究 | 未满足接入条件 | 冻结候选保留用于比较，未启用 |
+| 应用集成、安装器与跨机器运行 | 尚未验收 | 需由应用工程分别验证 |
+
+推理仅使用本机 CPU；HTTP 服务绑定 `127.0.0.1`。推理和模型导入期间不上传图片、不调用云端、不下载模型，也不抓取远程图片 URL。模型须在启动前由用户合法取得并安装。
+
+- [版本与身份](#版本与身份)
+- [工程范围与接口](#工程范围与接口)
+- [本机服务](#本机服务)
+- [Windows x64 独立运行时](#windows-x64-独立运行时)
+- [工程验证](#工程验证)
+- [评测结果](#评测结果)
+- [数据、许可与工具](#数据许可与工具)
 
 ## 版本与身份
 
@@ -15,13 +35,140 @@ CPU HTTP 服务、保真 JSON 输出、离线模型安装与回退、Windows x64
 
 软件、模型、协议及实验编号独立维护。软件版本与交付名称由 `localocr/version.py` 生成；规范见 [版本命名契约](docs/contracts/versioning.md)。
 
+## 工程范围与接口
+
+- **推理**：本机 CPU、固定本地模型、有限的符号区域二次识别、原图区域坐标，以及未经 Unicode 归一化的区域文本和分数。识别分数未经概率校准。
+- **训练与评测**：合成训练、开发集选择、冻结模型后评测保留集；私人截图仅用于本地验证。训练工具提供 CUDA/MPS/CPU 设备选择和 ONNX 导出；CUDA 已在本机实测，MPS 尚未实机验收。设备选择能力不改变服务的 CPU 推理边界。
+- **HTTP 服务**：仅监听 `127.0.0.1`，提供 `GET /v1/models` 和非流式 `POST /v1/chat/completions`。
+- **模型管理**：本地 CLI 手动导入、校验、CPU 探针、启用与回退；不提供 HTTP 管理端点。
+
+客户端须支持自定义本机 Base URL、Bearer 令牌、单张 Base64 PNG/JPEG 和非流式 Chat Completions，并解析 `assistant.content` 内的 OCR JSON。`system` 消息、聊天历史、工具调用、远程图片 URL 与未支持参数均被拒绝。已记录 OpenAI Python SDK 3.28.0 的真实 CPU 调用验证；其他客户端应按 [API v1 契约](docs/contracts/api-v1.md) 检查接入条件。
+
+### 架构与运行边界
+
+![LocalOCR 本机推理与模型管理架构](docs/diagrams/localocr.svg)
+
+[离线交互架构图](docs/diagrams/localocr.html)支持缩放、搜索、源码引用和明暗主题；[可编辑 Archify JSON](docs/diagrams/localocr.architecture.json)保留图源，[图表验收记录](docs/diagrams/localocr.architecture.acceptance.md)说明验证范围。
+
+图中关系表示请求、子进程监督及模型读取；客户端与 HTTP 服务之间的箭头合并表示请求及响应。HTTP 服务先回收图片解码子进程，再启动本次请求的 OCR worker；独立运行时 CLI 单独监督 worker，不包含 HTTP 服务。训练与评测工具独立运行，研究产物不自动进入活动模型库。
+
+API 与 OCR worker 分进程运行。worker 在模型校验与依赖导入前安装 Python 进程级审计钩子，拒绝受审计的网络操作及额外进程执行；该机制不构成操作系统级沙箱。服务实施图片和输出预算、超时、取消及请求所属临时文件清理。推理期间无上传、云端回退、模型下载或远程图片抓取。接口结构见 [API 契约](docs/contracts/api-v1.md)，更新流程见 [模型包契约](docs/contracts/model-bundle-v1.md)。
+
+## 本机服务
+
+已验证的服务环境为 Python 3.11 与固定 CPU 依赖。建议使用独立虚拟环境；依赖安装属于开发准备，推理与模型导入离线执行。以下示例从仓库根目录运行，并将 `<模型目录>` 替换为实际的本地目录。
+
+该目录须包含契约指定的 det、cls、rec 基线文件，文件名、大小和 SHA-256 应符合[模型包契约](docs/contracts/model-bundle-v1.md)。创建命令附带仓库保留的模型许可材料。仓库不包含模型权重；创建模型包命令不负责下载权重。首次创建包时应使用尚不存在的输出目录。
+
+```powershell
+py -3.11 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements-service.txt
+.venv\Scripts\python.exe -m localocr.bundle_cli create-baseline --models "<模型目录>" --output artifacts/text-ppocrv6-1.0.0 --version text-ppocrv6-1.0.0
+.venv\Scripts\python.exe -m localocr.bundle_cli install --source artifacts/text-ppocrv6-1.0.0 --store artifacts/model-store
+.venv\Scripts\python.exe -m localocr.bundle_cli activate --store artifacts/model-store --version text-ppocrv6-1.0.0
+.venv\Scripts\python.exe -m localocr --store artifacts/model-store --port 8765
+```
+
+服务首次启动时生成本机访问令牌并保存于 `artifacts/model-store/access-token`；两个 HTTP 端点均要求 Bearer 认证。令牌不应提交或随模型包分发。软件升级不自动改变活动模型；旧模型身份与在途请求版本保留。
+
+客户端请求格式、SDK 示例、资源上限和错误语义见 [API v1 契约](docs/contracts/api-v1.md)。客户端应先查询活动模型身份，再发送单张 Base64 PNG/JPEG；`assistant.content` 为需要解析的 OCR JSON 字符串。
+
+## Windows x64 独立运行时
+
+独立运行包提供 `local-ai-ocr.exe`、`localocr-models.exe`、共享 `_internal`、完整许可证和逐文件库存，整个目录须一起复制。HTTP 服务使用独立 Python 依赖，不随该子进程包部署。CLI、预算和取消约定见 [运行时契约](docs/contracts/runtime-v1.md)。
+
+| 本地产物 | 内容 |
+| --- | --- |
+| `localocr-runtime-0.1.0-rc.2-windows-x64.zip` | 双 CPU EXE、共享依赖、34 项组件许可、接口契约与库存 |
+| `localocr-model-text-ppocrv6-1.0.0.zip` | 原字节文字基线模型包，手动导入及启用 |
+| `localocr-source-0.1.0-rc.2.zip` | 87 项构建源码/许可/契约的哈希清单、来源与 build-notices |
+| `localocr-delivery-0.1.0-rc.2.json` | 规范名称、文件大小、完整 SHA-256、库存与启用策略 |
+
+上述文件为已验证的本机交付记录，位于本地忽略目录 `artifacts/delivery-0.1.0-rc.2/`，不随 Git 源码提供；文件名不表示已有公开下载。源码包可在无 `.git` 目录中重建，另需 CPython 3.11.9、固定 `requirements-build.txt` 与随包 build-notices；详细步骤见版本契约。历史 v1/v2 和 `0.1.0-rc.1` 本地产物保留供追溯，已安装模型不会因软件更新而自动迁移。`0.1.0-rc.2` 修复依赖导入时的额外 shell 版本查询，模型权重与评测结果保持原冻结版本。
+
+当调用方已核验原始图片不超过 20 MiB、50,000,000 像素，并生成由本次请求拥有的无损 PNG 副本时，CLI 可显式使用 `--owned-png`。该副本上限为 201,048,576 字节，仍须通过单帧 PNG、像素数、完整 CRC 和文件末尾校验。普通输入保持 20 MiB 上限；该选项表示调用方对副本来源的声明，不适用于 HTTP 请求。结果与模型包结构仍为 v1。
+
+## 工程验证
+
+以下为 2026-10-11—2026-10-12 已记录的软件与接口验证结果，不计入识别准确率，也不表示任意后续工作区改动已通过同一轮验证。源码回归、冻结 EXE 和研究实验使用各自的输入及证据，不应合并为单一版本的验收声明。
+
+| 验证项目 | 结果 | 范围 |
+| --- | --- | --- |
+| 本轮源码回归（2026-10-12） | **875 通过、9 跳过、39 子测试通过** | 新鲜 CPU 环境分别执行 `tests` 与 `tools`；6 项依赖独立 Paddle 环境，3 项需 Windows 符号链接权限。大尺寸 transport 测试使用受限元数据控制，PNG 完整性与真实推理另行验证 |
+| 已记录的源码回归 | **687 通过、8 跳过、39 子测试通过** | 全仓 tests/tools；6 项依赖独立 Paddle 环境、2 项需 Windows 符号链接权限。独立 Paddle 实际验证另有记录 |
+| 冻结 EXE 生命周期 | 19 项通过 | 真实 CPU、旧模型身份、更新/回退、并发、超时、取消与清理 |
+| owned-PNG 边界 | 17 项通过 | 所属大 PNG、CRC、格式、尺寸与资源拒绝 |
+| HTTP / SDK | 13 项通过 | 真实推理、认证、Host/Origin、忙碌、断连、期限及退出 |
+| ZIP 与源码包 | 通过 | 解压实际推理、202 文件哈希、隔离源码完整双 EXE 重建及 CPU 自检 |
+| 推理进程审计 | 通过 | 创建前阻止 shell；137 次实际采样，所属身份与系统控制台离线签名核验通过，无观测端点或残留 |
+
+结构及回归测试可在开发环境运行；真实 HTTP/SDK 验证还需要已安装并激活的基线模型，并使用新的证据输出目录：
+
+```powershell
+.venv\Scripts\python.exe -m pip install -r requirements-service.txt -r requirements-test.txt
+.venv\Scripts\python.exe -m pytest -q
+.venv\Scripts\python.exe tests/verify_live.py --store artifacts/model-store --output artifacts/verification --port 18765
+```
+
+`requirements-test.txt` 包含数据生成与文档绘图依赖；单独生成图表可安装 `requirements-docs.txt`。Paddle/Torch 训练接口测试使用其独立研究环境，缺少时按测试定义跳过。owned-PNG 实机验收通过 `tests/verify_runtime_owned_png_live.py --source <合成边界数据目录>` 读取调用方夹具，不依赖固定的外部工程目录。
+
+真实运行验证使用合成图片与当前 Windows x64 主机。应用自动区域选择、预览、安装器、跨机器运行和 MPS 尚未验收；Python 审计不等同于 OS 防火墙或原生代码沙箱。8 MiB 输出上限由源码测试验证。完整本机回执和 OpenSpec 治理记录位于忽略目录，不随公开源码提供；运行时回执位于 `artifacts/runtime-process-policy-rc2/`，交付索引位于 `artifacts/delivery-0.1.0-rc.2/`。公开的研究汇总与生成收据见下文评测结果。
+
 ## 评测结果
 
-本轮记录日期：**2026-10-11—2026-10-12**。历史 v1–v4 均为实验标记，不是软件发布版本。历史记录与本轮通用识别器研究分别报告；数据或评估后端不同的指标不拼接为同一趋势。
+以下结果描述指定冻结模型在指定数据上的表现；合成画布、人工裁片和自动整图链路分别报告。它们不构成真实应用截图的总体准确率或应用端到端验收。完整数值和失败结果予以保留，避免仅按整体 CER 判断模型是否可替换。
+
+研究记录日期：**2026-10-11—2026-10-12**。历史 v1–v4 均为实验标记，不是软件发布版本。历史记录与本轮通用识别器研究分别报告；数据或评估后端不同的指标不拼接为同一趋势。
 
 - **整串精确匹配率**：预测与标签的原始 Unicode 码点及空格完全一致的样本数占比；不进行 NFKC、宽度或空格归一化。
-- **字符错误率（CER）**：码点序列编辑距离总和除以标签字符总数，越低越好。空标签负样本没有字符分母，CER 记为 `—`。符号 CER 单独统计 Unicode 类别 P/S；`Д`、`ω` 等字母仍计入原始整串和总体 CER。
+- **字符错误率（CER）**：码点序列编辑距离总和除以标签字符总数，越低越好。空标签负样本没有字符分母，CER 记为 `—`。本轮严格 P/S CER 仅统计 Unicode 类别 P/S；历史字段 `symbol_cer` 可包含组合标记 M，按其原口径保留，不与严格 P/S 指标拼接。`Д`、`ω` 等字母仍计入原始整串和总体 CER。
 - **评测范围**：单裁片比较使用相同完整合成画布或标注裁片，评估原始识别结果。自动整图定位、专项识别与融合独立报告；两类指标均不包含 APP 解析和预览导入验收。
+
+### 2026-10-12 质量优化：新保留集首测
+
+本轮使用新的原创合成数据：8,000/1,000/2,000 个训练、开发、保留组，每组两个图像变体；另有 200 张开发整图及 400 张保留整图。按完整标签、配方家族和像素隔离，保留原始 Unicode、空格及组合字符。基础字形和固定 OFL 字体仍共享，因此这些结果仅描述合成分布。上一轮已查看的保留资料登记为开发回归材料，不参与本轮独立首测结论。
+
+Tiny 与 RepSVTR 均完成真实训练、保存重载和 ONNX CPU 对照。根据开发集冻结 Tiny 检查点及自动路由规则，再首次测试两个保留集；首测后未调参、未重选模型。Tiny 所选原生开发点为 step 2300、1131/1200；历史观测峰值为 step 5425、1147/1200，但 P/S 错误数更高，未选用。RepSVTR 的采样策略为 `region-balanced`，两模型的检查点选择策略为 `face-pareto`。
+
+![Tiny 原生训练与开发检查点](docs/evaluation/quality-optimization-20261012/figures/native-tiny-development.svg)
+
+以下单裁片结果基于新保留集中的 **2,400 张颜文字图像**，使用原始识别字符串；整串准确率、CER 与 P/S CER 分别计算，不作宽度、大小写或空格归一化。
+
+| 模型阶段 | 整串正确 | 整串准确率 | CER | P/S CER |
+| --- | ---: | ---: | ---: | ---: |
+| 生产文字基线 | 159/2400 | 6.63% | 35.95% | 37.97% |
+| Tiny 官方预训练 | 0/2400 | 0.00% | 55.57% | 52.99% |
+| Tiny 专项微调，开发选定 | **2288/2400** | **95.33%** | **0.74%** | **0.30%** |
+| RepSVTR 扩展字符头初始化 | 0/2400 | 0.00% | 128.22% | 172.93% |
+| RepSVTR 专项微调 | 552/2400 | 23.00% | 16.75% | 11.07% |
+
+RepSVTR 的初始化参照是扩展字符头后的真实起点，不等同于原始官方识别器。CER 可超过 100%，表示插入等编辑错误总数超过标签字符数。Tiny 的直接通用替换门禁仍失败：保留裁片中有 82 次普通文字错误改写、1 次标点正确转错及 55 次标点错误改写，图形负样本新增 2 次非空输出。因此以下自动区域链路另行核验最终保护结果。
+
+![新保留裁片颜文字整串准确率](docs/evaluation/quality-optimization-20261012/figures/cpu-heldout-face-exact-accuracy.svg)
+
+自动整图首测包含 **400 张图、300 个颜文字区域、400 个正文区域、60 个图形区域和 40 张负样本图**。推理只接收原图及六字段输入清单；真值区域、字符范围与墨迹掩码仅用于测量。
+
+| 自动整图链路 | 颜文字整串正确 | 整串准确率 | CER | P/S CER |
+| --- | ---: | ---: | ---: | ---: |
+| 生产基线 | 4/300 | 1.33% | 74.99% | 72.87% |
+| 基线 + 冻结 Tiny 专项融合 | **10/300** | **3.33%** | **73.98%** | **71.48%** |
+| 基线 + RepSVTR 测评参照 | 5/300 | 1.67% | 74.83% | 72.47% |
+
+Tiny 有 221 次实际专项路由、7 次错误转整串正确及 1 次颜文字正确转错，净增 6 个正确区域。最终正文的正确转错、错误改写、边界新增错误与文本删除均为零；负样本及图形新增非空输出均为零。图形和负样本实际专项误路由也为零。RepSVTR 的保留结果仅用于报告，不改变开发集选定的 Tiny。
+
+**本轮达到已确认的相对研究门槛，但自动链路颜文字整串准确率仅为 3.33%。** 候选与颜文字相交命中为 300/300，完整墨迹覆盖为 264/300，实际专项路由的安全完整覆盖为 83/300；相交命中不能替代完整定位或最终识别成功。单裁片的 95.33% 不代表自动整图或真实截图准确率。真实图及应用生命周期未验收，模型仍未启用、未替换生产文字基线。
+
+![自动整图开发迭代](docs/evaluation/quality-optimization-20261012/figures/scene-dev-face-exact-accuracy.svg)
+
+![新保留自动整图颜文字整串准确率](docs/evaluation/quality-optimization-20261012/figures/scene-heldout-face-exact-accuracy.svg)
+
+![新保留自动整图定位与完整覆盖](docs/evaluation/quality-optimization-20261012/figures/scene-heldout-localization.svg)
+
+新预算实际使用 **1,266.452/7,200 GPU 秒**；旧账本的 7,011.043364 秒独立保留。本轮全量 CPU 测试曾因约 192 MiB 临时夹具触发产物超限并停止，失败日志保留；用户删除该临时目录后，夹具改为小型文件大小边界控制，新的完整测试通过。最终产物与外部测试夹具、公开图表统一核算，不以单目录大小代替总量。
+
+整图 CPU 测量包括真实基线与两个专项模型：冷加载及首图 1.83 秒，预热 p50/p95 为 346.95/613.17 ms，峰值 RSS/采样 Private 为 583.63/605.41 MiB，线程数为 2/1。该测量不是仅部署 Tiny 的成本，也不是应用端到端性能。Tiny 单裁片预热 p50/p95 为 3.21/4.03 ms，完整分阶段资源见图表及汇总。
+
+匿名数值、来源摘要、首用时序及完整 22 张图见 [本轮汇总](docs/evaluation/quality-optimization-20261012/summary.json) 与 [图表目录](docs/evaluation/quality-optimization-20261012/figures/)。[可运行绘图源码](docs/evaluation/quality-optimization-20261012/build_charts.py) 显式接收已完成的开发报告及成对首测报告，校验冻结绑定后生成图表；依赖本地合法取得的固定字体与实验输出，不随源码分发原图、标签、预测、字体或模型权重。不同数据集的历史结果保留在下文，不合并成同一准确率趋势。
 
 ### 通用预训练识别器研究
 
@@ -238,87 +385,11 @@ python tools/Documentation/plot_region_evaluation.py --data docs/evaluation/regi
 
 该命令仅重绘匿名汇总图表，不执行推理或训练。绘图库属于文档生成环境，不加入推理依赖。模型权重或数据清单改变时，应新增评测记录并注明模型与数据身份；开发、保留测试和私人回归用途分别记录。
 
-## 工程范围与接口
-
-- **推理**：本机 CPU、固定本地模型、受限符号复读、原图区域坐标、原始文本与分数。结果分数未经概率校准。
-- **训练与评测**：合成训练、开发集选择、冻结模型后评测保留集；私人截图仅用于本地验证。支持 CUDA/MPS/CPU 设备选择和 ONNX 导出，MPS 尚未实机验收。
-- **HTTP 服务**：仅监听 `127.0.0.1`，提供 `GET /v1/models` 和非流式 `POST /v1/chat/completions`。
-- **模型管理**：本地 CLI 手动导入、校验、CPU 探针、启用与回退；不提供 HTTP 管理端点。
-
-客户端须支持自定义本机 Base URL、Bearer 令牌、单张 Base64 PNG/JPEG 和非流式 Chat Completions，并解析 `assistant.content` 内的 OCR JSON。system/聊天历史、工具、远程图片 URL 与未支持参数均拒绝。OpenAI Python SDK 3.28.0 已完成真实调用验证；其他客户端应按 [API v1 契约](docs/contracts/api-v1.md) 检查接入条件。
-
-```mermaid
-flowchart LR
-    C[本机客户端] -->|Base64 图片与令牌| A[127.0.0.1 HTTP 服务]
-    A --> D[受限解码子进程]
-    D --> W[离线 CPU OCR worker]
-    B[手动模型包导入] --> V[哈希与兼容性校验 / CPU 探针]
-    V --> M[本地活动模型]
-    M --> W
-    W --> R[原图坐标 / 文本 / 分数]
-    R --> A
-    A --> P[客户端预览与修正]
-```
-
-API 与 worker 分进程运行。worker 在模型校验与依赖导入前安装进程级审计钩子，限制网络操作及额外进程执行；服务保留请求预算、超时、取消及所属临时文件清理。推理期间无上传、云端回退、模型下载或远程图片抓取。接口结构见 [API 契约](docs/contracts/api-v1.md)，更新流程见 [模型包契约](docs/contracts/model-bundle-v1.md)。
-
-## 本机服务
-
-使用独立 Python 3.11 环境与固定服务依赖。依赖安装属于开发准备，推理与模型导入离线执行。模型须预先合法取得，大小和 SHA-256 必须满足模型包契约。
-
-```powershell
-py -3.11 -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements-service.txt
-.venv\Scripts\python.exe -m localocr.bundle_cli create-baseline --models <模型目录> --output artifacts/text-ppocrv6-1.0.0 --version text-ppocrv6-1.0.0
-.venv\Scripts\python.exe -m localocr.bundle_cli install --source artifacts/text-ppocrv6-1.0.0 --store artifacts/model-store
-.venv\Scripts\python.exe -m localocr.bundle_cli activate --store artifacts/model-store --version text-ppocrv6-1.0.0
-.venv\Scripts\python.exe -m localocr --store artifacts/model-store --port 8765
-```
-
-本机访问令牌保存于 `artifacts/model-store/access-token`。软件升级不自动改变活动模型；旧模型身份与在途请求版本保留。
-
-## Windows x64 独立运行时
-
-独立运行包提供 `local-ai-ocr.exe`、`localocr-models.exe`、共享 `_internal`、完整许可证和逐文件库存，整个目录须一起复制。HTTP 服务使用独立 Python 依赖，不随该子进程包部署。CLI、预算和取消约定见 [运行时契约](docs/contracts/runtime-v1.md)。
-
-| 本地产物 | 内容 |
-| --- | --- |
-| `localocr-runtime-0.1.0-rc.2-windows-x64.zip` | 双 CPU EXE、共享依赖、34 项组件许可、接口契约与库存 |
-| `localocr-model-text-ppocrv6-1.0.0.zip` | 原字节文字基线模型包，手动导入及启用 |
-| `localocr-source-0.1.0-rc.2.zip` | 87 项构建源码/许可/契约的哈希清单、来源与 build-notices |
-| `localocr-delivery-0.1.0-rc.2.json` | 规范名称、文件大小、完整 SHA-256、库存与启用策略 |
-
-当前交付 ZIP 与索引位于本地忽略目录 `artifacts/delivery-0.1.0-rc.2/`。源码包可在无 `.git` 目录中重建，另需 CPython 3.11.9、固定 `requirements-build.txt` 与随包 build-notices；详细步骤见版本契约。旧 v1/v2、`0.1.0-rc.1` 产物及已安装模型身份保留。`0.1.0-rc.2` 修复依赖导入时的额外 shell 版本查询，模型权重与评测结果保持原冻结版本。
-
-APP 已核验原图 20 MiB / 50M 像素且生成所属无损 PNG 时，可显式使用 `--owned-png`。所属副本上限为 201,048,576 字节，仍须满足单帧 PNG、50M 像素、完整 CRC 与末尾校验；普通输入保持 20 MiB 上限。该标志为调用方声明，结果与模型结构仍为 v1。
-
-## 工程验证
-
-以下为软件与接口验收，不计入识别准确率。
-
-| 验证项目 | 结果 | 范围 |
-| --- | --- | --- |
-| 当前源码回归 | **687 通过、8 跳过、39 子测试通过** | 全仓 tests/tools；6 项依赖独立 Paddle 环境、2 项需 Windows 符号链接权限。独立 Paddle 实际验证另有记录 |
-| 冻结 EXE 生命周期 | 19 项通过 | 真实 CPU、旧模型身份、更新/回退、并发、超时、取消与清理 |
-| owned-PNG 边界 | 17 项通过 | 所属大 PNG、CRC、格式、尺寸与资源拒绝 |
-| HTTP / SDK | 13 项通过 | 真实推理、认证、Host/Origin、忙碌、断连、期限及退出 |
-| ZIP 与源码包 | 通过 | 解压实际推理、202 文件哈希、隔离源码完整双 EXE 重建及 CPU 自检 |
-| 推理进程审计 | 通过 | 创建前阻止 shell；137 次实际采样，所属身份与系统控制台离线签名核验通过，无观测端点或残留 |
-| OpenSpec 严格校验 | 6 项通过 | 六项活动 change 的完整性与结构；研究结果未同步主规格或归档 |
-
-```powershell
-.venv\Scripts\python.exe -m pip install -r requirements-test.txt
-.venv\Scripts\python.exe -m pytest -q
-.venv\Scripts\python.exe tests/verify_live.py --store artifacts/model-store --output artifacts/verification --port 18765
-```
-
-真实验收使用合成图与当前 Windows x64 主机。APP 自动区域选择、预览、安装器、跨机器和 MPS 尚未验收；Python 审计不等同于 OS 防火墙或原生代码沙箱。8 MiB 输出上限使用源码测试验证。当前修复与验收记录见 `openspec/changes/add-selfcontained-ocr-runtime/verification-rc2.md` 及 `artifacts/runtime-process-policy-rc2/`；`0.1.0-rc.1` 的历史记录保留在 `openspec/changes/standardize-ocr-version-identities/verification.md`。
-
 ## 数据、许可与工具
 
 原创文本、虚构记录、原创几何、生成图片与数据清单采用 CC0-1.0；生成器及其他代码采用 [GPL-3.0-or-later](LICENSE)。模型、运行时及字体遵循各自许可，源码许可不授予第三方资产的再分发权限。
 
-私人截图、裁片、标签、网页语料、字体、模型权重、逐项预测与训练产物仅保存在本地忽略目录，不进入源码或运行包。网页提取语料不作为开放许可数据发布；私人资料不混入合成训练集。职业图标分类及训练属于 APP 工程。
+私人截图、裁片、标签、网页语料、字体、模型权重、逐项预测与训练产物仅保存在本地忽略目录，不进入 Git 源码。运行时 ZIP 不包含私人资料；基线权重由独立模型包管理，其再分发须另行核验适用许可。网页提取语料不作为开放许可数据发布；私人资料不混入合成训练集。职业图标分类及训练属于 APP 工程。
 
 - [原创数据生成、冻结与复现](tools/OcrDatasets/README.md)
 - [颜文字训练与冻结测评工具](tools/KaomojiOcr/README.md)

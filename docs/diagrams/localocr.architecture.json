@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "LocalOCR 本机推理与模型管理架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1340, 760],
+    "repository": {
+      "url": "https://github.com/Harendotes-Tang/LocalOCR",
+      "revision": "1f7e9569d0110e925960e91ec79595ee5ce6ad2b",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {"id": "consumer", "type": "external", "label": "本机客户端", "sublabel": "Base64 PNG/JPEG · Bearer", "pos": [30, 255], "size": [210, 80], "sources": [{"path": "docs/contracts/api-v1.md", "line": 17}]},
+    {"id": "http_service", "type": "backend", "label": "LocalOCR HTTP 服务", "sublabel": "127.0.0.1 · 单请求预算", "pos": [370, 255], "size": [240, 80], "sources": [{"path": "localocr/service.py", "line": 158}, {"path": "localocr/__main__.py", "line": 1}]},
+    {"id": "image_decoder", "type": "backend", "label": "图片解码子进程", "sublabel": "格式 / 像素校验 · 无损 PNG", "pos": [760, 80], "size": [240, 80], "sources": [{"path": "localocr/prepare.py", "line": 1}, {"path": "localocr/service.py", "line": 319}]},
+    {"id": "cpu_worker", "type": "backend", "label": "离线 CPU OCR worker", "sublabel": "检测 · 方向 · 识别 · 符号复读", "pos": [760, 480], "size": [240, 80], "sources": [{"path": "scripts/local-ai-ocr-worker.py", "line": 1}, {"path": "localocr/service.py", "line": 336}]},
+    {"id": "cli_broker", "type": "backend", "label": "独立运行时 CLI", "sublabel": "local-ai-ocr.exe · 生命周期监督", "pos": [370, 650], "size": [240, 80], "sources": [{"path": "localocr/runtime_entry.py", "line": 1}, {"path": "localocr/runtime_job.py", "line": 1}]},
+    {"id": "model_library", "type": "database", "label": "本地不可变模型库", "sublabel": "versions / active.json / 许可", "pos": [1100, 480], "size": [220, 80], "sources": [{"path": "localocr/bundles.py", "line": 1}, {"path": "docs/contracts/model-bundle-v1.md", "line": 35}]},
+    {"id": "model_manager", "type": "backend", "label": "模型管理 CLI", "sublabel": "导入 / CPU 探针 / 启用 / 回退", "pos": [1100, 80], "size": [220, 80], "sources": [{"path": "localocr/bundle_cli.py", "line": 1}, {"path": "localocr/bundles.py", "line": 249}]}
+  ],
+  "connections": [
+    {"id": "http_request", "from": "consumer", "to": "http_service", "label": "HTTP 请求 / OCR JSON", "variant": "emphasis"},
+    {"id": "decode_request", "from": "http_service", "to": "image_decoder", "label": "启动解码 · PNG 与尺寸回执"},
+    {"id": "infer_request", "from": "http_service", "to": "cpu_worker", "label": "启动推理 · localocr.result.v1"},
+    {"id": "cli_request", "from": "cli_broker", "to": "cpu_worker", "label": "受控启动 / 超时与取消"},
+    {"id": "weights_load", "from": "model_library", "to": "cpu_worker", "label": "固定模型字节"},
+    {"id": "manual_install", "from": "model_manager", "to": "model_library", "label": "校验后原子安装 / 切换", "labelAt": [1210, 310]}
+  ],
+  "cards": [
+    {"dot": "cyan", "title": "进程与接口边界", "items": ["HTTP 服务先回收解码进程，再启动每次请求所属的 OCR worker。", "独立 EXE 是 CLI，不包含 HTTP 服务；调用方负责提供本地图片。", "Python 审计拒绝受审计的联网与额外进程执行，不构成 OS 沙箱。"]},
+    {"dot": "emerald", "title": "训练与模型边界", "items": ["tools/OcrDatasets、KaomojiOcr、PretrainedOcr、RegionKaomoji 负责独立研究。", "训练使用合成数据；私人截图仅独立验证，研究产物留在本地。", "训练结果不自动启用；模型更新须手动导入并分别通过许可与质量检查。"]}
+  ]
+}

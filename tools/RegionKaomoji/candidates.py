@@ -28,7 +28,7 @@ DEFAULT_CONFIG = {
 }
 FACE_LETTERS = frozenset('ωДoOTxXつノ益皿')
 FACE_EYES = frozenset('ωДoOTxX益皿^•°><')
-FACE_MOUTHS = frozenset('_∀▽益皿^•°□‿-')
+FACE_MOUTHS = frozenset('_∀▽益皿^•°□‿-3')
 BRACKETS = (('(', ')'), ('[', ']'), ('{', '}'), ('（', '）'), ('【', '】'), ('〈', '〉'))
 
 
@@ -146,11 +146,12 @@ def is_face_text(text, allow_arms=True):
     if any(char not in 'つノ╯' for char in prefix) or any(char not in 'つノ╯!─' for char in suffix):
         return False
     glyphs = [char for char in text[left+1:right] if not char.isspace()]
-    letters = [char for char in text if unicodedata.category(char)[0] in 'LN']
-    symbols = sum(unicodedata.category(char)[0] in 'PS' for char in text)
+    # Character roles confirm the bare expression. Unicode category totals
+    # reject legitimate letter mouths (Д益Д) and the single numeric mouth 3.
+    # Digits remain forbidden as eyes or exterior tokens; FACE_LETTERS is not
+    # broadened, and pixel/body/view confirmation still belongs to fusion.
     return (len(glyphs) == 3 and glyphs[0] in FACE_EYES and
-            glyphs[1] in FACE_MOUTHS and glyphs[2] in FACE_EYES and
-            symbols >= 3 and (len(letters) >= 2 or symbols >= 5))
+            glyphs[1] in FACE_MOUTHS and glyphs[2] in FACE_EYES)
 
 
 def _components(mask, minimum_area):
@@ -195,9 +196,84 @@ def _line_groups(components, config):
     return groups
 
 
+def _right_angle_profile(local):
+    """Measure one straight stem with separate inward top/bottom end caps.
+
+    End caps occupy a small number of rows, so average curvature is not a
+    criterion here. A second vertical rail, missing cap or broad middle stroke
+    fails this branch; closed table frames cannot supply two isolated brackets.
+    """
+    h, w = local.shape
+    if w < 3:
+        return None
+    band = max(1, int(math.ceil(h * .20)))
+    middle = local[band:h-band]
+    if not len(middle) or not np.all(middle.any(axis=1)):
+        return None
+    widths = [int(np.flatnonzero(row)[-1]-np.flatnonzero(row)[0]+1) for row in middle]
+    if max(widths) > max(1, int(math.ceil(w * .35))):
+        return None
+    support = middle.sum(axis=0)
+    tied = np.flatnonzero(support == support.max())
+    # A thick stem occupies several equally supported columns. np.argmax
+    # always chooses its left edge, which rejects the mirrored right bracket.
+    # Check the two outer tied columns under the same coverage/cap limits.
+    for stem in dict.fromkeys((int(tied[0]), int(tied[-1]))):
+        coverage = float(np.count_nonzero(local[:, stem]) / h)
+        if coverage < .85:
+            continue
+        edge_band = max(0, int(math.floor(w * .25)))
+        if stem <= edge_band:
+            direction = 'left'
+            extensions = [int(np.flatnonzero(local[:band].any(axis=0))[-1]-stem),
+                          int(np.flatnonzero(local[h-band:].any(axis=0))[-1]-stem)]
+        elif stem >= w-1-edge_band:
+            direction = 'right'
+            extensions = [int(stem-np.flatnonzero(local[:band].any(axis=0))[0]),
+                          int(stem-np.flatnonzero(local[h-band:].any(axis=0))[0])]
+        else:
+            continue
+        minimum_cap = max(2, int(math.ceil(w * .50)))
+        if min(extensions) < minimum_cap:
+            continue
+        return {'kind': 'right-angle', 'direction': direction,
+                'measurements': {'stem_column': stem, 'stem_coverage': coverage,
+                                 'top_cap_extension': extensions[0],
+                                 'bottom_cap_extension': extensions[1],
+                                 'maximum_middle_ink_width': max(widths)}}
+    return None
+
+
+def _small_curve_profile(profile, h):
+    """Require matching endpoint extrema for a quantized 6..16 pixel curve.
+
+    Both ends must bend in the same direction away from the central stroke.
+    This bounded scale branch leaves the original average-curvature threshold
+    intact for every larger component and records its actual displacements.
+    """
+    if not 6 <= h <= 16:
+        return None
+    n = len(profile)
+    middle = profile[n//3:max(n//3+1, 2*n//3)]
+    center = float(np.median(middle))
+    if float(np.ptp(middle)) > .75:
+        return None
+    band = max(1, n//4)
+    top = profile[:band]-center
+    bottom = profile[-band:]-center
+    for direction, sign in (('left', 1), ('right', -1)):
+        upper = float(np.max(top*sign))
+        lower = float(np.max(bottom*sign))
+        if upper >= .75 and lower >= .75 and np.min(top*sign) >= -.25 and np.min(bottom*sign) >= -.25:
+            return {'kind': 'small-curve', 'direction': direction,
+                    'measurements': {'top_endpoint_displacement': upper,
+                                     'bottom_endpoint_displacement': lower,
+                                     'middle_profile_range': float(np.ptp(middle))}}
+    return None
+
+
 def _bracket_shapes(mask, origin):
-    """Find paired curved or cornered edge strokes independently of OCR text."""
-    height, width = mask.shape
+    """Find and audit separate curved, small-curve and right-angle pixel pairs."""
     components = _components(mask, 2)
     if not components:
         return []
@@ -219,9 +295,17 @@ def _bracket_shapes(mask, origin):
         edge = float(np.mean(np.concatenate((profile[:edge_count], profile[-edge_count:]))))
         middle = float(np.mean(profile[len(profile)//3:max(len(profile)//3+1, 2*len(profile)//3)]))
         curvature = middle-edge
-        if abs(curvature) < (.65 if h < 12 else 1.0):
+        observed = _right_angle_profile(local)
+        if observed is None and abs(curvature) >= (.65 if h < 12 else 1.0):
+            observed = {'kind': 'curve', 'direction': 'left' if curvature < 0 else 'right',
+                        'measurements': {'average_curvature': curvature,
+                                         'required_absolute_curvature': .65 if h < 12 else 1.0}}
+        if observed is None:
+            observed = _small_curve_profile(profile, h)
+        if observed is None:
             continue
-        shapes.append({'bbox': [left+origin[0], top+origin[1], right+origin[0], bottom+origin[1]], 'direction': 'left' if curvature < 0 else 'right', 'height': h})
+        shapes.append({'bbox': [left+origin[0], top+origin[1], right+origin[0], bottom+origin[1]],
+                       'height': h, **observed})
     pairs = []
     for left in shapes:
         for right in shapes:
@@ -235,7 +319,10 @@ def _bracket_shapes(mask, origin):
                 continue
             if abs((a[1]+a[3])-(b[1]+b[3])) > max(left['height'], right['height'])*.6:
                 continue
-            pairs.append({'left_bbox': a, 'right_bbox': b})
+            pairs.append({'left_bbox': a, 'right_bbox': b,
+                          'shape_kinds': sorted({left['kind'], right['kind']}),
+                          'left_shape': {'kind': left['kind'], 'measurements': left['measurements']},
+                          'right_shape': {'kind': right['kind'], 'measurements': right['measurements']}})
     return pairs
 
 
@@ -285,8 +372,10 @@ def pixel_evidence(image, bbox, config=None):
     occupied = np.argwhere(mask)
     edge_ink = bool(mask[0].any() or mask[-1].any() or mask[:,0].any() or mask[:,-1].any())
     pairs = _bracket_shapes(mask, (left, top))
+    shape_counts = {kind: sum(kind in pair['shape_kinds'] for pair in pairs)
+                    for kind in ('curve', 'small-curve', 'right-angle')}
     return {'pixel_count': int(mask.sum()), 'component_count': len(components),
-            'edge_ink': edge_ink, 'paired_bracket_shapes': pairs,
+            'edge_ink': edge_ink, 'paired_bracket_shapes': pairs, 'bracket_shape_counts': shape_counts,
             'pixel_support': bool(len(occupied) >= 6 and len(components) >= 3),
             'extra_shape_support': bool(pairs),
             'image_sha256': image_digest(array)}
@@ -341,7 +430,7 @@ def _route_eligibility(original, evidence):
     if not evidence['pixel_support'] or not evidence['extra_shape_support']:
         return False,'unconfirmed-independent-pixel-face-shape'
     letters=[char for char in original if unicodedata.category(char)[0] in 'LN']
-    if any(char not in FACE_LETTERS for char in letters):
+    if any(char not in FACE_LETTERS for char in letters) and not is_face_text(original):
         return False,'observed-ordinary-body-anchors'
     symbols=sum(unicodedata.category(char)[0] in 'PS' for char in original)
     if letters and not is_face_text(original) and not (2<=len(letters)<=12 and symbols>=1):

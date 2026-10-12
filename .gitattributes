@@ -3,3 +3,9 @@ LICENSE -text -whitespace
 scripts/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 tools/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 docs/licenses/** -text -whitespace
+# Preserve hash-bound generated assets; SVG path formatting includes trailing spaces.
+docs/diagrams/localocr.html -text whitespace=-blank-at-eol
+docs/diagrams/localocr.svg -text whitespace=-blank-at-eol
+docs/diagrams/localocr.architecture.json -text
+docs/evaluation/quality-optimization-20261012/** -text
+docs/evaluation/quality-optimization-20261012/figures/*.svg whitespace=-blank-at-eol

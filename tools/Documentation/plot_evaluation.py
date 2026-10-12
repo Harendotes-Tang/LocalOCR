@@ -32,39 +32,39 @@ def style_axis(ax) -> None:
 
 
 def development(data: dict, output: Path, preview: Path | None) -> None:
-    """Separate unequal development sets; show incomplete v3 as missing data."""
+    """Separate v1/v2 so overlap cannot hide v1; keep v3 explicitly unplotted."""
     iterations = {r['historical_marker']: r for r in data['training']['iterations']}
     v1, v2, v4 = (iterations[k] for k in ('v1', 'v2', 'v4'))
     if v1['split_sha256']['dev'] != v2['split_sha256']['dev']:
         raise ValueError('v1/v2 development curves require the same frozen split')
-    fig = plt.figure(figsize=(12.8, 5.2))
-    grid = fig.add_gridspec(1, 3, width_ratios=(1.15, 0.48, 1.15),
-                            left=0.075, right=0.975, top=0.73, bottom=0.22, wspace=0.3)
-    left, missing, right = (fig.add_subplot(grid[0, i]) for i in range(3))
+    fig = plt.figure(figsize=(12.8, 6.0))
+    grid = fig.add_gridspec(1, 3, left=0.075, right=0.975,
+                            top=0.73, bottom=0.30, wspace=0.33)
+    axes = [fig.add_subplot(grid[0, i]) for i in range(3)]
     fig.suptitle('历史训练迭代：开发集整串精确匹配率', fontsize=17, y=0.98)
     fig.text(0.5, 0.90, '开发指标包含文字与 32 个负样本；不同数据集分别展示', ha='center', color=TEXT)
-    for ax, entries, title in ((left, ((v1, BLUE), (v2, TEAL)), '原始开发集 · n=262'),
-                               (right, ((v4, ORANGE),), '扩充开发集 · n=299')):
+    panels = ((axes[0], v1, BLUE, 'v1 · 原始开发集 · n=262', (1, 6, 12, 18, 24)),
+              (axes[1], v2, TEAL, 'v2 · 原始开发集 · n=262', (1, 24, 48, 72, 96)),
+              (axes[2], v4, ORANGE, 'v4 · 扩充开发集 · n=299', (1, 32, 64, 96, 128)))
+    for ax, entry, color, title, ticks in panels:
         style_axis(ax)
         ax.set_ylim(0, 100)
         ax.set_yticks(range(0, 101, 20))
         ax.set_xlabel('训练轮次（epoch）')
         ax.set_title(title, pad=12, fontsize=12)
-        for entry, color in entries:
-            history, best = entry['history'], entry['best']
-            ratios = [r['dev_exact'] / r['dev_count'] * 100 for r in history]
-            label = f"{entry['historical_marker']} · 最佳 {best['exact_percent']:.2f}%"
-            ax.plot([r['epoch'] for r in history], ratios, color=color, linewidth=1.8,
-                    linestyle='--' if entry['historical_marker'] == 'v1' else '-', label=label)
-            ax.scatter([best['epoch']], [best['exact_percent']], color=color, s=32, zorder=4)
+        history, best = entry['history'], entry['best']
+        ratios = [r['dev_exact'] / r['dev_count'] * 100 for r in history]
+        label = f"最佳 {best['exact_percent']:.2f}% · 第 {best['epoch']} 轮"
+        ax.plot([r['epoch'] for r in history], ratios, color=color, linewidth=2.0,
+                linestyle='--' if entry['historical_marker'] == 'v1' else '-', label=label)
+        ax.scatter([best['epoch']], [best['exact_percent']], color=color, s=36, zorder=4)
+        ax.set_xlim(1, entry['configuration']['epochs'])
+        ax.set_xticks(ticks)
         ax.legend(loc='upper left', frameon=False, fontsize=10)
-    left.set_xlim(1, 96)
-    right.set_xlim(1, 128)
-    left.set_ylabel('整串精确匹配率（%）')
-    missing.axis('off')
-    missing.text(0.5, 0.67, 'v3', ha='center', fontsize=15, color=TEXT)
-    missing.text(0.5, 0.46, '训练未完成\n\n仅 1–8 轮日志\n无有效冻结汇总', ha='center', va='center', fontsize=11, color='#596776')
-    fig.text(0.075, 0.025, 'v1 → v2：同集提升 74.05 个百分点。v4 为 kaomoji-exp-20261011-004，未启用。', fontsize=10, color=TEXT)
+    axes[0].set_ylabel('整串精确匹配率（%）')
+    fig.text(0.075, 0.15, 'v3：训练未完成，仅有第 1–8 轮日志，无有效冻结汇总；不绘制推测曲线。',
+             fontsize=11, color='#596776')
+    fig.text(0.075, 0.06, 'v1 → v2：同集提升 74.05 个百分点。v4 为 kaomoji-exp-20261011-004，未启用。', fontsize=10, color=TEXT)
     save(fig, 'training-iterations', output, preview)
 
 

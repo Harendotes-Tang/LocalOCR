@@ -26,6 +26,7 @@ import unicodedata
 import weakref
 import zipfile
 import numpy as np
+from . import quality_selection
 from .common import (GPUBudget, confined, dataset_binding, digest, disk_guard,
                      extended_characters, read, read_split, token_mapping,
                      train_characters, utc, write)
@@ -595,7 +596,7 @@ def _move_owned_to_cpu(owned):
         optimizer.clear_grad()
     for model in owned['models']:
         model.clear_gradients()
-        model.cpu()
+        model.to(device='cpu')
     owned['optimizers'].clear()
     owned['models'].clear()
 
@@ -630,9 +631,9 @@ def _owned_execution(body, dispose, failure=None):
         dispose(owned)
 
 
-def _gpu_execution(label, seconds, receipt, body):
+def _gpu_execution(label, seconds, receipt, body, budget=None):
     receipt = Path(receipt)
-    with GPUBudget(BUDGET).run(label, seconds) as deadline:
+    with GPUBudget(BUDGET if budget is None else budget).run(label, seconds) as deadline:
         paddle = _paddle('gpu:0')
         allocated_before = paddle.device.cuda.memory_allocated()
         def failure(error):
@@ -670,7 +671,7 @@ def _gpu_execution(label, seconds, receipt, body):
         return _owned_execution(lambda owned: body(deadline, owned), dispose, failure)
 
 
-def probe(prepared, dataset, output, seconds=120, batch_size=8, minimum_width=None, learning_rate=.0001, freeze_backbone=False, empty_ctc_weight=1.0, warm_start=None, warm_start_receipt_sha256=None):
+def probe(prepared, dataset, output, seconds=120, batch_size=8, minimum_width=None, learning_rate=.0001, freeze_backbone=False, empty_ctc_weight=1.0, warm_start=None, warm_start_receipt_sha256=None, budget=None):
     output = Path(output)
     if any(path.exists() for path in (output, output.with_suffix('.pdparams'),
                                       output.with_suffix('.failure.json'), output.with_suffix('.cleanup.json'))):
@@ -760,7 +761,7 @@ def probe(prepared, dataset, output, seconds=120, batch_size=8, minimum_width=No
             'loss_normalization': 'CTC positive/reference-codepoints; empty-negative/output-time-steps; NRTR official nonpad token mean'}
         write(output, report)
         return report
-    _gpu_execution('paddle-tiny-positive-negative-probe', seconds, output, body)
+    _gpu_execution('paddle-tiny-positive-negative-probe', seconds, output, body, budget=budget)
     print(json.dumps({'probe': str(output), 'actual_weights_changed': True}), flush=True)
 
 
@@ -774,11 +775,11 @@ def _edit_distance(a, b):
     return previous[-1]
 
 
-def native_evaluate(model, characters, root, rows, preprocessing, batch_size=16, deadline=None):
+def native_evaluate(model, characters, root, rows, preprocessing, batch_size=16, deadline=None, quality=False, quality_reference=None, return_predictions=False):
     import paddle
     model.eval()
     correct, edits, codepoints, negatives, false_outputs = 0, 0, 0, 0, 0
-    by_kind, width_groups = {}, {}
+    by_kind, width_groups, raw_predictions = {}, {}, {}
     for row in rows:
         width = max(preprocessing['width']['min'], math.ceil(48 * row['width'] / row['height']))
         width_groups.setdefault(width, []).append(row)
@@ -791,6 +792,7 @@ def native_evaluate(model, characters, root, rows, preprocessing, batch_size=16,
                 raise TimeoutError('GPU deadline reached in dev evaluation')
             predictions = decode(_numpy(model(paddle.to_tensor(image_batch(root, batch, preprocessing)))), characters)
             for row, prediction in zip(batch, predictions):
+                if quality: raw_predictions[row['id']] = {'id': row['id'], 'text': prediction}
                 exact = int(prediction == row['text'])
                 distance = _edit_distance(row['text'], prediction)
                 correct += exact
@@ -810,14 +812,23 @@ def native_evaluate(model, characters, root, rows, preprocessing, batch_size=16,
         item['exact_accuracy'] = item['exact_correct'] / item['rows']
         item['cer'] = item['edit_distance'] / item['reference_codepoints'] if item['reference_codepoints'] else None
         item['negative_nonempty_rate'] = item['negative_nonempty'] / item['negative_rows'] if item['negative_rows'] else None
-    return {'rows': len(rows), 'exact_correct': correct, 'exact_accuracy': correct / len(rows),
+    result = {'rows': len(rows), 'exact_correct': correct, 'exact_accuracy': correct / len(rows),
             'edit_distance': edits, 'reference_codepoints': codepoints,
             'cer': edits / codepoints if codepoints else None, 'ignore_space': False,
             'negative_rows': negatives, 'negative_nonempty': false_outputs,
             'negative_nonempty_rate': false_outputs / negatives if negatives else None,
             'by_kind': by_kind, 'batching': 'exact-width groups; same preprocessing as single crop'}
+    if quality:
+        ordered = [raw_predictions[row['id']] for row in rows]
+        result['quality'] = quality_selection.summarize(rows, ordered, reference=quality_reference)
+        if return_predictions: result['quality_predictions'] = ordered
+    return result
 
-def train(prepared, dataset, output, seconds=2580, batch_size=16, learning_rate=.0001, seed=20261011, warm_start=None, freeze_backbone=False, empty_ctc_weight=1.0, warm_start_receipt_sha256=None):
+def train(prepared, dataset, output, seconds=2580, batch_size=16, learning_rate=.0001, seed=20261011, warm_start=None, freeze_backbone=False, empty_ctc_weight=1.0, warm_start_receipt_sha256=None, selection_policy='legacy', budget=None, eval_every_seconds=180.0):
+    if selection_policy not in ('legacy', 'face-pareto'):
+        raise ValueError('Unknown development selection policy')
+    if isinstance(eval_every_seconds, bool) or not math.isfinite(eval_every_seconds) or eval_every_seconds <= 0:
+        raise ValueError('Development evaluation frequency must be positive and finite')
     output = Path(output).resolve()
     if output.exists():
         raise ValueError('Training output must be fresh; restart does not reset budget')
@@ -829,6 +840,7 @@ def train(prepared, dataset, output, seconds=2580, batch_size=16, learning_rate=
     binding = dataset_binding(dataset)
     prepared = Path(prepared).resolve()
     initialization = read(prepared / 'initialization.json')
+    coverage = quality_selection.original_class_coverage(train_rows, read(prepared / 'original-vocabulary.json')['tokens']) if selection_policy == 'face-pareto' else None
     if initialization['dataset'] != binding:
         raise ValueError('Prepared dataset binding differs')
     start = _training_checkpoint(warm_start, prepared, warm_start_receipt_sha256) if warm_start else None
@@ -853,9 +865,12 @@ def train(prepared, dataset, output, seconds=2580, batch_size=16, learning_rate=
                         grad_clip=paddle.nn.ClipGradByGlobalNorm(5.0)))
         loss = _official_loss()
         initial = array_sha(_numpy(model.head.ctc_head.fc2.weight))
-        before = native_evaluate(model, characters, dataset, dev_rows, info['preprocessing'], batch_size, deadline)
+        specialist = selection_policy == 'face-pareto'
+        before = native_evaluate(model, characters, dataset, dev_rows, info['preprocessing'], batch_size, deadline, quality=specialist, return_predictions=specialist)
+        quality_reference = before.pop('quality_predictions', None)
+        if specialist: write(output / 'quality-initial-predictions.json', quality_reference)
         write(output / ('warm-start-dev.json' if warm_start else 'expanded-initial-dev.json'), before)
-        best = before if warm_start else None
+        best = before if warm_start or specialist else None
         selected_weight_sha = None
         last_eval, losses, negative_seen = time.monotonic(), [], 0
         while deadline.remaining() > 45:
@@ -883,15 +898,15 @@ def train(prepared, dataset, output, seconds=2580, batch_size=16, learning_rate=
                     disk_guard(output)
                     print(json.dumps({'step': steps, 'epoch': epochs, 'loss': float(np.mean(losses[-50:])),
                                       'negative_rows_trained': negative_seen, 'remaining_seconds': deadline.remaining()}), flush=True)
-                if time.monotonic() - last_eval >= 180 and deadline.remaining() > 90:
-                    metric = native_evaluate(model, characters, dataset, dev_rows, info['preprocessing'], batch_size, deadline)
+                if time.monotonic() - last_eval >= eval_every_seconds and deadline.remaining() > 90:
+                    metric = native_evaluate(model, characters, dataset, dev_rows, info['preprocessing'], batch_size, deadline, quality=specialist, quality_reference=quality_reference)
                     record = {'step': steps, 'epoch': epochs, 'mean_loss': float(np.mean(losses)),
                               'rows_trained': total_rows, 'distinct_train_rows_seen': len(seen),
                               'negative_rows_trained': negative_seen, 'distinct_negative_rows_seen': len(negative_identities),
                               'dev': metric, 'remaining_seconds': deadline.remaining(), 'utc': utc()}
                     history.append(record)
                     print(json.dumps({'dev': record}), flush=True)
-                    if best is None or (metric['exact_correct'], -metric['edit_distance']) > (best['exact_correct'], -best['edit_distance']):
+                    if development_better(metric, best, selection_policy):
                         best = metric
                         selected_weight_sha = array_sha(_numpy(model.head.ctc_head.fc2.weight))
                         selected_exposure = {'step': steps, 'rows_trained': total_rows, 'distinct_train_rows_seen': len(seen),
@@ -911,7 +926,7 @@ def train(prepared, dataset, output, seconds=2580, batch_size=16, learning_rate=
         if not steps or not changed or not negative_seen:
             raise RuntimeError('No effective successful updates or negative exposure')
         selected_changed = selected_weight_sha is not None and selected_weight_sha != initial
-        if not warm_start and not selected_changed:
+        if not warm_start and not selected_changed and selection_policy == 'legacy':
             raise RuntimeError('No effective selected first checkpoint')
         if freeze_backbone and backbone_sha256(model) != frozen_backbone:
             raise RuntimeError('Frozen backbone parameters/statistics changed')
@@ -937,13 +952,16 @@ def train(prepared, dataset, output, seconds=2580, batch_size=16, learning_rate=
             'loss_normalization': 'CTC positive/reference-codepoints; empty-negative/output-time-steps; NRTR official nonpad token mean',
             'epochs_started': epochs, 'steps': steps, 'initial_dev': before, 'best_dev': best, 'history': history,
             'actual_weights_changed': changed, 'selected_weights_changed': selected_changed,
-            'selection_outcome': 'new-effective-best' if selected_changed else 'parent-retained-no-development-improvement',
+            'selection_outcome': 'new-effective-best' if selected_changed else ('parent-retained-no-development-improvement' if warm_start else 'initial-retained-no-specialist-improvement'),
             'best_checkpoint': {'file': 'best.pdparams', 'sha256': digest(output / 'best.pdparams')} if selected_changed else None,
             'last_checkpoint': {'file': 'last.pdparams', 'sha256': digest(output / 'last.pdparams')},
-            'selection': 'dev exact_correct descending, edit_distance ascending; heldout unread',
+            'selection': 'face exact/CER/P-S Pareto and nonincreasing negative false outputs; heldout unread' if specialist else 'dev exact_correct descending, edit_distance ascending; heldout unread',
+            'selection_policy': selection_policy, 'original_class_coverage': coverage,
+            'quality_selection_sha256': digest(Path(quality_selection.__file__)) if specialist else None,
+            'budget': str(Path(BUDGET if budget is None else budget).resolve()), 'eval_every_seconds': eval_every_seconds,
             'remaining_seconds': deadline.remaining(), 'created_utc': utc(), 'adapter_sha256': digest(__file__)})
         return {'steps': steps, 'best_dev': best, 'new_candidate_selected': selected_changed}
-    result = _gpu_execution('paddle-tiny-finetune', seconds, output / 'training.json', body)
+    result = _gpu_execution('paddle-tiny-finetune', seconds, output / 'training.json', body, budget=budget)
     print(json.dumps({'training': str(output), **result}), flush=True)
 
 
@@ -1038,6 +1056,12 @@ def _training_checkpoint(checkpoint, prepared, expected_receipt_sha256=None, _se
     _reject_reparse(snapshot / 'common.py', ROUND / 'paddle')
     if digest(snapshot / 'paddle_adapter.py') != training.get('adapter_sha256') or digest(snapshot / 'common.py') != training.get('common_sha256'):
         raise ValueError('Training code differs from preserved source snapshot')
+    if training.get('selection_policy') == 'face-pareto':
+        _reject_reparse(snapshot / 'quality_selection.py', ROUND / 'paddle')
+        if digest(snapshot / 'quality_selection.py') != training.get('quality_selection_sha256') or digest(Path(quality_selection.__file__)) != training.get('quality_selection_sha256'):
+            raise ValueError('Specialist selection code differs from the preserved snapshot')
+        if not quality_selection.face_better(training['best_dev']['quality'], training['initial_dev']['quality']):
+            raise ValueError('Specialist selected checkpoint did not improve its actual initialization')
     ancestry = []
     if training.get('warm_start'):
         if expected_receipt_sha256 is None:
@@ -1053,7 +1077,7 @@ def _training_checkpoint(checkpoint, prepared, expected_receipt_sha256=None, _se
         # A new research identity requires a strict development improvement.
         parent_metric = read(parent_receipt)['best_dev']
         current_metric = training['best_dev']
-        if (current_metric['exact_correct'], -current_metric['edit_distance']) <= (parent_metric['exact_correct'], -parent_metric['edit_distance']):
+        if training.get('selection_policy') != 'face-pareto' and (current_metric['exact_correct'], -current_metric['edit_distance']) <= (parent_metric['exact_correct'], -parent_metric['edit_distance']):
             raise ValueError('Warm selection did not improve its parent development baseline')
     elif training.get('start_checkpoint') != initialization['checkpoint']:
         raise ValueError('First training did not start from the bound expanded initialization')
@@ -1066,7 +1090,8 @@ def _training_checkpoint(checkpoint, prepared, expected_receipt_sha256=None, _se
             'vocabulary': {'file': str(prepared / 'vocabulary.json'), 'sha256': digest(prepared / 'vocabulary.json')},
             'dictionary': {'file': str(prepared / 'dictionary.txt'), 'sha256': digest(prepared / 'dictionary.txt')},
             'source_snapshot': {'adapter': {'file': str(snapshot / 'paddle_adapter.py'), 'sha256': digest(snapshot / 'paddle_adapter.py')},
-                                'common': {'file': str(snapshot / 'common.py'), 'sha256': digest(snapshot / 'common.py')}},
+                                'common': {'file': str(snapshot / 'common.py'), 'sha256': digest(snapshot / 'common.py')},
+                                'quality_selection': {'file': str(snapshot / 'quality_selection.py'), 'sha256': digest(snapshot / 'quality_selection.py')} if training.get('selection_policy') == 'face-pareto' else None},
             'parents': ancestry}
 
 
@@ -1314,8 +1339,32 @@ def reference(prepared, output, checkpoint=None, original=False):
         'final_shape_policy': final_shape_policy, 'sha256': digest(output), 'created_utc': utc()})
     print(json.dumps({'native_reference': str(output), 'cases': len(cases)}), flush=True)
 
+def development_better(candidate, incumbent, policy='legacy'):
+    if policy == 'face-pareto':
+        quality_selection.validate_summary(candidate.get('quality'))
+        return incumbent is None or quality_selection.face_better(candidate['quality'], incumbent.get('quality'))
+    if policy != 'legacy': raise ValueError('Unknown development selection policy')
+    return incumbent is None or (candidate['exact_correct'], -candidate['edit_distance']) > (incumbent['exact_correct'], -incumbent['edit_distance'])
+
+
+def set_research_root(root):
+    """Change owned research evidence scope while preserving fixed official inputs."""
+    global ROUND, BUDGET
+    target = Path(root).absolute()
+    artifact_root = (REPO / 'artifacts').resolve()
+    if '..' in target.parts or target.resolve() == artifact_root or not target.resolve().is_relative_to(artifact_root):
+        raise ValueError('Research root must be a dedicated directory inside repository artifacts')
+    for ancestor in (target, *target.parents):
+        if ancestor.exists():
+            properties = ancestor.lstat()
+            if stat.S_ISLNK(properties.st_mode) or getattr(properties, 'st_file_attributes', 0) & 0x400:
+                raise ValueError('Research root contains a symbolic link or reparse point')
+    ROUND = target.resolve(); BUDGET = ROUND / 'gpu-budget.json'
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--research-root', help='Owned new research evidence root; fixed official inputs stay unchanged')
     sub = parser.add_subparsers(dest='command', required=True)
     p = sub.add_parser('prepare')
     p.add_argument('--dataset', required=True)
@@ -1338,6 +1387,7 @@ def main(argv=None):
         else:
             p.add_argument('--dataset', required=True)
             p.add_argument('--seconds', type=float, default=120 if name == 'probe' else 2580)
+            p.add_argument('--budget', help='Internal child budget receipt; parent authorization is separate')
             p.add_argument('--batch-size', type=int, default=8 if name == 'probe' else 16)
             p.add_argument('--learning-rate', type=float, default=.0001)
             p.add_argument('--warm-start')
@@ -1346,8 +1396,13 @@ def main(argv=None):
             p.add_argument('--empty-ctc-weight', type=float, default=1.0)
             if name == 'probe':
                 p.add_argument('--minimum-width', type=int)
+            else:
+                p.add_argument('--selection-policy', choices=('legacy', 'face-pareto'), default='legacy')
+                p.add_argument('--eval-every-seconds', type=float, default=180.0)
     args = vars(parser.parse_args(argv))
     command = args.pop('command')
+    research_root = args.pop('research_root')
+    if research_root is not None: set_research_root(research_root)
     globals()[command](**args)
 
 

@@ -323,3 +323,40 @@ def test_one_complete_expression_in_two_ocr_fragments_remains_supported():
     assert any(len(item['baseline_indices'])==2 and c.is_face_text(item['baseline_text']) for item in args[2])
     output=decision(args)
     assert output['accepted_count']==1 and len(output['regions'])==1 and output['regions'][0]['text']=='(ω_ω)'
+
+
+
+@pytest.mark.parametrize('original,replacement', [('[ω3ω]','[Д3Д]'),('(ω3ω)','(Д3Д)'),('{Д益Д}','{ω皿ω}'),('（ω  3  ω）','（Д  3  Д）')])
+def test_quality_numeric_mouth_and_supported_letter_mouth_preserve_raw_outputs(original,replacement):
+    output=decision(request(original=original,text=replacement))
+    assert output['accepted_count']==1
+    assert output['regions'][0]['text']==replacement
+    assert '3' not in c.FACE_LETTERS
+
+
+@pytest.mark.parametrize('residual', ['3 (ω3ω)','(ω3ω) 3','(3)','[123]','[333]','[3_3]'])
+def test_quality_independent_digits_and_numeric_body_never_receive_face_exception(residual):
+    args=mixed_request(original='LEFT  '+residual+'  RIGHT',replacement='(Д3Д)')
+    output=mixed_output(args)
+    assert output['accepted_count']==0
+    assert output['regions'][0]['text']==args[1][0]['text']
+
+
+def test_quality_mixed_numeric_mouth_maps_only_actual_bare_expression():
+    args=mixed_request(original='LEFT  (ω3ω)  RIGHT',replacement='(Д3Д)')
+    output=mixed_output(args)
+    assert output['accepted_count']==1
+    assert output['regions'][0]['text']=='LEFT  (Д3Д)  RIGHT'
+    assert output['regions'][0]['splice']['preserved_prefix']=='LEFT  '
+    assert output['regions'][0]['splice']['preserved_suffix']=='  RIGHT'
+
+
+def test_quality_numeric_mouth_does_not_relax_multiview_or_parent_provenance():
+    args=request(original='(ω3ω)',text='(Д3Д)')
+    for records in args[3].values():records[1]['text']='(Д 3 Д)'
+    output=decision(args)
+    assert output['accepted_count']==0 and output['regions'][0]['text']=='(ω3ω)'
+    args=mixed_request(original='LEFT  (ω3ω)  RIGHT',replacement='(Д3Д)')
+    next(iter(args[4].values()))[0]['baseline_parent_sha256']='0'*64
+    output=mixed_output(args)
+    assert output['accepted_count']==0 and output['regions'][0]['text']==args[1][0]['text']

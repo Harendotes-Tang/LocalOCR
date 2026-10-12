@@ -1,4 +1,5 @@
 """Owned transport bounds/format validation; envelope fixtures are not inference."""
+import os
 from pathlib import Path
 from unittest.mock import patch
 import pytest
@@ -17,13 +18,27 @@ def parsed(tmp_path, **updates):
 def test_owned_envelope_uses_worker_ceiling_and_default_stays_20mib(tmp_path):
     args=parsed(tmp_path);worker=entry.load_worker()
     assert worker.MAX_OWNED_PNG_BYTES == worker.MAX_PIXELS*4+1024*1024
-    with Path(args.input).open('wb') as f:f.truncate(worker.MAX_OWNED_PNG_BYTES)
-    assert entry.validate(args)[1]
-    args.owned_png=False
-    with pytest.raises(ValueError,match='20 MiB'):entry.validate(args)
-    args.owned_png=True
-    with Path(args.input).open('wb') as f:f.truncate(worker.MAX_OWNED_PNG_BYTES+1)
-    with pytest.raises(ValueError,match='byte limit'):entry.validate(args)
+    source=Path(args.input);before=source.read_bytes();original_stat=Path.stat
+    reported_size=worker.MAX_OWNED_PNG_BYTES
+
+    def boundary_stat(path, *, follow_symlinks=True):
+        actual=original_stat(path,follow_symlinks=follow_symlinks)
+        # validate checks transport size separately from PNG integrity. Keep
+        # lstat/path safety real and vary only this input's reported byte size.
+        if path==source and follow_symlinks:
+            fields=list(actual);fields[6]=reported_size
+            return os.stat_result(fields)
+        return actual
+
+    with patch.object(Path,'stat',boundary_stat):
+        assert entry.validate(args)[1]
+        args.owned_png=False
+        with pytest.raises(ValueError,match='20 MiB'):entry.validate(args)
+        args.owned_png=True
+        reported_size+=1
+        with pytest.raises(ValueError,match='byte limit'):entry.validate(args)
+    assert source.stat().st_size==len(before)<1024
+    assert source.read_bytes()==before
 
 
 def test_owned_empty_input_rejected(tmp_path):
