@@ -22,7 +22,12 @@ from .common import Deadline, GPUBudget, digest, read, utc, write
 
 MAXIMUM_SECONDS = 7200.0
 MAXIMUM_ARTIFACT_BYTES = 1024**3
+AUTHORIZED_ARTIFACT_CEILING = 2 * 1024**3
 MINIMUM_FREE_BYTES = 8 * 1024**3
+
+
+def describe_bytes(value):
+    return f'{value // 1024**3} GiB' if value % 1024**3 == 0 else f'{value} bytes'
 
 
 def _finite(value, name):
@@ -53,7 +58,7 @@ class RoundLimits:
             raise ValueError('Historical ledger SHA256 is required')
         self.previous_sha256 = previous_sha256
         if (type(maximum_bytes) is not int or type(minimum_free) is not int
-                or not 0 < maximum_bytes <= MAXIMUM_ARTIFACT_BYTES or minimum_free < MINIMUM_FREE_BYTES):
+                or not 0 < maximum_bytes <= AUTHORIZED_ARTIFACT_CEILING or minimum_free < MINIMUM_FREE_BYTES):
             raise ValueError('Resource limits exceed user authorization')
         self.maximum_bytes = maximum_bytes
         self.minimum_free = minimum_free
@@ -112,9 +117,9 @@ class RoundLimits:
             existing = existing.parent
         free = shutil.disk_usage(existing).free
         if size + reserve_bytes > self.maximum_bytes:
-            raise RuntimeError('New round artifact quota would exceed 1 GiB')
+            raise RuntimeError('New round artifact quota would exceed ' + describe_bytes(self.maximum_bytes))
         if free - reserve_bytes < self.minimum_free:
-            raise RuntimeError('Research disk reserve would fall below 8 GiB')
+            raise RuntimeError('Research disk reserve would fall below ' + describe_bytes(self.minimum_free))
         return {'created_utc': utc(), 'artifact_bytes': size, 'file_count': count,
                 'reserved_bytes': reserve_bytes, 'free_bytes': free, 'binding': self.binding()}
 
@@ -339,11 +344,13 @@ def main(argv=None):
     parser.add_argument('--log')
     parser.add_argument('--child-budget')
     parser.add_argument('--reserve-bytes', type=int, default=0)
+    parser.add_argument('--maximum-bytes', type=int, default=MAXIMUM_ARTIFACT_BYTES,
+                        help='Explicitly authorized new-artifact quota for this round')
     arguments = list(sys.argv[1:] if argv is None else argv)
     marker = arguments.index('--') if '--' in arguments else len(arguments)
     command = arguments[marker + 1:] if marker < len(arguments) else []
     args = parser.parse_args(arguments[:marker])
-    limits = RoundLimits(args.root, args.previous_budget, args.previous_sha256)
+    limits = RoundLimits(args.root, args.previous_budget, args.previous_sha256, maximum_bytes=args.maximum_bytes)
     if args.action == 'initialize':
         print(json.dumps(BoundGPUBudget(limits).initialize()))
     elif args.action == 'audit':

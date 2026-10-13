@@ -247,7 +247,7 @@ def test_freeze_rejects_unfinished_budget_and_missing_before_after(artifacts,mon
     state['used_seconds']=1;c.write(args.budget_receipt,state)
     args.candidate=paths[:2]
     report=c.read(args.dev_report);report['candidate_bindings']=bindings[:2];c.write(args.dev_report,report)
-    with pytest.raises(ValueError,match='both families'):
+    with pytest.raises(ValueError,match='required family'):
         e.freeze_selection(args)
 
 

@@ -15,6 +15,8 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from tools.PretrainedOcr import kaomoji_grammar as kg
+
 SCHEMA = 'localocr.region-candidates.v1'
 DEFAULT_CONFIG = {
     'maximum_pixels': 50_000_000, 'maximum_baseline_regions': 4096,
@@ -25,15 +27,143 @@ DEFAULT_CONFIG = {
     'line_overlap': 0.45, 'horizontal_gap_height': 0.58,
     'padding': 3, 'baseline_coverage': 0.80, 'baseline_ink_coverage': 0.98, 'merge_iou': 0.45,
     'minimum_context_blank_band': 2,
+    'background_window': 51,
 }
-FACE_LETTERS = frozenset('ωДoOTxXつノ益皿')
-FACE_EYES = frozenset('ωДoOTxX益皿^•°><')
-FACE_MOUTHS = frozenset('_∀▽益皿^•°□‿-3')
-BRACKETS = (('(', ')'), ('[', ']'), ('{', '}'), ('（', '）'), ('【', '】'), ('〈', '〉'))
+# Keys introduced after a configuration was frozen take their default when absent, so frozen files stay valid.
+OPTIONAL_CONFIG = {'background_window': 51}
+# Every grammar set is a projection of the canonical atom table; no literal copy lives here.
+ATOMS = kg.default_atoms()
+FACE_LETTERS = kg.face_letters(ATOMS)
+BRACKETS = kg.bracket_pairs(ATOMS)
+DEFAULT_SPLIT = {
+    'enabled': True, 'blank_band_ratio': 0.5, 'minimum_band_pixels': 4, 'minimum_child_width_ratio': 0.35,
+    'minimum_child_ink': 6, 'maximum_children': 6, 'child_padding': 2, 'maximum_parent_width': 1600,
+}
+
+
+def split_configuration(config=None):
+    """Validate the pre-recognition split settings; a missing section means disabled."""
+    value = copy.deepcopy(DEFAULT_SPLIT if config is None else config)
+    if not isinstance(value, dict) or set(value) != set(DEFAULT_SPLIT):
+        raise ValueError('Unknown or incomplete split configuration')
+    if type(value['enabled']) is not bool:
+        raise ValueError('Split enabled flag must be boolean')
+    for key in ('minimum_band_pixels', 'minimum_child_ink', 'maximum_children', 'child_padding', 'maximum_parent_width'):
+        if type(value[key]) is not int or value[key] < 0:
+            raise ValueError('Split integer limits must be nonnegative integers')
+    for key in ('blank_band_ratio', 'minimum_child_width_ratio'):
+        item = value[key]
+        if isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(item) or not 0 < item <= 4:
+            raise ValueError('Split ratios must be finite positive numbers')
+    if not 2 <= value['maximum_children'] <= 16 or value['minimum_band_pixels'] < 2 or value['minimum_child_ink'] < 1:
+        raise ValueError('Split limits outside the supported range')
+    return value
+
+
+def split_children(mask, bbox, config=None):
+    """Split one first-pass box at measured blank column bands; no text or truth is consulted.
+
+    Returns child boxes in reading order, or an empty list when the box has no
+    qualifying band, a child would be too narrow or faint, or limits are hit.
+    """
+    config = split_configuration(config)
+    left, top, right, bottom = bbox
+    if not 0 <= left < right <= mask.shape[1] or not 0 <= top < bottom <= mask.shape[0]:
+        raise ValueError('Split box outside the original canvas')
+    height, width = bottom - top, right - left
+    if not config['enabled'] or width > config['maximum_parent_width']:
+        return []
+    local = mask[top:bottom, left:right]
+    columns = local.any(axis=0)
+    if not columns.any():
+        return []
+    minimum_band = max(config['minimum_band_pixels'], int(round(height * config['blank_band_ratio'])))
+    segments = []
+    index = 0
+    while index < width:
+        if not columns[index]:
+            index += 1
+            continue
+        start = index
+        while index < width and columns[index]:
+            index += 1
+        segments.append([start, index])
+    merged = [segments[0]]
+    for start, end in segments[1:]:
+        if start - merged[-1][1] >= minimum_band:
+            merged.append([start, end])
+        else:
+            merged[-1][1] = end
+    if not 2 <= len(merged) <= config['maximum_children']:
+        return []
+    minimum_width = max(1, int(round(height * config['minimum_child_width_ratio'])))
+    children = []
+    for position, (start, end) in enumerate(merged):
+        ink = int(local[:, start:end].sum())
+        if end - start < minimum_width or ink < config['minimum_child_ink']:
+            return []
+        pad = config['child_padding']
+        # Children stay tight around their own ink: a padded child never reaches a neighbour's ink,
+        # so an automatic face candidate beside it is not reported as overlapping body geometry.
+        lower = 0 if position == 0 else merged[position - 1][1]
+        upper = width if position == len(merged) - 1 else merged[position + 1][0]
+        child_left = max(lower, start - pad)
+        child_right = min(upper, end + pad)
+        children.append([left + child_left, top, left + child_right, bottom])
+    return children
+
+
+def strip_exterior_atoms(text, atoms=None):
+    """Remove surrounding whitespace and declared arm/tail atom characters from both ends."""
+    atoms = ATOMS if atoms is None else atoms
+    leading = {char for atom in atoms.arms_left for char in atom}
+    trailing = {char for role in ('arms_right', 'tails') for atom in getattr(atoms, role) for char in atom}
+    start, end = 0, len(text)
+    while start < end and (text[start].isspace() or text[start] in leading):
+        start += 1
+    while end > start and (text[end - 1].isspace() or text[end - 1] in trailing):
+        end -= 1
+    return text[start:end]
+
+
+def ordinary_anchor_evidence(text, atoms=None):
+    """Letters outside the outermost declared bracket span and any digits, from the baseline's own reading.
+
+    Letters inside the bracket span may be baseline misreads of face glyphs and
+    are not evidence on their own; digits and exterior non-face letters are.
+    """
+    atoms = ATOMS if atoms is None else atoms
+    bracket_chars = atoms.bracket_chars
+    exterior_atoms = {char for role in ('arms_left', 'arms_right', 'tails') for atom in getattr(atoms, role) for char in atom}
+    positions = [index for index, char in enumerate(text) if char in bracket_chars]
+    low, high = (positions[0], positions[-1]) if positions else (len(text), -1)
+    outside = [char for index, char in enumerate(text)
+               if unicodedata.category(char).startswith('L') and char not in exterior_atoms and not low < index < high]
+    digits = [char for char in text if unicodedata.category(char).startswith('N')]
+    return outside, digits
+
+
+def interior_glyphs(text, atoms=None):
+    """Non-space glyph count strictly inside the outermost declared bracket span (0 without a span)."""
+    atoms = ATOMS if atoms is None else atoms
+    positions = [index for index, char in enumerate(text) if char in atoms.bracket_chars]
+    if len(positions) < 2:
+        return 0
+    return sum(1 for char in text[positions[0] + 1:positions[-1]] if not char.isspace())
+
+
+def single_bracket_pair(text, atoms=None):
+    """True when the text holds exactly one declared bracket pair at its ends."""
+    atoms = ATOMS if atoms is None else atoms
+    positions = [(index, char) for index, char in enumerate(text) if char in atoms.bracket_chars]
+    return (len(positions) == 2 and positions[0][0] == 0 and positions[1][0] == len(text) - 1
+            and (positions[0][1], positions[1][1]) in atoms.brackets)
 
 
 def configuration(config=None):
     value = copy.deepcopy(DEFAULT_CONFIG if config is None else config)
+    if isinstance(value, dict):
+        value = {**{key: default for key, default in OPTIONAL_CONFIG.items() if key not in value}, **value}
     if not isinstance(value, dict) or set(value) != set(DEFAULT_CONFIG):
         raise ValueError('Unknown or incomplete candidate configuration')
     for key, default in DEFAULT_CONFIG.items():
@@ -53,6 +183,9 @@ def configuration(config=None):
         raise ValueError('Mixed-region blank band must contain at least two pixels')
     if value['minimum_height'] > value['maximum_height'] or value['contrast_threshold'] > 255:
         raise ValueError('Invalid candidate size/contrast limits')
+    window = value['background_window']
+    if not isinstance(window, int) or window % 2 == 0 or not 3 <= window <= 201:
+        raise ValueError('Background window must be an odd integer between 3 and 201 pixels')
     return value
 
 
@@ -103,12 +236,20 @@ def baseline_parent_digest(entry):
     return hashlib.sha256(encoded).hexdigest()
 
 
-def foreground(image, threshold=8):
-    """Estimate the border background; preserve faint ink above a fixed contrast."""
+def foreground(image, threshold=8, window=None):
+    """Ink above a fixed contrast against the local background.
+
+    The background is the per-channel median over ``window`` pixels, so light
+    text on dark cards and dark text on light pages both yield glyph ink while
+    flat card bodies stay background. ``window`` must exceed glyph strokes and
+    is validated by ``configuration``.
+    """
     array = rgb_image(image)
-    border = np.concatenate((array[0], array[-1], array[:, 0], array[:, -1]), axis=0)
-    background = np.median(border.astype(np.int16), axis=0)
-    distance = np.max(np.abs(array.astype(np.int16) - background), axis=2)
+    window = DEFAULT_CONFIG['background_window'] if window is None else window
+    if not isinstance(window, int) or window % 2 == 0 or not 3 <= window <= 201:
+        raise ValueError('Background window must be an odd integer between 3 and 201 pixels')
+    background = cv2.medianBlur(np.ascontiguousarray(array), window)
+    distance = np.max(np.abs(array.astype(np.int16) - background.astype(np.int16)), axis=2)
     return np.ascontiguousarray((distance >= threshold).astype(np.uint8))
 
 
@@ -121,37 +262,15 @@ def area(box):
 
 
 def is_face_text(text, allow_arms=True):
-    """Validate one complete expression without modifying its raw Unicode.
+    """Validate one complete expression against the canonical atom grammar.
 
-    Known face letters are accepted only in eye/mouth positions. A separate
-    letter token or a second expression cannot enlarge a replacement span.
-    Mixed baseline splices prohibit exterior arms because context OCR cannot
-    distinguish an omitted body letter from an arm outside the paired strokes.
+    Raw Unicode is never modified. A separate letter token or a second
+    expression cannot enlarge a replacement span. Mixed baseline splices
+    prohibit exterior arms because context OCR cannot distinguish an omitted
+    body letter from an arm outside the paired strokes. Pixel, body and view
+    confirmation still belong to fusion.
     """
-    if not isinstance(text, str) or not 3 <= len(text) <= 64 or any(c in text for c in '\r\n\t'):
-        return False
-    bracket_chars = {char for pair in BRACKETS for char in pair}
-    positions = [(index, char) for index, char in enumerate(text) if char in bracket_chars]
-    if len(positions) != 2 or (positions[0][1], positions[1][1]) not in BRACKETS:
-        return False
-    left, right = positions[0][0], positions[1][0]
-    start, end = 0, len(text)
-    while start < end and text[start].isspace():
-        start += 1
-    while end > start and text[end-1].isspace():
-        end -= 1
-    prefix, suffix = text[start:left], text[right+1:end]
-    if not allow_arms and (prefix or suffix):
-        return False
-    if any(char not in 'つノ╯' for char in prefix) or any(char not in 'つノ╯!─' for char in suffix):
-        return False
-    glyphs = [char for char in text[left+1:right] if not char.isspace()]
-    # Character roles confirm the bare expression. Unicode category totals
-    # reject legitimate letter mouths (Д益Д) and the single numeric mouth 3.
-    # Digits remain forbidden as eyes or exterior tokens; FACE_LETTERS is not
-    # broadened, and pixel/body/view confirmation still belongs to fusion.
-    return (len(glyphs) == 3 and glyphs[0] in FACE_EYES and
-            glyphs[1] in FACE_MOUTHS and glyphs[2] in FACE_EYES)
+    return kg.is_face_text(text, ATOMS, allow_arms)
 
 
 def _components(mask, minimum_area):
@@ -183,7 +302,12 @@ def _line_groups(components, config):
     groups = []
     for line in _physical_lines(components, config):
         chunks = []
-        line_height = line['bbox'][3] - line['bbox'][1]
+        # Tall emblems or icons on a text line must not widen the gap that joins chunks: the line
+        # height is the tallest component that is not an outlier against the 80th-percentile height,
+        # so bracket strokes of an expression still set the scale while a 2-3x taller icon does not.
+        heights = sorted(item['bbox'][3] - item['bbox'][1] for item in line['components'])
+        typical = heights[int(.8 * (len(heights) - 1))]
+        line_height = max(h for h in heights if h <= typical * 1.3)
         for component in sorted(line['components'], key=lambda c: c['bbox'][0]):
             box = component['bbox']
             if chunks and box[0] - chunks[-1]['bbox'][2] <= line_height * config['horizontal_gap_height']:
@@ -367,7 +491,7 @@ def pixel_evidence(image, bbox, config=None):
     left, top, right, bottom = bbox
     if not 0 <= left < right <= array.shape[1] or not 0 <= top < bottom <= array.shape[0]:
         raise ValueError('Candidate box outside image')
-    mask = foreground(array, config['contrast_threshold'])[top:bottom, left:right]
+    mask = foreground(array, config['contrast_threshold'], config['background_window'])[top:bottom, left:right]
     components = _components(mask, config['minimum_component_area'])
     occupied = np.argwhere(mask)
     edge_ink = bool(mask[0].any() or mask[-1].any() or mask[:,0].any() or mask[:,-1].any())
@@ -378,7 +502,51 @@ def pixel_evidence(image, bbox, config=None):
             'edge_ink': edge_ink, 'paired_bracket_shapes': pairs, 'bracket_shape_counts': shape_counts,
             'pixel_support': bool(len(occupied) >= 6 and len(components) >= 3),
             'extra_shape_support': bool(pairs),
+            'pair_geometry': pair_geometry(pairs, components, (left, top)),
             'image_sha256': image_digest(array)}
+
+
+def pair_geometry(pairs, components, origin):
+    """Interior component count and exterior ink presence around the widest bracket pair.
+
+    Components are crop-local; the result is pixel evidence only. A component
+    counts as interior when its horizontal centre lies between the two bracket
+    strokes, and as exterior ink when it lies entirely beyond a stroke.
+    """
+    if not pairs:
+        return None
+    pair = max(pairs, key=lambda item: item['right_bbox'][2] - item['left_bbox'][0])
+    # Count pairs whose spans do not overlap: two complete expressions side by side.
+    spans = sorted((item['left_bbox'][0], item['right_bbox'][2]) for item in pairs)
+    disjoint, reach = 0, -1
+    for start, end in spans:
+        if start >= reach:
+            disjoint += 1
+            reach = end
+    left_edge, right_edge = pair['left_bbox'][0], pair['right_bbox'][2]
+    inner_left, inner_right = pair['left_bbox'][2], pair['right_bbox'][0]
+    interior, exterior_left, exterior_right = 0, False, False
+    for component in components:
+        x0, _, x1, _ = component['bbox']
+        x0 += origin[0]
+        x1 += origin[0]
+        centre = (x0 + x1) / 2
+        if inner_left <= centre <= inner_right and x0 >= inner_left - 1 and x1 <= inner_right + 1:
+            interior += 1
+        elif x1 <= left_edge + 1 and centre < left_edge:
+            exterior_left = True
+        elif x0 >= right_edge - 1 and centre > right_edge:
+            exterior_right = True
+    return {'left_bbox': list(pair['left_bbox']), 'right_bbox': list(pair['right_bbox']), 'disjoint_pairs': disjoint,
+            'interior_components': interior, 'exterior_ink': {'left': exterior_left, 'right': exterior_right}}
+
+
+def exterior_atoms(text, atoms=None):
+    """Whether a confirmed face carries exterior atoms on each side (arms left; arms or tails right)."""
+    parsed = kg.parse_face(text, ATOMS if atoms is None else atoms)
+    if parsed is None:
+        return None
+    return {'left': bool(parsed['arms_left']), 'right': bool(parsed['arms_right'] or parsed['tails'])}
 
 
 def _mixed_contexts(mask, bbox, owned, neighbors, entries, config):
@@ -427,25 +595,44 @@ def _route_eligibility(original, evidence):
         return False,'incomplete-or-edge-clipped-crop'
     if evidence['neighbor_body_overlap'] and not evidence['mixed_region_separable']:
         return False,'neighbor-body-overlap'
-    if not evidence['pixel_support'] or not evidence['extra_shape_support']:
+    if not evidence['pixel_support'] or not evidence.get('independent_face_evidence', evidence['extra_shape_support']):
         return False,'unconfirmed-independent-pixel-face-shape'
-    letters=[char for char in original if unicodedata.category(char)[0] in 'LN']
-    if any(char not in FACE_LETTERS for char in letters) and not is_face_text(original):
-        return False,'observed-ordinary-body-anchors'
-    symbols=sum(unicodedata.category(char)[0] in 'PS' for char in original)
-    if letters and not is_face_text(original) and not (2<=len(letters)<=12 and symbols>=1):
-        return False,'ordinary-body-or-single-letter-brackets'
+    geometry=evidence.get('pair_geometry')
+    if geometry is not None:
+        # Measured bracket strokes exist: pixels decide. The baseline's own
+        # reading of the ROI (misread arms, digits, letters) is not evidence.
+        if geometry['disjoint_pairs']>1:
+            return False,'multiple-bracket-pairs'
+        if geometry['interior_components']<2:
+            return False,'insufficient-interior-ink'
+    else:
+        # Classifier-only evidence keeps the conservative text guards: digits,
+        # letters outside the bracket span and single-letter brackets.
+        letters=[char for char in original if unicodedata.category(char)[0] in 'LN']
+        outside,digits=ordinary_anchor_evidence(original)
+        if outside and not is_face_text(original):
+            return False,'observed-ordinary-body-anchors'
+        if digits and not is_face_text(original):
+            return False,'observed-ordinary-numbers'
+        symbols=sum(unicodedata.category(char)[0] in 'PS' for char in original)
+        if letters and not is_face_text(original) and not (2<=len(letters)<=12 and symbols>=1):
+            return False,'ordinary-body-or-single-letter-brackets'
     if len(original)>64:
         return False,'observed-body-length-limit'
     return True,'independent-pixels-and-bounded-face-evidence'
 
 
-def locate_candidates(image, baseline, config=None):
+def locate_candidates(image, baseline, config=None, classifier=None):
+    """Discover candidates from pixels and first-pass geometry; an optional classifier adds face evidence.
+
+    The classifier only contributes a recorded probability compared with its
+    frozen threshold; bracket-pair shapes remain an independent alternative.
+    """
     config = configuration(config)
     array = rgb_image(image, config['maximum_pixels'])
     height, width = array.shape[:2]
     entries = baseline_regions(baseline, (width, height), config['maximum_baseline_regions'])
-    mask = foreground(array, config['contrast_threshold'])
+    mask = foreground(array, config['contrast_threshold'], config['background_window'])
     components = _components(mask, config['minimum_component_area'])
     if len(components)>config['maximum_components']:
         raise ValueError('Original image exceeds component complexity ceiling')
@@ -522,6 +709,9 @@ def locate_candidates(image, baseline, config=None):
         if box[0] >= box[2] or box[1] >= box[3] or area(box) > config['maximum_crop_pixels']:
             reject('invalid-or-oversized-crop'); continue
         evidence = pixel_evidence(array, box, config)
+        if classifier is not None:
+            evidence['classifier'] = classifier.evidence(np.ascontiguousarray(array[box[1]:box[3], box[0]:box[2]]))
+        evidence['independent_face_evidence'] = bool(evidence['extra_shape_support'] or evidence.get('classifier', {}).get('face_evidence', False))
         evidence.update({'neighbor_body_overlap':body_overlap,'neighbor_regions':neighbors,
                          'baseline_region_count':len(owned),'baseline_pixel_coverage':baseline_pixels,'clipped_canvas':left==0 or top==0 or right==width or bottom==height,
                          'ink_bbox':proposal['ink_bbox']})

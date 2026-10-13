@@ -1,0 +1,39 @@
+{
+  "builder_sha256": "22bc21bdb151a5596342da68e49b4040f363817bfd08ca67a48859b2568d59f8",
+  "figures": [
+    {
+      "file": "evaluation/kaomoji-grammar-20261013/figures/native-tiny-development.svg",
+      "sha256": "6176ba5f1c49012cda49920c5fbeea32d3a684640aeb863b99aaaad5fd6f35b2"
+    },
+    {
+      "file": "evaluation/kaomoji-grammar-20261013/figures/cpu-dev-face-exact-accuracy.svg",
+      "sha256": "8eb207424be97f552a391df36726dd0a83be8768ae4d1e70c4235ba23801c8ad"
+    },
+    {
+      "file": "evaluation/kaomoji-grammar-20261013/figures/cpu-heldout-face-exact-accuracy.svg",
+      "sha256": "41ba7089cd7c061eaa94e06b4b16ed30529f5428dbf06403f88bc09446e50c14"
+    },
+    {
+      "file": "evaluation/kaomoji-grammar-20261013/figures/scene-dev-face-exact-accuracy.svg",
+      "sha256": "aab44b9b0d053531339f155d435ee00b0cab0b722f223713c441f234222c88cb"
+    },
+    {
+      "file": "evaluation/kaomoji-grammar-20261013/figures/scene-heldout-face-exact-accuracy.svg",
+      "sha256": "38a24edf367e614fd702387f33a573103ce612d0e284d513cf83ccff656af02c"
+    },
+    {
+      "file": "evaluation/kaomoji-grammar-20261013/figures/scene-dev-iterations.svg",
+      "sha256": "6f3f6470a09ba5f3c2e92f42686acbc9bc2a680bd4929b85f716cee01ddeca38"
+    }
+  ],
+  "font": {
+    "id": "cjk",
+    "license": "OFL-1.1",
+    "sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b",
+    "source_commit": "f8d157532fbfaeda587e826d4cd5b21a49186f7c"
+  },
+  "generated_utc": "2026-10-13T06:31:48.484362+00:00",
+  "matplotlib_version": "3.10.8",
+  "schema_version": "localocr.kaomoji-grammar.assets-build.v1",
+  "summary_sha256": "f10ea05b9d63cd10e229f028f29418fa6da98c95e18f949e6c71326ecb41cf86"
+}

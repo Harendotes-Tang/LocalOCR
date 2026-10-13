@@ -194,3 +194,23 @@ def test_inventory_respects_native_cleanup_deadline(limits):
     (limits.root / 'actual').write_bytes(b'x')
     with pytest.raises(TimeoutError, match='cleanup deadline'):
         limits.audit(deadline=Deadline(0), minimum_remaining=1)
+
+
+def test_authorized_two_gib_quota_is_explicit_and_bounded(limits, capsys):
+    from tools.PretrainedOcr import round_limits as rl
+    two = 2 * 1024**3
+    wide = RoundLimits(limits.root, limits.previous_budget, limits.previous_sha256, maximum_bytes=two)
+    assert wide.binding()['maximum_artifact_bytes'] == two
+    with pytest.raises(ValueError, match='authorization'):
+        RoundLimits(limits.root, limits.previous_budget, limits.previous_sha256, maximum_bytes=two + 1)
+    limits.root.mkdir()
+    (limits.root / 'actual').write_bytes(b'x' * 16)
+    small = RoundLimits(limits.root, limits.previous_budget, limits.previous_sha256, maximum_bytes=16)
+    small.audit(0)
+    with pytest.raises(RuntimeError, match='exceed 16 bytes'):
+        small.audit(1)
+    rl.main(['audit', '--root', str(limits.root), '--previous-budget', str(limits.previous_budget),
+             '--previous-sha256', limits.previous_sha256, '--maximum-bytes', str(two)])
+    printed = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert printed['binding']['maximum_artifact_bytes'] == two and printed['artifact_bytes'] == 16
+    assert rl.describe_bytes(1024**3) == '1 GiB' and rl.describe_bytes(two) == '2 GiB'

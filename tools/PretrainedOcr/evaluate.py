@@ -27,6 +27,7 @@ from PIL import Image
 import regex
 
 from .common import confined, dataset_binding, digest, disk_guard, read, read_split, utc, write
+from . import round_profile as rp
 from tools.PretrainedOcr.quality_evaluate import exact_metrics as metrics, raw_crop_gate, round_write_guard, is_round, verify_dual
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -788,6 +789,14 @@ def evaluate(args):
     return report
 
 
+def family_coverage(current, required):
+    """Every one of the ``required`` families needs a finetuned and a pre-finetune entry."""
+    families = {entry['family'] for entry in current}
+    return len(families) == required and all(
+        any(e['family'] == family and e['stage'] == 'finetuned' for e in current)
+        and any(e['family'] == family and e['stage'] in STAGES[:2] for e in current) for family in families)
+
+
 def freeze_selection(args):
     report_path, budget_path = local_path(args.dev_report), local_path(args.budget_receipt)
     report, budget = read(report_path), read(budget_path)
@@ -803,10 +812,8 @@ def freeze_selection(args):
     current = [candidate_binding(path) for path in args.candidate]
     if current != report['candidate_bindings'] or baseline_binding(args.baseline_models) != report['baseline_binding'] or dataset_binding(args.dataset) != report['dataset_binding']:
         raise ValueError('Development results no longer bind current inputs')
-    families = {entry['family'] for entry in current}
-    if len(families) != 2 or any(not any(e['family'] == family and e['stage'] == 'finetuned' for e in current)
-            or not any(e['family'] == family and e['stage'] in STAGES[:2] for e in current) for family in families):
-        raise ValueError('Final selection must bind both families before and after')
+    if not family_coverage(current, rp.specialist_families(args.dataset)):
+        raise ValueError('Final selection must bind every required family before and after')
     if args.selected_id not in {entry['id'] for entry in current if entry['stage'] == 'finetuned'}:
         raise ValueError('Primary research selection must name an evaluated finetuned candidate')
     validate_dev_evidence(report, report_path, args.dataset, current, report['baseline_binding'])

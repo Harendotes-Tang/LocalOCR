@@ -50,7 +50,41 @@ def view_image(image, bbox, transform):
     raise ValueError('Undeclared independent view transform')
 
 
-def _agreement(image, bbox, records, config):
+def _face_span(text):
+    """Longest substring that is one complete expression (arms and tails included), or None."""
+    if not isinstance(text, str) or len(text) > 256:
+        return None
+    length = len(text)
+    for size in range(length, 1, -1):
+        for start in range(0, length - size + 1):
+            if c.is_face_text(text[start:start + size]):
+                # Surrounding whitespace belongs to the reading around the expression, not to it.
+                a, b = start, start + size
+                while a < b and text[a].isspace():
+                    a += 1
+                while b > a and text[b - 1].isspace():
+                    b -= 1
+                return a, b
+    return None
+
+
+def _reading_middle(original, text):
+    """Split one specialist reading of a mixed box into (prefix, face, suffix, baseline middle).
+
+    The prefix and suffix must be the baseline's own leading and trailing bytes;
+    only the baseline bytes between them may change. None when no complete
+    expression exists or the surrounding reading differs from the baseline.
+    """
+    span = _face_span(text)
+    if span is None:
+        return None
+    prefix, face, suffix = text[:span[0]], text[span[0]:span[1]], text[span[1]:]
+    if len(prefix) + len(suffix) > len(original) or not original.startswith(prefix) or not original.endswith(suffix):
+        return None
+    return prefix, face, suffix, original[len(prefix):len(original) - len(suffix)]
+
+
+def _agreement(image, bbox, records, config, key=None):
     if not isinstance(records, list) or len(records) > 8:
         return None, 'invalid-view-count'
     if len(records) < config['minimum_agreeing_views']:
@@ -87,9 +121,21 @@ def _agreement(image, bbox, records, config):
         return None, 'cross-model-vote-not-supported'
     if 'raw' not in transforms:
         return None, 'raw-view-required'
-    if len(set(texts)) != 1:
+    raw_text = next(record['text'] for record in records if record['transform'] == 'raw')
+    # ``key`` projects each view's text onto the compared value; a None projection is not a vote.
+    values = [text if key is None else key(text) for text in texts]
+    raw_value = raw_text if key is None else key(raw_text)
+    counts = {}
+    for value in values:
+        if value is not None:
+            counts[value] = counts.get(value, 0) + 1
+    agreeing = max(counts.values()) if counts else 0
+    if agreeing < config['minimum_agreeing_views']:
         return None, 'exact-unicode-view-disagreement'
-    return texts[0], None
+    # Exact Unicode agreement of at least the configured number of views; the raw view must carry the agreed value.
+    if raw_value is None or counts[raw_value] < config['minimum_agreeing_views'] or counts[raw_value] < agreeing:
+        return None, 'raw-view-outside-agreement'
+    return raw_value, None
 
 
 def _recorded_score(record):
@@ -155,14 +201,18 @@ def _context_splice(image, candidate, baseline, records, specialist):
     while end>start and original[end-1].isspace():
         end-=1
     observed=original[start:end]
-    ordinary=anchors(observed)
-    if any(char not in c.FACE_LETTERS for char in ordinary) and not c.is_face_text(observed, allow_arms=False):
+    outside,digits=c.ordinary_anchor_evidence(observed)
+    confirmed=c.is_face_text(observed, allow_arms=False)
+    # Digits and letters outside the observed bracket span are ordinary-body
+    # evidence; letters inside the span may be baseline misreads of face glyphs.
+    # An omitted independent body token such as "o" next to the brackets must
+    # never be absorbed into the regional edit.
+    if not confirmed and (digits or outside):
         return None,'mixed-region-ordinary-letter-number-protected',None
-    # A FACE_LETTERS membership test is insufficient: an omitted independent
-    # body token such as "o" must never be absorbed into the regional edit.
-    # Require one complete bare expression; partial/multiple expressions and
-    # exterior arms cannot be mapped uniquely to this pixel-separated ROI.
-    if not c.is_face_text(observed, allow_arms=False):
+    # The pixel-separated ROI must map to exactly one bracketed fragment whose
+    # interior holds at least two and at most the replacement's glyphs: exterior
+    # arms, extra interior tokens or multiple expressions cannot map uniquely.
+    if not confirmed and (not c.single_bracket_pair(observed) or not 2 <= c.interior_glyphs(observed) <= c.interior_glyphs(specialist)):
         return None,'mixed-region-not-confirmed-face-fragment',None
     result=original[:start]+specialist+original[end:]
     if result[:start]!=original[:start] or result[start+len(specialist):]!=original[end:]:
@@ -175,7 +225,20 @@ def _context_splice(image, candidate, baseline, records, specialist):
                           'ordinary_prefix_suffix_preserved':True}
 
 
-def fuse_candidates(image, baseline, candidates, views, config=None, candidate_config=None, contexts=None):
+def _whole_reading_proof(parent, index, whole):
+    """Splice proof for a face agreed inside the specialist's whole reading of one baseline region."""
+    prefix,face,suffix,middle=whole
+    original=parent['text'];start=len(prefix);end=len(original)-len(suffix)
+    result=original[:start]+face+original[end:]
+    if result[:start]!=original[:start] or result[start+len(face):]!=original[end:]:
+        raise RuntimeError('Baseline outside whole-reading splice changed')
+    return result,{'baseline_index':index,'original_text_span':[start,end],'original_face_text':middle,'replacement_text':face,
+                   'preserved_prefix':prefix,'preserved_suffix':suffix,'context_crops':[],'context_records':[],
+                   'baseline_parent_sha256':c.baseline_parent_digest(parent),'ordinary_prefix_suffix_preserved':True,
+                   'method':'whole-reading-agreement'}
+
+
+def fuse_candidates(image, baseline, candidates, views, config=None, candidate_config=None, contexts=None, classifier=None):
     """Return complete region output and per-crop acceptance/retention evidence.
 
     Baseline indices refer only to actual OCR regions. A mixed parent can be
@@ -194,7 +257,7 @@ def fuse_candidates(image, baseline, candidates, views, config=None, candidate_c
         raise ValueError('Unbounded candidate/view collection')
     # Recompute localization from the original inputs. Evidence fields supplied
     # by a caller cannot manufacture a confirmed region or omit a body neighbor.
-    regenerated = c.locate_candidates(array,baseline,candidate_config)
+    regenerated = c.locate_candidates(array,baseline,candidate_config,classifier=classifier)
     expected = {item['candidate_id']:item for item in regenerated['candidates']}
     if len(views)>candidate_config['maximum_candidates'] or not set(views).issubset(expected) or not set(contexts).issubset(expected):
         raise ValueError('View collection includes unknown automatic candidates')
@@ -210,21 +273,44 @@ def fuse_candidates(image, baseline, candidates, views, config=None, candidate_c
         if audited is None or candidate != audited:
             raise ValueError('Candidate differs from automatic original-image localization')
         bbox=audited['bbox'];indices=audited['baseline_indices'];original=audited['baseline_text'];evidence=audited['evidence']
+        whole=None
         if audited['route_eligible']:
             text,reason=_agreement(array,bbox,views.get(identity,[]),config)
+            # A candidate that owns exactly one mixed baseline region with measured bracket strokes may
+            # agree on the face inside its whole reading while the surrounding bytes equal the baseline's.
+            mixed_reading=reason=='exact-unicode-view-disagreement' or (reason is None and not c.is_face_text(text))
+            if mixed_reading and audited['splice_baseline_index'] is None and len(indices)==1 and evidence.get('pair_geometry') is not None:
+                parts,whole_reason=_agreement(array,bbox,views.get(identity,[]),config,key=lambda value:_reading_middle(original,value))
+                if whole_reason is None:
+                    whole=parts;text=parts[1];reason=None
+                elif reason is None:
+                    reason='specialist-output-not-confirmed-face-grammar'
         else:
             text,reason=None,audited['route_reason']
         if reason is None and (evidence['edge_ink'] or evidence['clipped_canvas']):
             reason='incomplete-or-edge-clipped-crop'
         if reason is None and evidence['neighbor_body_overlap'] and not evidence['mixed_region_separable']:
             reason='neighbor-body-overlap'
-        if reason is None and (not evidence['pixel_support'] or not evidence['extra_shape_support']):
+        # Owned regions accept bracket-pair shapes or frozen-threshold classifier
+        # evidence; a pixel-only insertion (no baseline region) still needs shapes.
+        independent = evidence.get('independent_face_evidence', evidence['extra_shape_support'])
+        if reason is None and (not evidence['pixel_support'] or not independent or (not indices and not evidence['extra_shape_support'])):
             reason='insufficient-independent-pixel-shape-support'
         if reason is None and not c.is_face_text(text):
             reason='specialist-output-not-confirmed-face-grammar'
         splice=None;spliced_text=None;mixed_index=audited['splice_baseline_index']
         if reason is None and mixed_index is not None:
             spliced_text,reason,splice=_context_splice(array,audited,entries,contexts.get(identity,[]),text)
+        if reason is None and whole is not None:
+            # The baseline bytes being replaced must themselves be one bracketed non-body fragment.
+            middle=whole[3]
+            outside,digits=c.ordinary_anchor_evidence(middle)
+            if not middle or not any(char in c.ATOMS.bracket_chars for char in middle):
+                reason='whole-reading-baseline-middle-not-bracketed'
+            elif not c.is_face_text(middle) and (digits or outside or not c.single_bracket_pair(middle)):
+                reason='mixed-region-ordinary-letter-number-protected'
+            else:
+                spliced_text,splice=_whole_reading_proof(entries[indices[0]],indices[0],whole)
         claim_indices=indices if mixed_index is None else [mixed_index]
         if reason is None and any(index in consumed for index in claim_indices):
             reason='baseline-region-already-consumed'
@@ -234,14 +320,31 @@ def fuse_candidates(image, baseline, candidates, views, config=None, candidate_c
             # Multiple OCR fragments may describe one expression. Two complete
             # expressions or independent symbol fields cannot collapse into one.
             reason='multiple-baseline-regions-not-one-face-expression'
-        if reason is None and indices:
-            # Every ordinary letter/number remains an anchor. Face-letter
-            # exceptions require BOTH complete original/replacement face roles
-            # and pixels; numeric 3 is accepted only in the central mouth role;
-            # a low-confidence body box or ordinary (o) does not qualify.
-            if anchors(original) != anchors(text) and not (c.is_face_text(original) and c.is_face_text(text)):
+        geometry=evidence.get('pair_geometry')
+        if reason is None and indices and geometry is not None:
+            # Measured bracket strokes exist: the replacement must account for the
+            # pixels. Exterior ink on a side requires exterior atoms (arms/tails)
+            # on that side and vice versa, so an independent body token beside
+            # the face can never be absorbed and arms are never invented; the
+            # interior must hold at least two components (a lone (o) is body).
+            sides=c.exterior_atoms(text)
+            # Baseline body bytes kept beside a whole-reading face explain that side's exterior ink.
+            explained={'left':bool(whole and whole[0]),'right':bool(whole and whole[2])}
+            if sides is None or any(not explained[side] and sides[side]!=geometry['exterior_ink'][side] for side in ('left','right')):
+                reason='exterior-ink-and-arms-disagree'
+            elif geometry['interior_components']<2:
+                reason='insufficient-interior-ink'
+        elif reason is None and indices and not c.is_face_text(original):
+            # Without measured strokes (classifier-only evidence) the baseline's
+            # raw reading keeps its conservative text guards: digits and exterior
+            # letters are ordinary-body anchors, the span must be one bracket
+            # pair, and it cannot hold more glyphs than the face it becomes.
+            outside,digits=c.ordinary_anchor_evidence(original)
+            core=c.strip_exterior_atoms(original)
+            inside=c.interior_glyphs(core)
+            if digits:
                 reason='ordinary-letter-number-anchor-change'
-            elif anchors(original)==anchors(text) and not c.is_face_text(original) and any(unicodedata.category(char)[0] in 'LN' for char in original):
+            elif outside or not c.single_bracket_pair(core) or inside < 2 or inside > c.interior_glyphs(text):
                 reason='ordinary-body-region-protected'
         if reason is None and text==original and indices:
             reason='unchanged-baseline'
@@ -253,12 +356,17 @@ def fuse_candidates(image, baseline, candidates, views, config=None, candidate_c
         decisions.append(decision)
         if accepted:
             score=float(views[identity][0]['score'])
-            region={'bbox':bbox,'text':text,'score':score,'source':'specialist-exact-views',
-                    'candidate_id':identity,'model_id':views[identity][0]['model_id']}
+            region={'bbox':bbox,'text':text,'score':score,'source':'specialist-exact-views','ink_bbox':list(evidence['ink_bbox']),
+                    'candidate_id':identity,'model_id':views[identity][0]['model_id'],'baseline_indices':list(claim_indices)}
             if mixed_index is not None:
                 parent=entries[mixed_index]
-                region.update(bbox=parent['bbox'],text=spliced_text,score=parent['score'],source='baseline-with-regional-splice',baseline_index=mixed_index,regional_bbox=bbox,regional_text=text,splice=splice)
+                region.update(bbox=parent['bbox'],text=spliced_text,score=parent['score'],source='baseline-with-regional-splice',baseline_index=mixed_index,regional_bbox=bbox,regional_ink_bbox=list(evidence['ink_bbox']),regional_text=text,splice=splice)
                 replacements[mixed_index]=region;consumed.add(mixed_index)
+            elif whole is not None:
+                parent=entries[indices[0]];geometry=evidence['pair_geometry']
+                regional=[geometry['left_bbox'][0],min(geometry['left_bbox'][1],geometry['right_bbox'][1]),geometry['right_bbox'][2],max(geometry['left_bbox'][3],geometry['right_bbox'][3])]
+                region.update(bbox=parent['bbox'],text=spliced_text,score=parent['score'],source='baseline-with-regional-splice',baseline_index=indices[0],regional_bbox=regional,regional_ink_bbox=regional,regional_text=text,splice=splice)
+                replacements[indices[0]]=region;consumed.add(indices[0])
             elif indices:
                 replacements[indices[0]]=region;removed.update(indices[1:]);consumed.update(indices)
             else:

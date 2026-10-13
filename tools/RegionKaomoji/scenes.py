@@ -105,6 +105,12 @@ def validate(root):
  if meta.get('generator_id')=='localocr.quality-scenes.20261012.v1':
   from .quality_scenes import validate as quality_validate
   return quality_validate(root)
+ if meta.get('generator_id')=='localocr.grammar-scenes.20261013.v1':
+  from .grammar_scenes import validate as grammar_validate
+  return grammar_validate(root)
+ if meta.get('generator_id')=='localocr.card-scenes.20261013.v1':
+  from .card_scenes import validate as card_validate
+  return card_validate(root)
  texts={};micros={};families={};pixelsets={};counts={}
  if meta.get('schema_version')!='localocr.region-scenes.v1' or meta.get('synthetic_only') is not True:raise ValueError('Scene schema/synthetic declaration')
  for split in ('dev','heldout'):

@@ -133,13 +133,16 @@ def test_real_specialist_cpu_views_are_separate_for_each_model(root):
 
 def test_ineligible_body_does_not_invoke_specialist(root):
     class OrdinaryBaseline:
-        def predict(self,image):return [{'bbox':[20,20,103,51],'text':'(ABC)','score':.01}],{}
+        def predict(self,image):return [{'bbox':[20,20,103,51],'text':'(123)','score':.01}],{}
     class NoCall:
         binding={'id':'unit-no-call'}
         def predict(self,image):raise AssertionError('ineligible body entered specialist')
-    result=e.predict_scene(geometry(),OrdinaryBaseline(),[NoCall()],e.configuration())
+    # No measured bracket strokes: body glyphs only, so nothing routes to the specialist.
+    plain=Image.new('RGB',(160,80),'white');draw=ImageDraw.Draw(plain)
+    draw.rectangle((45,31,50,38),fill='black');draw.rectangle((72,31,79,38),fill='black');draw.line((54,43,68,43),fill='black',width=2)
+    result=e.predict_scene(plain,OrdinaryBaseline(),[NoCall()],e.configuration())
     assert not result['models']['unit-no-call']['views']
-    assert result['models']['unit-no-call']['regions'][0]['text']=='(ABC)'
+    assert result['models']['unit-no-call']['regions'][0]['text']=='(123)'
 
 
 def test_exact_unicode_and_declared_geometry_join(root):
@@ -456,3 +459,12 @@ def test_actual_context_producer_binds_original_parent_and_fusion_refuses_stale_
         fused=e.f.fuse_candidates(image,baseline,result['routing']['candidates'],result['models']['unit-face']['views'],
                                   config['fusion'],config['candidate'],contexts=changed)
         assert fused['accepted_count']==0 and fused['regions'][0]['text']==baseline[0]['text']
+
+
+def test_declared_views_are_a_unique_supported_set_with_the_raw_view(root):
+    config=e.configuration();config['views']=['raw','edge-pad-4','edge-pad-6'];common.write(root/'config.json',config)
+    assert e.configuration(root/'config.json')['views']==['raw','edge-pad-4','edge-pad-6']
+    for views in (['edge-pad-4','edge-pad-6'],['raw'],['raw','edge-pad-9'],['raw','edge-pad-6','edge-pad-6'],['raw','edge-pad-4','edge-pad-6','raw']):
+        config=e.configuration();config['views']=views;common.write(root/'config.json',config)
+        with pytest.raises(ValueError):e.configuration(root/'config.json')
+    assert e.configuration()['views']==e.VIEWS==['raw','edge-pad-6']

@@ -94,14 +94,18 @@ def test_rgb_contract_and_canvas_digest():
 
 def test_discovery_and_route_eligibility_are_distinct():
     image=face_fixture()
+    # Measured bracket strokes and interior ink route the crop whatever the baseline read.
     ordinary=[{'bbox':[20,20,103,51],'text':'订单 (ABC) 123','score':.1}]
     candidates=c.locate_candidates(image,ordinary)['candidates']
-    assert candidates
-    assert not any(item['route_eligible'] for item in candidates)
-    assert any(item['route_reason']=='observed-ordinary-body-anchors' for item in candidates)
+    assert candidates and any(item['route_eligible'] for item in candidates)
     assert c.locate_candidates(image,[])['route_eligible_count']==1
-    ordinary=[{'bbox':[20,20,103,51],'text':'(o)','score':.1}]
-    assert c.locate_candidates(image,ordinary)['route_eligible_count']==0
+    # Without strokes nothing routes, and a lone interior token is body.
+    blank=np.full((80,160,3),255,dtype=np.uint8)
+    assert c.locate_candidates(blank,[{'bbox':[20,20,103,51],'text':'(o)','score':.1}])['route_eligible_count']==0
+    lone=Image.fromarray(image);draw=ImageDraw.Draw(lone)
+    draw.rectangle((40,28,82,46),fill='white');draw.ellipse((55,31,68,41),outline='black',width=2)
+    result=c.locate_candidates(np.asarray(lone),[{'bbox':[20,20,103,51],'text':'(o)','score':.1}])
+    assert result['route_eligible_count']==0 and any(item['route_reason']=='insufficient-interior-ink' for item in result['candidates'])
 
 
 def test_bracket_pair_source_bridges_internal_pixel_gaps():
@@ -227,13 +231,18 @@ def test_quality_all_declared_brackets_and_numeric_mouth_are_role_limited(pair):
     assert '3' not in c.FACE_LETTERS
 
 
-@pytest.mark.parametrize('ordinary', ['[123]','[333]','[ABC]','[o]','[T]','o [ω3ω]','[ω3ω] o'])
-def test_quality_right_angles_never_bypass_ordinary_body_anchor_guard(ordinary):
+@pytest.mark.parametrize('ordinary', ['[123]','[333]','[o]','[T]','o [ω3ω]','[ω3ω] o'])
+def test_quality_right_angles_route_on_pixels_and_lone_token_stays_body(ordinary):
     image=angular_face_fixture()
     baseline=[{'bbox':[10,10,59,34],'text':ordinary,'score':.1}]
     output=c.locate_candidates(image,baseline)
-    assert output['candidates']
-    assert not any(item['route_eligible'] for item in output['candidates'])
+    assert output['candidates'] and any(item['route_eligible'] for item in output['candidates'])
+    # The same strokes around a single interior blob are an ordinary bracketed token.
+    lone=Image.fromarray(image);draw=ImageDraw.Draw(lone)
+    draw.rectangle((16,11,52,32),fill='white');draw.ellipse((28,17,40,27),outline='black',width=2)
+    result=c.locate_candidates(np.asarray(lone),baseline)
+    assert result['candidates'] and not any(item['route_eligible'] for item in result['candidates'])
+    assert any(item['route_reason']=='insufficient-interior-ink' for item in result['candidates'])
 
 
 def test_quality_straight_stems_without_two_caps_and_closed_frames_are_not_faces():
@@ -257,7 +266,10 @@ def test_quality_right_angle_crop_clipping_and_tight_neighbor_keep_refusal():
     extended=Image.fromarray(image);ImageDraw.Draw(extended).rectangle((62,16,70,30),fill='black')
     baseline=[{'bbox':[9,8,75,37],'text':'BODY [ω3ω] 123','score':.6}]
     output=c.locate_candidates(np.asarray(extended),baseline)
-    assert not any(item['route_eligible'] for item in output['candidates'])
+    # The tight neighbour is exterior ink: routing may proceed on measured strokes, but the
+    # recorded geometry forces fusion to demand an exterior atom on that side.
+    eligible=[item for item in output['candidates'] if item['route_eligible']]
+    assert all(item['evidence']['pair_geometry']['exterior_ink']['right'] for item in eligible)
 
 
 def thick_cap_mask(height, width, stem_width, cap_rows):
@@ -313,13 +325,14 @@ def test_quality_thick_square_pair_routes_from_complete_original_pixels(height,w
     assert all(not item['evidence']['edge_ink'] and not item['evidence']['neighbor_body_overlap'] for item in full)
 
 
-@pytest.mark.parametrize('ordinary',['[ABC]','[123]','[333]','[o]','o [ω3ω]','[ω3ω] o'])
-def test_quality_thick_square_pixel_confirmation_preserves_body_refusal(ordinary):
+@pytest.mark.parametrize('ordinary',['[123]','[333]','[o]','o [ω3ω]','[ω3ω] o'])
+def test_quality_thick_square_pixel_confirmation_routes_on_strokes(ordinary):
     image=thick_cap_face_fixture(23,6,3,2)
     baseline=[{'bbox':[10,10,62,33],'text':ordinary,'score':.01}]
     result=c.locate_candidates(image,baseline)
     assert any(item['evidence']['bracket_shape_counts']['right-angle'] for item in result['candidates'])
-    assert result['route_eligible_count']==0
+    assert result['route_eligible_count']>=1
+    assert all(item['evidence']['pair_geometry']['interior_components']>=2 for item in result['candidates'] if item['route_eligible'])
 
 
 def test_quality_thick_square_tie_cannot_manufacture_caps_or_closed_frame():
@@ -346,3 +359,78 @@ def test_quality_thick_square_tie_keeps_adjacent_expressions_separate():
     assert qualified
     assert all(len(item['baseline_indices'])<=1 for item in qualified)
     assert all(item['baseline_text'] in ('[ω3ω]','[Д益Д]') for item in qualified)
+
+
+def dark_card_fixture(face=True, gap_cards=False):
+    """Light page, dark rounded cards, light strokes: the record-list polarity of real screenshots."""
+    image=Image.new('RGB',(400,160),(232,230,226));draw=ImageDraw.Draw(image)
+    if gap_cards:
+        draw.rounded_rectangle((10,8,390,68),radius=10,fill=(92,46,44))
+        draw.rounded_rectangle((10,80,390,150),radius=10,fill=(58,92,42))
+    else:
+        draw.rounded_rectangle((10,20,390,140),radius=10,fill=(92,46,44))
+    if face:
+        ink=(242,240,236);ox,oy=120,40
+        draw.arc((ox+20,oy+20,ox+34,oy+50),90,270,fill=ink,width=2)
+        draw.arc((ox+88,oy+20,ox+102,oy+50),270,90,fill=ink,width=2)
+        draw.ellipse((ox+43,oy+31,ox+50,oy+38),outline=ink,width=2)
+        draw.ellipse((ox+72,oy+31,ox+79,oy+38),outline=ink,width=2)
+        draw.line((ox+54,oy+43,ox+68,oy+43),fill=ink,width=2)
+    return np.asarray(image)
+
+
+def test_foreground_is_estimated_against_the_local_background_not_the_page_border():
+    array=dark_card_fixture()
+    mask=c.foreground(array,c.DEFAULT_CONFIG['contrast_threshold'])
+    card=np.zeros(mask.shape,dtype=bool);card[30:130,20:380]=True
+    # The dark card body must not become ink; only the light strokes inside it are foreground.
+    assert mask[card].mean()<.05 and mask[60:95,140:225].sum()>60
+    light=face_fixture()
+    border=np.concatenate((light[0],light[-1],light[:,0],light[:,-1]),axis=0)
+    global_mask=(np.max(np.abs(light.astype(np.int16)-np.median(border.astype(np.int16),axis=0)),axis=2)>=c.DEFAULT_CONFIG['contrast_threshold'])
+    assert np.array_equal(c.foreground(light,c.DEFAULT_CONFIG['contrast_threshold']).astype(bool),global_mask)
+
+
+def test_light_face_on_dark_card_is_discovered_from_pixels():
+    output=c.locate_candidates(dark_card_fixture(),[])
+    assert len(output['candidates'])==1
+    candidate=output['candidates'][0]
+    assert {'image-components','image-bracket-pair'}<=set(candidate['sources'])
+    assert candidate['evidence']['pixel_support'] and candidate['evidence']['extra_shape_support']
+    left,top,right,bottom=candidate['bbox']
+    assert left<=140 and top<=60 and right>=222 and bottom>=91
+
+
+def test_card_edges_and_gaps_never_become_candidates():
+    output=c.locate_candidates(dark_card_fixture(face=False,gap_cards=True),[])
+    assert output['candidates']==[]
+    output=c.locate_candidates(dark_card_fixture(face=False),[])
+    assert output['candidates']==[]
+
+
+def test_background_window_configuration_is_bounded():
+    config=dict(c.DEFAULT_CONFIG,background_window=50)
+    with pytest.raises(ValueError):
+        c.configuration(config)
+    config=dict(c.DEFAULT_CONFIG,background_window=301)
+    with pytest.raises(ValueError):
+        c.configuration(config)
+    legacy={key:value for key,value in c.DEFAULT_CONFIG.items() if key!='background_window'}
+    assert c.configuration(legacy)['background_window']==c.DEFAULT_CONFIG['background_window']
+
+
+def test_line_height_ignores_tall_icons_when_joining_chunks():
+    text = lambda x: {'bbox': [x, 40, x + 12, 60], 'pixels': 100}
+    icon = {'bbox': [0, 20, 50, 80], 'pixels': 2000}
+    # Two text chunks separated by 16px (0.8 of the 20px text height, 0.27 of the 60px icon height).
+    components = [icon] + [text(x) for x in (70, 84, 98)] + [text(x) for x in (126, 140, 154)]
+    groups = c._line_groups(components, c.configuration())
+    boxes = sorted(g['bbox'] for g in groups)
+    assert [b[0] for b in boxes] == [0, 70, 126]
+    # Without the icon the grouping is unchanged.
+    assert sorted(g['bbox'][0] for g in c._line_groups(components[1:], c.configuration())) == [70, 126]
+    # Bracket strokes taller than an expression's eyes and mouth still set the scale: the 16px gap
+    # between two tall brackets and a following stroke joins when the brackets are 30px tall.
+    face = [{'bbox': [70, 30, 76, 60], 'pixels': 60}, {'bbox': [82, 42, 88, 48], 'pixels': 20}, {'bbox': [94, 44, 104, 47], 'pixels': 15},
+            {'bbox': [110, 42, 116, 48], 'pixels': 20}, {'bbox': [122, 30, 128, 60], 'pixels': 60}, {'bbox': [144, 32, 156, 58], 'pixels': 80}]
+    assert len(c._line_groups(face, c.configuration())) == 1

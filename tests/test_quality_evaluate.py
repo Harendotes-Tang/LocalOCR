@@ -234,3 +234,55 @@ def test_fabricated_redirector_chain_cannot_pass_parent_validation(monkeypatch):
     for key,value in [('owner_pid',11),('launcher_pid',21),('worker_parent_pid',10),('worker_pid',20),('worker_pid',True),('owner_chain_verified',False)]:
         altered=dict(proof);altered[key]=value
         with pytest.raises(ValueError):scene.verify_worker_proof(altered,20,10)
+
+
+def unit_round(tmp_path, **changes):
+    import dataclasses
+    from tools.PretrainedOcr import round_profile as rp
+    base = rp.RoundProfile(name='unit-round', change='unit', root=tmp_path / 'unit-round', maximum_bytes=16, owned_bytes=8,
+                           previous_budget=tmp_path / 'old.json', previous_sha256='0' * 64, previous_used_seconds=1.0,
+                           specialist_families=1)
+    return dataclasses.replace(base, **changes)
+
+
+def test_registered_round_guard_uses_profile_quota_not_legacy_round(tmp_path, monkeypatch):
+    from tools.PretrainedOcr import round_profile as rp
+    profile = unit_round(tmp_path)
+    monkeypatch.setattr(rp, 'ROUNDS', (profile,))
+    monkeypatch.setattr(q.common, 'disk_guard', lambda *args: None)
+    (profile.root / 'models').mkdir(parents=True)
+    (profile.root / 'models' / 'weight.bin').write_bytes(b'x' * 9)
+    assert q.is_round(profile.root / 'result.json') and not q.is_round(tmp_path / 'unit-round-sibling' / 'x.json')
+    assert q.round_scope(profile.root / 'result.json') == (profile.root, 16)
+    q.round_write_guard(profile.root / 'result.json', 7)
+    with pytest.raises(ValueError, match='quota'):
+        q.round_write_guard(profile.root / 'result.json', 8)
+    assert q.round_scope(tmp_path / 'elsewhere') == (None, None)
+
+
+def test_registered_round_budget_binds_profile_predecessor_and_quota(tmp_path, monkeypatch):
+    import dataclasses
+    from tools.PretrainedOcr import common, round_profile as rp
+    from tools.PretrainedOcr.round_limits import BoundGPUBudget, RoundLimits
+    old = tmp_path / 'old.json'
+    common.write(old, {'schema_version': 'localocr.gpu-budget.v1', 'maximum_seconds': 7200.0,
+                       'used_seconds': 4.0, 'runs': [{'elapsed_seconds': 4.0}], 'active': None})
+    profile = unit_round(tmp_path, maximum_bytes=2 * 1024**3, owned_bytes=1024**3,
+                         previous_sha256=common.digest(old), previous_used_seconds=4.0)
+    monkeypatch.setattr(rp, 'ROUNDS', (profile,))
+    monkeypatch.setattr(q.common, 'disk_guard', lambda *args: None)
+    limits = RoundLimits(profile.root, old, common.digest(old), maximum_bytes=profile.maximum_bytes)
+    BoundGPUBudget(limits).initialize()
+    ledger = profile.root / 'gpu-budget.json'
+    assert q.validate_round_budget(ledger) == q.reference(ledger)
+    contract = q.round_ledger_contract(ledger)
+    assert contract['maximum_bytes'] == 2 * 1024**3 and contract['previous_sha256'] == common.digest(old)
+    monkeypatch.setattr(rp, 'ROUNDS', (dataclasses.replace(profile, maximum_bytes=1024**3, owned_bytes=1024**2),))
+    with pytest.raises(ValueError, match='resource limits'):
+        q.validate_round_budget(ledger)
+    monkeypatch.setattr(rp, 'ROUNDS', (dataclasses.replace(profile, previous_used_seconds=5.0),))
+    with pytest.raises(ValueError, match='closed history'):
+        q.validate_round_budget(ledger)
+    monkeypatch.setattr(rp, 'ROUNDS', ())
+    with pytest.raises(ValueError, match='sole-authority'):
+        q.validate_round_budget(ledger)

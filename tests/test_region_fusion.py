@@ -46,11 +46,19 @@ def test_confirmed_face_allows_D_omega_correction():
 
 
 def test_body_anchors_preserved_even_with_high_specialist_score():
-    for ordinary in ('(ABC)','(o)','(A_A)','订单123'):
-        output=decision(request(original=ordinary))
-        assert output['accepted_count']==0
-        assert output['regions'][0]['text']==ordinary
-        assert output['regions'][0]['score']==.0001
+    # Pixels are the evidence: the fixture is a face, so any baseline reading may be replaced,
+    # while a real lone token or unaccounted exterior ink keeps the raw baseline text.
+    for misread in ('(ABC)','(A_A)','(o)','订单123','o (A_A)','(A1A)','(0_0)'):
+        output=decision(request(original=misread))
+        assert output['accepted_count']==1 and output['regions'][0]['text']=='(ω_ω)', misread
+    lone=Image.fromarray(fixture());draw=ImageDraw.Draw(lone)
+    draw.rectangle((40,28,82,46),fill='white');draw.ellipse((55,31,68,41),outline='black',width=2)
+    image=np.asarray(lone);baseline=[{'bbox':[20,20,103,51],'text':'(o)','score':.0001}]
+    candidates=c.locate_candidates(image,baseline)['candidates']
+    views={item['candidate_id']:[{'model_id':'m','view_id':t,'transform':t,'image_sha256':c.image_digest(f.view_image(image,item['bbox'],t)),'text':'(ω_ω)','score':.9} for t in ('raw','edge-pad-6')] for item in candidates}
+    output=f.fuse_candidates(image,baseline,candidates,views)
+    assert output['accepted_count']==0 and output['regions'][0]['text']=='(o)' and output['regions'][0]['score']==.0001
+    assert any(item['reason']=='insufficient-interior-ink' for item in output['decisions'])
 
 
 def test_whitespace_unicode_and_bracket_disagreement_not_normalized():
@@ -139,10 +147,16 @@ def test_nonfinite_view_score_is_retained_as_json_safe_failure():
 
 
 def test_ineligible_discovery_keeps_route_reason_without_model_views():
-    args=request(original='(ABC)');args[3].clear()
-    output=decision(args)
+    # Without measured strokes nothing routes; the route reason is kept and no specialist view exists.
+    plain=np.full((80,160,3),255,dtype=np.uint8)
+    canvas=Image.fromarray(plain);draw=ImageDraw.Draw(canvas)
+    draw.rectangle((45,31,50,38),fill='black');draw.rectangle((72,31,79,38),fill='black');draw.line((54,43,68,43),fill='black',width=2)
+    image=np.asarray(canvas);baseline=[{'bbox':[20,20,103,51],'text':'o (ABC)','score':.0001}]
+    candidates=c.locate_candidates(image,baseline)['candidates']
+    assert candidates and not any(item['route_eligible'] for item in candidates)
+    output=f.fuse_candidates(image,baseline,candidates,{})
     assert output['accepted_count']==0
-    assert output['decisions'][0]['reason']=='observed-ordinary-body-anchors'
+    assert output['decisions'][0]['reason']=='unconfirmed-independent-pixel-face-shape'
 
 
 def test_unknown_candidate_view_mapping_rejected():
@@ -177,7 +191,7 @@ def mixed_output(args):
 
 
 def test_actual_blank_bands_and_contexts_allow_unique_face_splice():
-    args=mixed_request();candidate=next(item for item in args[2] if item['route_eligible'])
+    args=mixed_request();candidate=next(item for item in args[2] if item['route_eligible'] and item['splice_baseline_index'] is not None)
     assert candidate['baseline_indices']==[]
     assert candidate['evidence']['neighbor_body_overlap']
     assert candidate['evidence']['mixed_region_separable']
@@ -213,11 +227,17 @@ def test_context_geometry_and_pixel_sha_cannot_be_forged():
 
 
 def test_ordinary_letters_in_mixed_middle_never_change():
-    for middle in ('(ABC)','(o)','123','(A_A)'):
+    # Digits, single interior tokens and extra interior tokens never change; letters the
+    # baseline placed inside a pixel-separated bracket span may be misread face glyphs.
+    for middle in ('(o)','123','(A1A)','(o Д_Д)','(ABCD)'):
         args=mixed_request(original='LEFT  '+middle+'  RIGHT')
         output=mixed_output(args)
-        assert output['accepted_count']==0
+        assert output['accepted_count']==0, middle
         assert output['regions'][0]['text']==args[1][0]['text']
+    for middle in ('(ABC)','(A_A)'):
+        args=mixed_request(original='LEFT  '+middle+'  RIGHT')
+        output=mixed_output(args)
+        assert output['accepted_count']==1 and output['regions'][0]['text']=='LEFT  (ω_ω)  RIGHT', middle
 
 
 def test_specialist_spaces_remain_raw_during_context_splice():
@@ -253,7 +273,7 @@ def test_real_producer_residual_body_token_cannot_be_deleted():
     output=mixed_output(args)
     assert output['accepted_count']==0
     assert output['regions'][0]['text']=='LEFT o  (Д_Д)  RIGHT'
-    assert any(item['reason']=='mixed-region-not-confirmed-face-fragment' for item in output['decisions'])
+    assert any(item['reason'] in ('mixed-region-not-confirmed-face-fragment','mixed-region-ordinary-letter-number-protected') for item in output['decisions'])
 
 
 @pytest.mark.parametrize('residual', ['o (Д_Д)', '(Д_Д) o', '(o Д_Д)',
@@ -314,7 +334,7 @@ def test_two_physical_symbol_faces_cannot_collapse_two_baseline_regions():
     output=f.fuse_candidates(image,baseline,candidates,views)
     assert output['accepted_count']==0 and len(output['regions'])==2
     assert [(item['bbox'],item['text'],item['score']) for item in output['regions']]==[(item['bbox'],item['text'],item['score']) for item in baseline]
-    assert any(item['reason']=='multiple-baseline-regions-not-one-face-expression' for item in output['decisions'])
+    assert any(item['reason'] in ('multiple-baseline-regions-not-one-face-expression','multiple-bracket-pairs') for item in output['decisions'])
 
 
 def test_one_complete_expression_in_two_ocr_fragments_remains_supported():
@@ -360,3 +380,89 @@ def test_quality_numeric_mouth_does_not_relax_multiview_or_parent_provenance():
     next(iter(args[4].values()))[0]['baseline_parent_sha256']='0'*64
     output=mixed_output(args)
     assert output['accepted_count']==0 and output['regions'][0]['text']==args[1][0]['text']
+
+
+def three_view_request(texts):
+    """Raw, edge-pad-4 and edge-pad-6 views carrying the given texts in that order."""
+    image,baseline,candidates,views=request()
+    candidate=candidates[0]
+    records=[]
+    for transform,text in zip(('raw','edge-pad-4','edge-pad-6'),texts):
+        pixels=f.view_image(image,candidate['bbox'],transform)
+        records.append({'model_id':'research-specialist','view_id':transform,'transform':transform,
+                        'image_sha256':c.image_digest(pixels),'text':text,'score':.99})
+    return image,baseline,candidates,{candidate['candidate_id']:records}
+
+
+def test_majority_of_three_views_must_include_the_raw_view():
+    output=decision(three_view_request(['(ω_ω)','(ω_ω)','(ω _ω)']))
+    assert output['accepted_count']==1 and output['regions'][0]['text']=='(ω_ω)'
+    output=decision(three_view_request(['(ω_ω)','(ω _ω)','(ω_ω)']))
+    assert output['accepted_count']==1 and output['regions'][0]['text']=='(ω_ω)'
+    output=decision(three_view_request(['(ω _ω)','(ω_ω)','(ω_ω)']))
+    assert output['accepted_count']==0 and output['decisions'][0]['reason']=='raw-view-outside-agreement'
+    output=decision(three_view_request(['(ω_ω)','(ω _ω)','(ω__ω)']))
+    assert output['accepted_count']==0 and output['decisions'][0]['reason']=='exact-unicode-view-disagreement'
+
+
+def test_agreement_count_is_configurable_but_never_below_two():
+    config=f.configuration();config['minimum_agreeing_views']=3
+    args=three_view_request(['(ω_ω)','(ω_ω)','(ω _ω)'])
+    output=f.fuse_candidates(*args,config=config)
+    assert output['accepted_count']==0 and output['decisions'][0]['reason']=='exact-unicode-view-disagreement'
+    config['minimum_agreeing_views']=1
+    with pytest.raises(ValueError):f.configuration(config)
+
+
+def whole_reading_request(original, texts, baseline_bbox=(20, 20, 103, 51)):
+    image = fixture()
+    baseline = [{'bbox': list(baseline_bbox), 'text': original, 'score': .0001}]
+    candidates = c.locate_candidates(image, baseline)['candidates']
+    candidate = candidates[0]
+    records = []
+    for transform, text in zip(('raw', 'edge-pad-4', 'edge-pad-6'), texts):
+        pixels = f.view_image(image, candidate['bbox'], transform)
+        records.append({'model_id': 'research-specialist', 'view_id': transform, 'transform': transform,
+                        'image_sha256': c.image_digest(pixels), 'text': text, 'score': .99})
+    return image, baseline, candidates, {candidate['candidate_id']: records}
+
+
+def test_whole_reading_face_splices_into_the_baseline_bytes():
+    # A trailing tail glyph would need its own exterior ink; the fixture draws none, so a CJK suffix stands for body.
+    output = decision(whole_reading_request('AB(Д_Д)了', ['AB(ω_ω)了', 'AB(ω_ω)了', 'AB(ω_ω)了']))
+    assert output['accepted_count'] == 1
+    region = output['regions'][0]
+    assert region['source'] == 'baseline-with-regional-splice' and region['text'] == 'AB(ω_ω)了' and region['regional_text'] == '(ω_ω)'
+    assert region['bbox'] == [20, 20, 103, 51] and region['splice']['preserved_prefix'] == 'AB' and region['splice']['preserved_suffix'] == '了'
+    # A tail read by the specialist without exterior ink on that side stays rejected.
+    output = decision(whole_reading_request('AB(Д_Д)!', ['AB(ω_ω)!', 'AB(ω_ω)!', 'AB(ω_ω)!']))
+    assert output['accepted_count'] == 0 and output['decisions'][0]['reason'] == 'exterior-ink-and-arms-disagree'
+    assert region['splice']['original_text_span'] == [2, 7] and region['splice']['method'] == 'whole-reading-agreement'
+    assert region['regional_ink_bbox'][0] >= 20 and region['regional_ink_bbox'][2] <= 103
+
+
+def test_whole_reading_votes_on_the_face_while_body_misreads_differ():
+    output = decision(whole_reading_request('AB(Д_Д)', ['AB(ω_ω)', 'A8(ω_ω)', 'AB(ω_ω)']))
+    assert output['accepted_count'] == 1 and output['regions'][0]['text'] == 'AB(ω_ω)'
+    output = decision(whole_reading_request('AB(Д_Д)', ['A8(ω_ω)', 'AB(ω_ω)', 'AB(ω_ω)']))
+    assert output['accepted_count'] == 0 and output['decisions'][0]['reason'] == 'raw-view-outside-agreement'
+
+
+def test_whole_reading_never_rewrites_body_letters_or_numbers():
+    for original, texts, reason in [
+        ('AB(Д_Д)', ['AX(ω_ω)', 'AX(ω_ω)', 'AX(ω_ω)'], 'specialist-output-not-confirmed-face-grammar'),
+        ('AB(1_1)', ['AB(ω_ω)', 'AB(ω_ω)', 'AB(ω_ω)'], 'mixed-region-ordinary-letter-number-protected'),
+        ('ABCD', ['AB(ω_ω)', 'AB(ω_ω)', 'AB(ω_ω)'], 'whole-reading-baseline-middle-not-bracketed'),
+        ('AB(Д_Д)', ['AB(ω_ω)', 'AB(ω _ω)', 'AB(ω__ω)'], 'exact-unicode-view-disagreement'),
+    ]:
+        output = decision(whole_reading_request(original, texts))
+        assert output['accepted_count'] == 0, (original, texts)
+        assert output['decisions'][0]['reason'] == reason, (original, texts, output['decisions'][0]['reason'])
+        assert output['regions'][0]['text'] == original
+
+
+def test_whole_reading_keeps_surrounding_spaces_in_the_preserved_bytes():
+    output = decision(whole_reading_request('AB (Д_Д)', ['AB (ω_ω)', 'AB (ω_ω)', 'AB (ω_ω)']))
+    assert output['accepted_count'] == 1
+    region = output['regions'][0]
+    assert region['text'] == 'AB (ω_ω)' and region['regional_text'] == '(ω_ω)' and region['splice']['preserved_prefix'] == 'AB '

@@ -22,11 +22,19 @@ from .data import MixedRenderer, pixels, sha, read, write
 from .common import write as atomic_write, utc
 from .quality_corpus import (SPLITS, BRACKETS, GENERATOR_ID, make_sample, expressions,
                              text_hash, family)
+from . import round_profile as rp
 
 ARTIFACTS=Path(__file__).resolve().parents[2]/'artifacts'
 OWNED_BYTE_LIMIT=350*1024**2
 ROUND_BYTE_LIMIT=1024**3
 MINIMUM_FREE=8*1024**3
+
+
+def round_limits(root):
+    """(owned quota, round quota, owned label, round label) for a registered round or the legacy defaults."""
+    profile=rp.profile_for(root)
+    if profile is None:return OWNED_BYTE_LIMIT,ROUND_BYTE_LIMIT,'350MiB','1GiB'
+    return profile.owned_bytes,profile.maximum_bytes,f'{profile.owned_bytes//1024**2}MiB',f'{profile.maximum_bytes//1024**3}GiB'
 
 
 def tree_bytes(path):
@@ -47,7 +55,13 @@ def tree_bytes(path):
 
 def quota_root(path):
     path=Path(path).resolve()
+    profile=rp.profile_for(path)
+    if profile is not None:return Path(profile.root).resolve()
     return next((p for p in (path,*path.parents) if p.name.startswith('quality-optimization-')),path)
+
+
+def scoped_root(root):
+    return rp.profile_for(root) is not None or Path(root).name.startswith('quality-optimization-')
 
 
 def storage_gate(path,reserved=0):
@@ -55,10 +69,10 @@ def storage_gate(path,reserved=0):
     while not probe.exists():probe=probe.parent
     free=shutil.disk_usage(probe).free
     if free-reserved<MINIMUM_FREE:raise ValueError('Disk headroom below 8GiB')
-    root=quota_root(path)
-    owned=tree_bytes(root/'data')+tree_bytes(root/'scenes') if root!=path or root.name.startswith('quality-optimization-') else tree_bytes(path)
-    if owned+reserved>OWNED_BYTE_LIMIT:raise ValueError('Data/scenes quota exceeds 350MiB')
-    if tree_bytes(root)+reserved>ROUND_BYTE_LIMIT:raise ValueError('Round artifacts exceed 1GiB')
+    root=quota_root(path);owned_limit,round_limit,owned_label,round_label=round_limits(root)
+    owned=tree_bytes(root/'data')+tree_bytes(root/'scenes') if root!=path or scoped_root(root) else tree_bytes(path)
+    if owned+reserved>owned_limit:raise ValueError('Data/scenes quota exceeds '+owned_label)
+    if tree_bytes(root)+reserved>round_limit:raise ValueError('Round artifacts exceed '+round_label)
     return {'free_bytes':free,'owned_bytes':owned,'round_bytes':tree_bytes(root)}
 
 
@@ -100,7 +114,8 @@ class Writer:
     def __init__(self,root):
         self.root=Path(root);self.quota=quota_root(root);state=storage_gate(root)
         self.owned=state['owned_bytes'];self.round=state['round_bytes']
-        self.scoped=self.quota.name.startswith('quality-optimization-')
+        self.scoped=scoped_root(self.quota)
+        self.owned_limit,self.round_limit,self.owned_label,self.round_label=round_limits(self.quota)
         self.progress=self.root/'progress.json';self.progress_base=self.progress.stat().st_size if self.progress.exists() else 0
         self.external=nonowned_bytes(self.quota) if self.scoped else self.round-self.owned
         self.pending=0;self.writes=0;self.reconciled=time.monotonic()
@@ -113,8 +128,9 @@ class Writer:
         auxiliary=(self.progress.stat().st_size if self.progress.exists() else 0)-self.progress_base
         owned=self.owned+self.pending+auxiliary
         external=nonowned_bytes(self.quota) if self.scoped else self.round-self.owned
-        if owned+n>OWNED_BYTE_LIMIT:raise ValueError('Data/scenes quota exceeds 350MiB')
-        if owned+external+n>ROUND_BYTE_LIMIT:raise ValueError('Round artifacts exceed 1GiB')
+        owned_limit,round_limit,owned_label,round_label=round_limits(self.quota)
+        if owned+n>owned_limit:raise ValueError('Data/scenes quota exceeds '+owned_label)
+        if owned+external+n>round_limit:raise ValueError('Round artifacts exceed '+round_label)
         if shutil.disk_usage(self.root).free-n<MINIMUM_FREE:raise ValueError('Disk headroom below 8GiB')
         with Path(path).open('xb') as stream:stream.write(payload)
         self.pending+=n;self.writes+=1

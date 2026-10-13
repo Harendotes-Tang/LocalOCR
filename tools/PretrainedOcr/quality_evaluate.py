@@ -14,6 +14,7 @@ from pathlib import Path
 import stat
 import unicodedata
 from . import common
+from . import round_profile as rp
 
 REPO=Path(__file__).resolve().parents[2]
 ROUND=REPO/'artifacts/quality-optimization-20261012'
@@ -21,16 +22,32 @@ ROUND_MAX_BYTES=1024**3
 OLD_BUDGET_SHA='6d4aa4827bf41f84f99a49610a17611dd07185351c6f7a749da8881d250b8497'
 DUAL_SCHEMA='localocr.quality-dual-freeze.v1'
 
-def is_round(path):return Path(path).resolve().is_relative_to(ROUND.resolve())
+def round_scope(path):
+    """Return (round root, byte quota) for a registered round, the legacy module round, or (None, None)."""
+    profile=rp.profile_for(path)
+    if profile is not None:return profile.root,profile.maximum_bytes
+    if Path(path).resolve().is_relative_to(ROUND.resolve()):return ROUND,ROUND_MAX_BYTES
+    return None,None
+
+def is_round(path):return round_scope(path)[0] is not None
+
+def round_ledger_contract(path):
+    """Immutable predecessor and quota expectations for the round owning ``path``."""
+    profile=rp.profile_for(path)
+    if profile is not None:
+        return {'root':Path(profile.root),'previous_sha256':profile.previous_sha256,'previous_used_seconds':profile.previous_used_seconds,
+                'maximum_bytes':profile.maximum_bytes,'maximum_seconds':profile.maximum_seconds}
+    return {'root':ROUND,'previous_sha256':OLD_BUDGET_SHA,'previous_used_seconds':7011.043364,'maximum_bytes':1024**3,'maximum_seconds':7200}
 
 def round_write_guard(path,additional_bytes=0):
-    if not is_round(path):return
+    root,limit=round_scope(path)
+    if root is None:return
     if type(additional_bytes) is not int or additional_bytes<0:
         raise ValueError('Reserved output bytes must be a nonnegative integer')
     common.disk_guard(path,common.MINIMUM_FREE_BYTES+additional_bytes)
     from .round_limits import _no_reparse
-    _no_reparse(ROUND)
-    size=0;pending=[ROUND] if ROUND.exists() else []
+    _no_reparse(root)
+    size=0;pending=[root] if root.exists() else []
     while pending:
         with os.scandir(pending.pop()) as entries:
             for entry in entries:
@@ -39,8 +56,8 @@ def round_write_guard(path,additional_bytes=0):
                     raise ValueError('Research resource path contains a reparse point')
                 if stat.S_ISDIR(info.st_mode):pending.append(entry.path)
                 elif stat.S_ISREG(info.st_mode):size+=info.st_size
-    _no_reparse(ROUND)
-    if size+additional_bytes>ROUND_MAX_BYTES:raise ValueError('Research round exceeds1GiB output quota')
+    _no_reparse(root)
+    if size+additional_bytes>limit:raise ValueError('Research round exceeds its authorized output quota')
 
 def ps_metrics(rows,field='prediction'):
     from tools.OcrDatasets.evaluate import distance
@@ -116,17 +133,18 @@ def bound(record):
 
 def validate_round_budget(path):
     path=Path(path).resolve();value=common.read(path);binding=value.get('round_binding',{})
-    if path!=ROUND/'gpu-budget.json' or value.get('schema_version')!='localocr.gpu-budget.v1' or value.get('active') is not None or value.get('maximum_seconds')!=7200 or path.with_name(path.name+'.lock').exists():raise ValueError('Requires closed sole-authority new-round ledger')
+    contract=round_ledger_contract(path);root=Path(contract['root']).resolve();maximum=contract['maximum_seconds']
+    if path!=root/'gpu-budget.json' or value.get('schema_version')!='localocr.gpu-budget.v1' or value.get('active') is not None or value.get('maximum_seconds')!=maximum or path.with_name(path.name+'.lock').exists():raise ValueError('Requires closed sole-authority new-round ledger')
     used=value.get('used_seconds')
-    if type(used) not in (int,float) or not math.isfinite(used) or not 0<=used<=7200:raise ValueError('Invalid new budget usage')
-    if binding.get('schema_version')!='localocr.gpu-round-binding.v1' or binding.get('previous_sha256')!=OLD_BUDGET_SHA or not math.isclose(binding.get('previous_used_seconds',-1),7011.043364,abs_tol=.000001) or Path(binding.get('round_root','')).resolve()!=ROUND:raise ValueError('New ledger must bind approved old closed history')
-    if common.digest(binding['previous_budget'])!=OLD_BUDGET_SHA:raise ValueError('Historical ledger changed')
+    if type(used) not in (int,float) or not math.isfinite(used) or not 0<=used<=maximum:raise ValueError('Invalid new budget usage')
+    if binding.get('schema_version')!='localocr.gpu-round-binding.v1' or binding.get('previous_sha256')!=contract['previous_sha256'] or not math.isclose(binding.get('previous_used_seconds',-1),contract['previous_used_seconds'],abs_tol=.000001) or Path(binding.get('round_root','')).resolve()!=root:raise ValueError('New ledger must bind approved old closed history')
+    if common.digest(binding['previous_budget'])!=contract['previous_sha256']:raise ValueError('Historical ledger changed')
     old=common.read(binding['previous_budget'])
     if old.get('active') is not None or Path(binding['previous_budget']).with_name(Path(binding['previous_budget']).name+'.lock').exists():raise ValueError('Historical ledger is not closed')
     runs=value.get('runs')
     if not isinstance(runs,list) or any(not isinstance(run,dict) or type(run.get('elapsed_seconds')) not in (int,float) or not math.isfinite(run['elapsed_seconds']) or run['elapsed_seconds']<0 for run in runs):raise ValueError('Invalid measured GPU intervals')
     if not math.isclose(sum(run['elapsed_seconds'] for run in runs),used,abs_tol=.000001):raise ValueError('New usage intervals differ')
-    if binding.get('maximum_artifact_bytes')!=1024**3 or binding.get('minimum_free_bytes',0)<8*1024**3:raise ValueError('Round resource limits differ')
+    if binding.get('maximum_artifact_bytes')!=contract['maximum_bytes'] or binding.get('minimum_free_bytes',0)<8*1024**3:raise ValueError('Round resource limits differ')
     round_write_guard(path)
     return reference(path)
 
@@ -167,7 +185,8 @@ def freeze_dual(crop_selection,scene_selection,crop_dataset,scene_dataset,output
     # Refuse manufacturing a new freeze after either crop or scene first-use exists.
     for dataset in datasets:
         if (dataset/'heldout-first-use.json').exists():raise ValueError('New heldout already consumed')
-    if any(ROUND.glob('evaluation-heldout-first-use-*.json')):raise ValueError('Scene heldout already consumed')
+    round_root=round_scope(datasets[1])[0] or ROUND
+    if any(Path(round_root).glob('evaluation-heldout-first-use-*.json')):raise ValueError('Scene heldout already consumed')
     gates=recompute_development(*selections,*datasets)
     value={'schema_version':DUAL_SCHEMA,'frozen_utc':common.utc(),'crop_selection':reference(selections[0]),'scene_selection':reference(selections[1]),'crop_dataset':{'path':str(datasets[0].resolve()),'binding':common.dataset_binding(datasets[0])},'scene_dataset':{'path':str(datasets[1].resolve()),'binding':common.read(datasets[1]/'freeze.json')},'source_inventory':source_inventory(),'gates':gates,'production_enabled':False,'promote':False,'enabled':False,'usage':'both selections frozen before either first new heldout; no tuning on results'}
     from .evaluate import write_new

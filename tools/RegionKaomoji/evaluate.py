@@ -23,7 +23,8 @@ from tools.PretrainedOcr import common
 from tools.PretrainedOcr.evaluate import (Recognizer, baseline_binding, candidate_binding,
                                          MemoryMeasurement, percentiles)
 from tools.PretrainedOcr.quality_evaluate import exact_metrics as metrics, scene_gate, ROUND, is_round, round_write_guard, verify_dual, validate_owned_cpu_capture
-from tools.RegionKaomoji import candidates as c, fusion as f
+from tools.PretrainedOcr import round_profile as rp
+from tools.RegionKaomoji import candidates as c, fusion as f, classifier as cls
 
 REPO = Path(__file__).resolve().parents[2]
 EVALUATION_ROOT = REPO / 'artifacts' / 'region-kaomoji-20261011'
@@ -37,6 +38,7 @@ LIMITS = {'maximum_source_bytes': 20 * 1024**2, 'maximum_pixels': 50_000_000,
           'maximum_scene_output_bytes': 8 * 1024**2, 'scene_timeout_seconds': 90,
           'batch_timeout_seconds': 5400}
 VIEWS = ['raw', 'edge-pad-6']
+SUPPORTED_VIEWS = ('raw', 'edge-pad-4', 'edge-pad-6')
 
 
 def safe_path(path):
@@ -65,8 +67,15 @@ def confined(root, name):
     return target
 
 
+def research_root(path):
+    """Owning research root: a registered round profile, the legacy quality round, or the first region root."""
+    profile=rp.profile_for(path)
+    if profile is not None:return Path(profile.root)
+    return ROUND if is_round(path) else EVALUATION_ROOT
+
+
 def output_path(path):
-    path=safe_path(path); root=safe_path(ROUND if is_round(path) else EVALUATION_ROOT)
+    path=safe_path(path); root=safe_path(research_root(path))
     if path == root or not path.is_relative_to(root) or not path.relative_to(root).parts[0].startswith('evaluation'):
         raise ValueError('Output must belong to this research evaluation namespace')
     return path
@@ -113,7 +122,43 @@ def input_binding(root, path=None):
             'dataset_sha256': frozen['dataset_sha256'], 'split_sha256': frozen['split_sha256']}
 
 
+REGRESSION_SPLIT = 'heldout-regression'
+
+
+def demotion_receipt(root):
+    """The registered round whose demotion sidecar lists this dataset's viewed heldout, or None.
+
+    A viewed heldout is development regression material only; it never claims
+    a new first use and its outputs belong to the demoting round.
+    """
+    frozen = scene_binding(root)
+    heldout = safe_path(root) / common.read(safe_path(root) / 'dataset.json')['splits']['heldout']['file']
+    digest = common.digest(heldout)
+    if digest != frozen['split_sha256']['heldout']:
+        raise ValueError('Frozen heldout split changed')
+    for profile in rp.ROUNDS:
+        sidecar = Path(profile.root) / 'previous-heldout-development-use.json'
+        if not sidecar.exists():
+            continue
+        value = common.read(sidecar)
+        if value.get('schema') != 'localocr.development-demotion.v1' or value.get('original_rewritten') is not False:
+            continue
+        for record in value.get('old_datasets', []):
+            if record.get('sha256') == digest and safe_path(REPO / record['file']) == heldout:
+                return {'round': profile.name, 'sidecar': str(sidecar), 'sidecar_sha256': common.digest(sidecar), 'heldout_sha256': digest}
+    return None
+
+
+def data_split(split):
+    return 'heldout' if split == REGRESSION_SPLIT else split
+
+
 def image_jobs(root, split, inputs=None, allow_heldout=False):
+    if split == REGRESSION_SPLIT:
+        if demotion_receipt(root) is None:
+            raise ValueError('Heldout regression requires a registered demotion sidecar for this viewed heldout')
+        split = 'heldout'
+        allow_heldout = True
     if split not in ('dev', 'heldout') or split == 'heldout' and not allow_heldout:
         raise ValueError('Heldout images require a claimed frozen first use')
     binding = input_binding(root, inputs)
@@ -152,24 +197,306 @@ def image_for_job(root, job):
     return image
 
 
-def configuration(path=None):
+def classifier_section(reference):
+    """Normalize a classifier reference to its bound identity; None means no classifier evidence."""
+    if reference is None:
+        return None
+    if isinstance(reference, str):
+        reference = {'file': reference}
+    if not isinstance(reference, dict) or not isinstance(reference.get('file'), str):
+        raise ValueError('Classifier configuration needs a receipt file')
+    binding = cls.classifier_binding(safe_path(reference['file']))
+    for key in ('sha256', 'threshold', 'id'):
+        if key in reference and reference[key] != binding[key]:
+            raise ValueError('Classifier receipt differs from the frozen configuration')
+    return {'file': binding['file'], 'id': binding['id'], 'sha256': binding['sha256'],
+            'model_sha256': binding['model_sha256'], 'threshold': binding['threshold']}
+
+
+def configuration(path=None, classifier=None):
     value = common.read(safe_path(path)) if path else {
         'schema_version': CONFIG_SCHEMA, 'candidate': c.configuration(), 'fusion': f.configuration(),
+        'split': c.split_configuration(), 'classifier': None,
         'views': VIEWS, 'limits': LIMITS, 'join': {'same_line': '  ', 'different_line': '\n', 'vertical_overlap': .5}}
-    if not isinstance(value, dict) or set(value) != {'schema_version', 'candidate', 'fusion', 'views', 'limits', 'join'}:
+    if not isinstance(value, dict) or set(value) - {'split', 'classifier'} != {'schema_version', 'candidate', 'fusion', 'views', 'limits', 'join'}:
         raise ValueError('Unknown pipeline configuration')
-    if value['schema_version'] != CONFIG_SCHEMA or value['views'] != VIEWS or value['limits'] != LIMITS:
-        raise ValueError('Fixed inference budgets or independent views cannot change')
+    if classifier is not None:
+        if value.get('classifier') not in (None, classifier) and value['classifier'].get('file') != str(safe_path(classifier)):
+            raise ValueError('Configuration already binds a different classifier')
+        value['classifier'] = classifier
+    if value['schema_version'] != CONFIG_SCHEMA or value['limits'] != LIMITS:
+        raise ValueError('Fixed inference budgets cannot change')
+    views = value['views']
+    if (not isinstance(views, list) or len(views) < 2 or len(set(views)) != len(views) or 'raw' not in views
+            or any(view not in SUPPORTED_VIEWS for view in views)):
+        raise ValueError('Declared views must be a unique supported set of at least two that includes the raw view')
     if value['join'] != {'same_line': '  ', 'different_line': '\n', 'vertical_overlap': .5}:
         raise ValueError('Unsupported declared output reading order')
     value = json.loads(json.dumps(value, allow_nan=False))
-    return {**value, 'candidate': c.configuration(value['candidate']), 'fusion': f.configuration(value['fusion'])}
+    # A configuration frozen before pre-recognition splitting existed declares no split section: splitting stays off.
+    split = c.split_configuration(value['split']) if 'split' in value else dict(c.split_configuration(), enabled=False)
+    fusion = f.configuration(value['fusion'])
+    if len(views) < fusion['minimum_agreeing_views']:
+        raise ValueError('Declared views cannot be fewer than the agreeing minimum')
+    return {**value, 'candidate': c.configuration(value['candidate']), 'fusion': fusion, 'split': split,
+            'classifier': classifier_section(value.get('classifier'))}
+
+
+def split_entries(image, entries, split_config, recognize):
+    """Research first pass: split production boxes at blank bands and re-recognize children.
+
+    ``entries`` are production regions; ``recognize`` maps a list of RGB crops to
+    (text, score) pairs with the production recognizer. The returned plan keeps
+    every parent so the split can be undone when no child becomes a face.
+    """
+    array = c.rgb_image(image)
+    height, width = array.shape[:2]
+    validated = c.baseline_regions(entries, (width, height))
+    if not split_config['enabled']:
+        return [dict(item) for item in validated], {'parents': {}, 'children': {}}
+    mask = c.foreground(array, c.DEFAULT_CONFIG['contrast_threshold'], c.DEFAULT_CONFIG['background_window'])
+    crops, pending = [], []
+    for entry in validated:
+        children = c.split_children(mask, entry['bbox'], split_config)
+        if not children:
+            pending.append((entry, None))
+            continue
+        pending.append((entry, children))
+        # Each child is recognized on the parent's own crop with the other children
+        # painted over in the local background, so the recognizer sees the same
+        # scale and margins as the production pass and reproduces its spacing.
+        left, top, right, bottom = entry['bbox']
+        parent = np.ascontiguousarray(array[top:bottom, left:right])
+        border = np.concatenate((parent[0], parent[-1], parent[:, 0], parent[:, -1]), axis=0)
+        background = np.median(border.astype(np.int16), axis=0).astype(np.uint8)
+        for index, _ in enumerate(children):
+            crop = parent.copy()
+            for other, (ol, _, orr, _) in enumerate(children):
+                if other != index:
+                    crop[:, max(0, ol - left):max(0, orr - left)] = background
+            crops.append(crop)
+    results = list(recognize(crops)) if crops else []
+    if len(results) != len(crops):
+        raise ValueError('Child recognition count differs from split children')
+    first_pass, plan, cursor = [], {'parents': {}, 'children': {}, 'map': {}}, 0
+    for entry, children in pending:
+        if children is None:
+            plan['map'][str(len(first_pass))] = entry['index']
+            first_pass.append({'bbox': entry['bbox'], 'text': entry['text'], 'score': entry['score']})
+            continue
+        parent_index, indices = entry['index'], []
+        for box in children:
+            text, score = results[cursor]
+            cursor += 1
+            if not isinstance(text, str) or not math.isfinite(float(score)):
+                raise ValueError('Child recognition output invalid')
+            indices.append(len(first_pass))
+            plan['children'][str(len(first_pass))] = parent_index
+            first_pass.append({'bbox': list(box), 'text': text, 'score': float(score)})
+        plan['parents'][str(parent_index)] = {'entry': {'bbox': entry['bbox'], 'text': entry['text'], 'score': entry['score']},
+                                             'children': indices}
+    return first_pass, plan
+
+
+def locate_parent_span(parent_text, child_text):
+    """Half-open span of the child's reading inside the parent's production reading, ignoring ASCII spaces; None when not unique."""
+    if not child_text or not parent_text:
+        return None
+    parent_positions = [index for index, char in enumerate(parent_text) if char != ' ']
+    parent_compact = ''.join(parent_text[index] for index in parent_positions)
+    child_compact = child_text.replace(' ', '')
+    if not child_compact:
+        return None
+    first = parent_compact.find(child_compact)
+    if first < 0 or parent_compact.find(child_compact, first + 1) >= 0:
+        return None
+    return parent_positions[first], parent_positions[first + len(child_compact) - 1] + 1
+
+
+def locate_parent_bytes(parent_text, child_text):
+    """Find the child's reading inside the parent's production reading ignoring ASCII spaces.
+
+    Returns the parent's own raw byte span (its spaces included) when the
+    space-insensitive match is unique; otherwise None. The child never
+    contributes bytes: only the production reading is ever output for body.
+    """
+    span = locate_parent_span(parent_text, child_text)
+    return None if span is None else parent_text[span[0]:span[1]]
+
+
+def materialize_splits(regions, plan, config):
+    """Keep a split only where fusion accepted a child and every other child maps onto the parent reading.
+
+    Body children never introduce a new reading: each must locate uniquely in
+    the production parent's text (ignoring ASCII spaces) and then carries the
+    parent's own bytes. Otherwise the production parent is restored verbatim
+    and the face replacement is dropped. Indices of unsplit regions are mapped
+    back to production indices so body protection compares against the
+    production first pass; materialized children keep their own boxes.
+    """
+    if not plan['parents']:
+        return regions, {'materialized': 0, 'restored': 0, 'restored_unverifiable': 0, 'parent_level_splices': 0}
+    owner = {int(k): v for k, v in plan['children'].items()}
+    mapping = {int(k): v for k, v in plan['map'].items()}
+    def region_children(region):
+        indices = set(region.get('baseline_indices', []))
+        if region.get('baseline_index') is not None:
+            indices.add(region['baseline_index'])
+        return {owner[i] for i in indices if i in owner}
+    def remap(region):
+        value = dict(region)
+        if value.get('baseline_index') in mapping:
+            value['baseline_index'] = mapping[value['baseline_index']]
+            if isinstance(value.get('splice'), dict):
+                value['splice'] = dict(value['splice'], baseline_index=value['baseline_index'])
+        if value.get('baseline_indices'):
+            value['baseline_indices'] = [mapping.get(i, i) for i in value['baseline_indices']]
+        return value
+    touched = set()
+    for region in regions:
+        if region.get('source', 'baseline') != 'baseline':
+            touched.update(region_children(region))
+    # A touched parent materializes only when every untouched child locates
+    # uniquely inside the parent's production reading; the child then carries
+    # the parent's bytes. Otherwise the parent is restored and the face dropped.
+    parent_bytes, unverifiable = {}, set()
+    for parent_index in sorted(touched):
+        parent_text = plan['parents'][str(parent_index)]['entry']['text']
+        for region in regions:
+            if region.get('source', 'baseline') != 'baseline' or region_children(region) != {parent_index}:
+                continue
+            located = locate_parent_span(parent_text, region['text'])
+            if located is None:
+                unverifiable.add(parent_index)
+                break
+            parent_bytes[(parent_index, region['baseline_index'])] = located
+    touched -= unverifiable
+    # A whole-reading splice accepted on a split child is re-expressed against the production parent:
+    # its prefix and suffix must locate in the parent's bytes and the parent bytes between them must
+    # be one bracketed non-body fragment; the parent then carries the splice and its split is dropped.
+    regions, lifted, touched, unverifiable = lift_child_splices(regions, plan, parent_bytes, owner, touched, unverifiable)
+    output, restored = [], set(unverifiable)
+    for region in regions:
+        parents = region_children(region)
+        if parents and not parents & touched:
+            restored.update(parents)
+            continue
+        value = remap(region)
+        if parents:
+            value['split_parent_index'] = sorted(parents)[0]
+            if value.get('source', 'baseline') == 'baseline':
+                value['source'] = 'baseline-split-child'
+                start, end = parent_bytes[(value['split_parent_index'], region['baseline_index'])]
+                value['text'] = plan['parents'][str(value['split_parent_index'])]['entry']['text'][start:end]
+                value['child_reading'] = region['text']
+        output.append(value)
+    output = coalesce_body_children(output, plan, parent_bytes)
+    output.extend(lifted)
+    for parent_index in sorted(restored):
+        entry = plan['parents'][str(parent_index)]['entry']
+        output.append({'bbox': entry['bbox'], 'text': entry['text'], 'score': entry['score'], 'source': 'baseline',
+                       'baseline_index': parent_index, 'split_restored': True, 'split_unverifiable': parent_index in unverifiable})
+    output.sort(key=lambda item: (item['bbox'][1], item['bbox'][0]))
+    return output, {'materialized': len(touched), 'restored': len(restored), 'restored_unverifiable': len(unverifiable), 'parent_level_splices': len(lifted)}
+
+
+def _bracketed_non_body(middle):
+    if not middle or not any(char in c.ATOMS.bracket_chars for char in middle):
+        return False
+    if c.is_face_text(middle):
+        return True
+    outside, digits = c.ordinary_anchor_evidence(middle)
+    return not digits and not outside and c.single_bracket_pair(middle)
+
+
+def lift_child_splices(regions, plan, spans, owner, touched, unverifiable):
+    """Turn whole-reading splices on split children into production-parent splices, or restore the parent."""
+    kept, lifted = [], []
+    touched, unverifiable = set(touched), set(unverifiable)
+    for region in regions:
+        proof = region.get('splice') if region.get('source') == 'baseline-with-regional-splice' else None
+        child = region.get('baseline_index')
+        if not proof or child not in owner:
+            kept.append(region)
+            continue
+        parent_index = owner[child]
+        parent = plan['parents'][str(parent_index)]
+        text = parent['entry']['text']
+        order = parent['children']
+        position = order.index(child)
+        previous_end = spans[(parent_index, order[position - 1])][1] if position > 0 and (parent_index, order[position - 1]) in spans else 0
+        next_start = spans[(parent_index, order[position + 1])][0] if position + 1 < len(order) and (parent_index, order[position + 1]) in spans else len(text)
+        prefix, suffix, face = proof.get('preserved_prefix', ''), proof.get('preserved_suffix', ''), proof.get('replacement_text')
+        start = locate_parent_span(text, prefix)[1] if prefix and locate_parent_span(text, prefix) else (previous_end if not prefix else None)
+        end = locate_parent_span(text, suffix)[0] if suffix and locate_parent_span(text, suffix) else (next_start if not suffix else None)
+        if start is not None and end is not None:
+            # Separator whitespace around the fragment stays in the preserved parent bytes.
+            while start < end and text[start].isspace():
+                start += 1
+            while end > start and text[end - 1].isspace():
+                end -= 1
+        if (parent_index not in touched or start is None or end is None or not previous_end <= start <= end <= next_start
+                or not isinstance(face, str) or not face or not _bracketed_non_body(text[start:end])):
+            unverifiable.add(parent_index)
+            touched.discard(parent_index)
+            continue
+        entry = parent['entry']
+        lifted.append({'bbox': entry['bbox'], 'text': text[:start] + face + text[end:], 'score': entry['score'],
+                       'source': 'baseline-with-regional-splice', 'baseline_index': parent_index,
+                       'regional_bbox': region['regional_bbox'], 'regional_ink_bbox': region.get('regional_ink_bbox', region['regional_bbox']),
+                       'regional_text': face, 'candidate_id': region.get('candidate_id'), 'model_id': region.get('model_id'),
+                       'split_parent_index': parent_index, 'lifted_from_child': child,
+                       'splice': {'baseline_index': parent_index, 'original_text_span': [start, end], 'original_face_text': text[start:end],
+                                  'replacement_text': face, 'preserved_prefix': text[:start], 'preserved_suffix': text[end:],
+                                  'context_crops': [], 'context_records': [], 'baseline_parent_sha256': c.baseline_parent_digest(dict(entry, index=parent_index)),
+                                  'ordinary_prefix_suffix_preserved': True, 'method': 'whole-reading-agreement-lifted-to-parent'}})
+        touched.discard(parent_index)
+        unverifiable.discard(parent_index)
+    lifted_parents = {item['baseline_index'] for item in lifted}
+    # Children of a lifted parent are dropped: the parent region carries every byte.
+    kept = [region for region in kept if not ({owner[i] for i in region.get('baseline_indices', []) if i in owner} | ({owner[region['baseline_index']]} if region.get('baseline_index') in owner else set())) & lifted_parents]
+    return kept, lifted, touched, unverifiable
+
+
+def coalesce_body_children(output, plan, spans):
+    """Adjacent body children of one materialized parent become one region carrying the parent's contiguous bytes.
+
+    Splitting exists to isolate faces; it never fragments a body run, so the
+    body literal (its separators included) survives byte-for-byte.
+    """
+    by_parent = {}
+    for value in output:
+        if value.get('source') == 'baseline-split-child':
+            by_parent.setdefault(value['split_parent_index'], []).append(value)
+    drop, merged = set(), []
+    for parent_index, items in by_parent.items():
+        parent = plan['parents'][str(parent_index)]
+        position = {index: order for order, index in enumerate(parent['children'])}
+        items.sort(key=lambda value: position[value['baseline_index']])
+        runs = []
+        for value in items:
+            if runs and position[value['baseline_index']] == position[runs[-1][-1]['baseline_index']] + 1:
+                runs[-1].append(value)
+            else:
+                runs.append([value])
+        for run in runs:
+            if len(run) < 2:
+                continue
+            start = spans[(parent_index, run[0]['baseline_index'])][0]
+            end = spans[(parent_index, run[-1]['baseline_index'])][1]
+            boxes = [value['bbox'] for value in run]
+            merged.append(dict(run[0], bbox=[min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes)],
+                               text=parent['entry']['text'][start:end], child_reading=' '.join(value['child_reading'] for value in run),
+                               merged_children=[value['baseline_index'] for value in run]))
+            drop.update(id(value) for value in run)
+    return [value for value in output if id(value) not in drop] + merged
 
 
 def implementation_binding():
     names = ['scripts/local-ai-ocr-worker.py', 'localocr/__init__.py', 'localocr/bundles.py', 'localocr/version.py',
              'tools/RegionKaomoji/__init__.py', 'tools/RegionKaomoji/evaluate.py',
-             'tools/RegionKaomoji/candidates.py', 'tools/RegionKaomoji/fusion.py',
+             'tools/RegionKaomoji/candidates.py', 'tools/RegionKaomoji/fusion.py', 'tools/RegionKaomoji/classifier.py',
+             'tools/PretrainedOcr/kaomoji_atoms.json', 'tools/PretrainedOcr/kaomoji_grammar.py', 'tools/PretrainedOcr/round_profile.py',
              'tools/PretrainedOcr/quality_evaluate.py', 'tools/PretrainedOcr/__init__.py', 'tools/PretrainedOcr/common.py', 'tools/PretrainedOcr/evaluate.py',
              'tools/OcrDatasets/__init__.py', 'tools/OcrDatasets/evaluate.py',
              'tools/OcrDatasets/validate.py', 'tools/OcrDatasets/private.py']
@@ -187,6 +514,7 @@ def pipeline_binding(root, models, baseline, config, inputs=None):
     return {'schema_version': 'localocr.region-pipeline-binding.v1', 'dataset': scene_binding(root),
             'inputs': input_binding(root, inputs), 'baseline': baseline_binding(baseline),
             'models': bindings, 'config': config, 'config_sha256': hash_object(config),
+            'classifier': config.get('classifier'),
             'implementation': implementation_binding(), 'promote': False, 'enabled': False}
 
 
@@ -273,6 +601,39 @@ class FullBaseline:
             raise ValueError('Actual baseline context recognizer output differs')
         return result.txts[0], float(result.scores[0])
 
+    def recognize_children(self, crops):
+        """Production recognizer on axis-aligned child crops (RGB arrays), batched like the worker's symbol reread."""
+        from rapidocr.ch_ppocr_rec import TextRecInput
+        if not crops:
+            return []
+        samples = [np.ascontiguousarray(np.asarray(crop)[:, :, ::-1]) for crop in crops]
+        result = self.engine._load_rec_model()(TextRecInput(img=samples, return_word_box=False))
+        if len(result.txts) != len(samples) or len(result.scores) != len(samples):
+            raise ValueError('Actual child recognizer output count differs')
+        return [(str(text), float(score)) for text, score in zip(result.txts, result.scores)]
+
+    def first_pass(self, image, split_config):
+        """Production first pass plus the research pre-recognition split of its boxes.
+
+        The production entries are returned unchanged for comparison; children
+        are recognized by the same production recognizer and then pass through
+        the production symbol re-read so the only difference is the split.
+        """
+        entries, native = self.predict(image)
+        first_pass, plan = split_entries(image, entries, split_config, self.recognize_children)
+        if plan['parents']:
+            from types import SimpleNamespace
+            pixels = np.asarray(image.convert('RGB'))[:, :, ::-1].copy()
+            # Only split children pass through the symbol re-read; unsplit production entries stay byte-identical.
+            children = [first_pass[int(index)] for index in sorted(plan['children'], key=int)]
+            boxes = [[[l, t], [r, t], [r, b], [l, b]] for l, t, r, b in (item['bbox'] for item in children)]
+            result = SimpleNamespace(boxes=boxes, txts=[item['text'] for item in children], scores=[item['score'] for item in children])
+            reread = self.worker.reread_symbols(self.engine, pixels, result)
+            if len(reread.txts) == len(children):
+                for item, text, score in zip(children, reread.txts, reread.scores):
+                    item['text'], item['score'] = str(text), float(score)
+        return entries, native, first_pass, plan
+
 
 def joined_regions(regions, config):
     lines = []
@@ -289,11 +650,18 @@ def joined_regions(regions, config):
                                                  for line in sorted(lines, key=lambda x: x['top']))
 
 
-def predict_scene(image, baseline, models, config):
+def predict_scene(image, baseline, models, config, classifier=None):
     """Inference boundary: receives pixels and model objects, never scene truth."""
     timings = {}; started = time.perf_counter()
-    entries, native = baseline.predict(image); timings['baseline_seconds'] = time.perf_counter() - started
-    started = time.perf_counter(); routing = c.locate_candidates(image, entries, config['candidate'])
+    split_config = config.get('split') or dict(c.split_configuration(), enabled=False)
+    if split_config['enabled'] and hasattr(baseline, 'first_pass'):
+        production, native, first_pass, plan = baseline.first_pass(image, split_config)
+        timings['baseline_seconds'] = time.perf_counter() - started
+    else:
+        production, native = baseline.predict(image); timings['baseline_seconds'] = time.perf_counter() - started
+        first_pass, plan = split_entries(image, production, dict(split_config, enabled=False), lambda crops: [])
+    entries = first_pass
+    started = time.perf_counter(); routing = c.locate_candidates(image, entries, config['candidate'], classifier=classifier)
     timings['candidate_seconds'] = time.perf_counter() - started
     views = {}; contexts = {}; selected = []; skipped = []; pixels = 0; context_times = []
     for candidate in routing['candidates']:
@@ -334,12 +702,16 @@ def predict_scene(image, baseline, models, config):
                 records[candidate['candidate_id']].append({'model_id': identity, 'view_id': identity + ':' + transform,
                     'transform': transform, 'image_sha256': c.image_digest(array), 'text': text, 'score': float(score)})
         at = time.perf_counter()
-        fused = f.fuse_candidates(image, entries, routing['candidates'], records, config['fusion'], config['candidate'], contexts=contexts)
-        results[identity] = {'regions': fused['regions'], 'decisions': fused['decisions'], 'views': records,
-                             'text': joined_regions(fused['regions'], config),
+        fused = f.fuse_candidates(image, entries, routing['candidates'], records, config['fusion'], config['candidate'], contexts=contexts, classifier=classifier)
+        regions, split_stats = materialize_splits(fused['regions'], plan, config)
+        results[identity] = {'regions': regions, 'decisions': fused['decisions'], 'views': records,
+                             'text': joined_regions(regions, config),
                              'specialist_seconds': sum(infer_times), 'fusion_seconds': time.perf_counter() - at,
-                             'view_latency': percentiles(infer_times), 'accepted_count': fused['accepted_count']}
-    result = {'baseline': entries, 'baseline_native': native, 'baseline_text': joined_regions(entries, config),
+                             'view_latency': percentiles(infer_times), 'accepted_count': fused['accepted_count'],
+                             'split': split_stats}
+    result = {'baseline': production, 'baseline_native': native, 'baseline_text': joined_regions(production, config),
+              'first_pass': {'entries': entries, 'plan': plan, 'config': split_config,
+                             'split_parents': len(plan['parents']), 'split_children': len(plan.get('children', {}))},
               'routing': routing, 'models': results, 'contexts': contexts,
               'view_budget': {'pixels': pixels, 'selected': len(selected), 'context_crops': len(context_times),
               'skipped': skipped}, 'timings': timings}
@@ -356,7 +728,7 @@ def _timestamp(value):
 
 
 def usage_path(binding):
-    return output_path((ROUND if is_round(binding['inputs']['file']) else EVALUATION_ROOT) / ('evaluation-heldout-first-use-' + binding['dataset']['split_sha256']['heldout'] + '.json'))
+    return output_path(research_root(binding['inputs']['file']) / ('evaluation-heldout-first-use-' + binding['dataset']['split_sha256']['heldout'] + '.json'))
 
 
 def validate_budget(budget):
@@ -368,9 +740,10 @@ def validate_budget(budget):
 
 def final_families(binding):
     models = binding['models']
-    if (len(models) != 2 or len({item['family'] for item in models}) != 2
+    required = rp.specialist_families(binding['inputs']['file'])
+    if (len(models) != required or len({item['family'] for item in models}) != required
             or any(item['stage'] != 'finetuned' for item in models)):
-        raise ValueError('Freeze requires the same two finetuned specialist families')
+        raise ValueError('Freeze requires the round\'s declared finetuned specialist families')
 
 
 def verify_dev_evidence(path, binding):
@@ -519,7 +892,7 @@ def worker(args):
     ownership=owned_worker_proof(args.owner_pid)
     root, output, jobs_path = safe_path(args.dataset), output_path(args.output), safe_path(args.jobs)
     if output.exists(): raise ValueError('CPU worker output already exists')
-    config = configuration(args.config)
+    config = configuration(args.config, classifier=getattr(args, 'classifier', None))
     binding = pipeline_binding(root, args.candidate, args.baseline_models, config, args.inputs)
     if common.digest(safe_path(args.binding)) != args.binding_sha256 or common.read(args.binding) != binding:
         raise ValueError('CPU worker differs from captured pipeline binding')
@@ -544,6 +917,9 @@ def worker(args):
     timings = []
     try:
         baseline = FullBaseline(safe_path(args.baseline_models)); models = [Recognizer(safe_path(path)) for path in args.candidate]
+        classifier = cls.CropClassifier(config['classifier']['file']) if config.get('classifier') else None
+        if classifier is not None and (classifier.binding['sha256'] != config['classifier']['sha256'] or classifier.threshold != config['classifier']['threshold']):
+            raise ValueError('Loaded crop classifier differs from the bound configuration')
         verify_baseline_runtime(baseline.runtime_receipt)
         if args.split == 'heldout':
             first_use = common.read(usage_path(binding))
@@ -551,15 +927,15 @@ def worker(args):
             if baseline.runtime_receipt != frozen['baseline_runtime']:
                 raise ValueError('Heldout actual baseline runtime differs from frozen development')
         load_seconds = time.perf_counter() - at
-        first = image_for_job(root, jobs[0]); at = time.perf_counter(); predict_scene(first, baseline, models, config)
+        first = image_for_job(root, jobs[0]); at = time.perf_counter(); predict_scene(first, baseline, models, config, classifier=classifier)
         cold = time.perf_counter() - at; timer.cancel(); timer.join()
         for _ in range(2):
             timer = threading.Timer(config['limits']['scene_timeout_seconds'], expire); timer.daemon=True; timer.start()
-            predict_scene(first, baseline, models, config); timer.cancel(); timer.join()
+            predict_scene(first, baseline, models, config, classifier=classifier); timer.cancel(); timer.join()
         with output.open('x', encoding='utf-8', newline='\n') as stream:
             for job in jobs:
                 timer = threading.Timer(config['limits']['scene_timeout_seconds'], expire); timer.daemon=True; timer.start()
-                image = image_for_job(root, job); at = time.perf_counter(); prediction = predict_scene(image, baseline, models, config)
+                image = image_for_job(root, job); at = time.perf_counter(); prediction = predict_scene(image, baseline, models, config, classifier=classifier)
                 elapsed = time.perf_counter() - at; timings.append(elapsed)
                 common.disk_guard(output)
                 line=json.dumps({'id':job['id'],'image_sha256':job['sha256'],'pixel_sha256':job['pixel_sha256'],
@@ -654,6 +1030,7 @@ def run_worker(args, output, binding, jobs, usage=None):
                    '--output',str(paths['predictions']),'--jobs',str(paths['jobs']),'--jobs-sha256',common.digest(paths['jobs']),
                    '--config',str(paths['config']),'--binding',str(paths['binding']),'--binding-sha256',common.digest(paths['binding'])]
         for path in args.candidate: command += ['--candidate',str(safe_path(path))]
+        if getattr(args,'classifier',None): command += ['--classifier',str(safe_path(args.classifier))]
         if usage: command += ['--usage-sha256',usage['sha256']]
         environment = dict(os.environ); environment.pop('PYTHONPATH',None); environment['PYTHONUTF8']='1'
         for name in ('OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','MKL_NUM_THREADS','NUMEXPR_NUM_THREADS'): environment[name]='2'
@@ -688,6 +1065,9 @@ def run_worker(args, output, binding, jobs, usage=None):
 
 
 def load_truth(root, split, jobs, allow_heldout=False):
+    if split==REGRESSION_SPLIT:
+        if demotion_receipt(root) is None: raise ValueError('Heldout regression truth requires a registered demotion sidecar')
+        split='heldout'; allow_heldout=True
     if split=='heldout' and not allow_heldout: raise ValueError('Heldout truth requires the first-use claim')
     frozen=scene_binding(root); meta=common.read(safe_path(root)/'dataset.json')
     path=confined(root,meta['splits'][split]['file'])
@@ -734,6 +1114,15 @@ def iou(a,b):
     return intersection/area if area else 0.
 
 
+def negative_scene_kind(kind):
+    """Scenes that carry no face at all: blank, graphic-only, or a layout family's declared '-negative' kind."""
+    return kind in ('blank','graphic-only') or (isinstance(kind,str) and kind.endswith('-negative'))
+
+
+def negative_scene_prefix(kind):
+    return 'blank' if kind=='blank' else ('graphic_only' if kind=='graphic-only' else kind.replace('-','_'))
+
+
 def aligned_region(regions,target_index,masks,config):
     selected=[]; mixed=0
     for region in regions:
@@ -771,12 +1160,48 @@ def body_preserving_splices(before, after, body_mask):
                     or proof.get('preserved_suffix') != original['text'][span[1]:]
                     or proof.get('replacement_text') != item.get('regional_text')
                     or item['text'] != original['text'][:span[0]] + item['regional_text'] + original['text'][span[1]:]
-                    or mask_pixels(body_mask, item['regional_bbox'])):
+                    or mask_pixels(body_mask, item.get('regional_ink_bbox', item['regional_bbox']))):
                 return False, 0
             splices += 1
         else: return False, 0
         consumed.add(index)
     return consumed == expected and splices > 0, splices
+
+
+def overlap_box(item):
+    """Box used for body-mask overlap: replaced faces count by their ink, not by their padded ROI."""
+    if item.get('source') == 'specialist-exact-views' and item.get('ink_bbox'):
+        return item['ink_bbox']
+    return item['bbox']
+
+
+def split_children_keep_parent_reading(overlapping, production):
+    """True when every region touching a body reproduces the production reading.
+
+    Each region must be an untouched production region or a split child whose
+    bytes are a contiguous run of its production parent's text: a boundary
+    change, not a new reading. Any replacement, splice or restored region, or
+    an empty overlap, returns False.
+    """
+    if not overlapping:
+        return False
+    for item in overlapping:
+        source = item.get('source', 'baseline')
+        if source == 'baseline-split-child':
+            parent = item.get('split_parent_index')
+            if type(parent) is not int or not 0 <= parent < len(production):
+                return False
+            if not item['text'] or item['text'] not in production[parent]['text']:
+                return False
+        elif source == 'baseline':
+            index = item.get('baseline_index')
+            if type(index) is not int or not 0 <= index < len(production):
+                return False
+            if item['text'] != production[index]['text'] or item['bbox'] != production[index]['bbox']:
+                return False
+        else:
+            return False
+    return True
 
 
 def effective_face_change(model, baseline_scene_text, mask):
@@ -808,8 +1233,15 @@ def summarize(root,rows,predictions,config,model_ids):
         for region,mask in zip(row['regions'],masks):
             if region['kind']=='body': body_union|=mask
             elif region['kind']=='graphic': graphic_union|=mask
+        first_pass=prediction.get('first_pass',{})
+        localization['split_parents']+=int(first_pass.get('split_parents',0))
+        localization['split_children']+=int(first_pass.get('split_children',0))
         for identity in model_ids:
             effectiveness[identity]['actual_routed_candidates']+=sum(bool(views) for views in prediction['models'][identity]['views'].values())
+            split_stats=prediction['models'][identity].get('split',{})
+            effectiveness[identity]['split_materialized']+=int(split_stats.get('materialized',0))
+            effectiveness[identity]['split_restored']+=int(split_stats.get('restored',0))
+            effectiveness[identity]['split_restored_unverifiable']+=int(split_stats.get('restored_unverifiable',0))
         routed_ids={key for identity in model_ids for key,views in prediction['models'][identity]['views'].items() if views}
         routed=[item for item in routing if item['candidate_id'] in routed_ids]
         eligible=[item for item in routing if item.get('route_eligible',False)]
@@ -875,9 +1307,12 @@ def summarize(root,rows,predictions,config,model_ids):
                     counter['final_mixed_regions']+=final_mixed;counter['baseline_exact']+=int(baseline_text==truth['text'])
                     counter['final_exact']+=int(final_text==truth['text'])
                     counter['baseline_correct_to_wrong']+=int(baseline_text==truth['text'] and final_text!=truth['text'])
-                    counter['erroneous_rewrites']+=int(final_text!=baseline_text and final_text!=truth['text'])
+                    overlapping=[item for item in prediction['models'][identity]['regions'] if mask_pixels(mask,overlap_box(item))]
+                    unchanged_reading=split_children_keep_parent_reading(overlapping,prediction['baseline'])
+                    counter['erroneous_rewrites']+=int(final_text!=baseline_text and final_text!=truth['text'] and not unchanged_reading)
+                    counter['split_children_with_unchanged_reading']+=int(unchanged_reading)
                     before=joined_regions([item for item in prediction['baseline'] if mask_pixels(mask,item['bbox'])],config)
-                    after=joined_regions([item for item in prediction['models'][identity]['regions'] if mask_pixels(mask,item['bbox'])],config)
+                    after=joined_regions(overlapping,config)
                     preserved, splice_count = body_preserving_splices(prediction['baseline'],
                                                 prediction['models'][identity]['regions'], mask)
                     # This post-inference deletion tripwire uses a whole raw label;
@@ -887,7 +1322,8 @@ def summarize(root,rows,predictions,config,model_ids):
                     counter['body_literal_deleted']+=int(literal_deleted)
                     counter['verified_body_preserving_splices']+=splice_count if preserved and not literal_deleted else 0
                     counter['new_body_intersection_errors']+=int(literal_deleted or
-                                                               (before!=after and after!=truth['text'] and not preserved))
+                                                               (before!=after and after!=truth['text'] and final_text!=truth['text']
+                                                                and not preserved and not unchanged_reading))
             elif truth['kind']=='graphic':
                 localization['graphic_regions']+=1
                 localization['graphic_regions_with_candidate']+=int(any(mask_pixels(mask,item['bbox']) for item in routing))
@@ -899,7 +1335,7 @@ def summarize(root,rows,predictions,config,model_ids):
                     negatives[identity]['graphic_regions']+=1; negatives[identity]['baseline_graphic_nonempty']+=int(base_nonempty)
                     negatives[identity]['final_graphic_nonempty']+=int(final_nonempty)
                     negatives[identity]['new_graphic_nonempty']+=int(final_nonempty and not base_nonempty)
-        if row['scene_kind'] in ('blank','graphic-only'):
+        if negative_scene_kind(row['scene_kind']):
             localization['negative_scenes']+=1
             localization['negative_scenes_with_candidate']+=int(bool(routing))
             localization['negative_scenes_routed']+=int(bool(routed))
@@ -908,7 +1344,7 @@ def summarize(root,rows,predictions,config,model_ids):
                 negative['baseline_nonempty_scenes']+=int(bool(prediction['baseline_text']))
                 negative['final_nonempty_scenes']+=int(bool(prediction['models'][identity]['text']))
                 negative['new_nonempty_scenes']+=int(not prediction['baseline_text'] and bool(prediction['models'][identity]['text']))
-                prefix='blank' if row['scene_kind']=='blank' else 'graphic_only'
+                prefix=negative_scene_prefix(row['scene_kind'])
                 negative[prefix+'_scenes']+=1
                 negative[prefix+'_baseline_nonempty']+=int(bool(prediction['baseline_text']))
                 negative[prefix+'_final_nonempty']+=int(bool(prediction['models'][identity]['text']))
@@ -941,11 +1377,16 @@ def summarize(root,rows,predictions,config,model_ids):
 def evaluate(args):
     root,output=safe_path(args.dataset),output_path(args.output)
     if output.exists(): raise ValueError('Evaluation output already exists')
-    config=configuration(args.config); binding=pipeline_binding(root,args.candidate,args.baseline_models,config,args.inputs)
-    usage=None
+    config=configuration(args.config, classifier=getattr(args,'classifier',None)); binding=pipeline_binding(root,args.candidate,args.baseline_models,config,args.inputs)
+    usage=None; demotion=None
     if args.split=='heldout':
         if not args.selection: raise ValueError('Heldout requires frozen whole-scene selection before any images or truth')
         usage=claim_heldout(root,safe_path(args.selection),binding,output,getattr(args,'dual_freeze',None))
+    elif args.split==REGRESSION_SPLIT:
+        demotion=demotion_receipt(root)
+        if demotion is None: raise ValueError('Heldout regression requires a registered demotion sidecar for this viewed heldout')
+        if rp.profile_for(output) is None or rp.profile_for(output).name!=demotion['round']:
+            raise ValueError('Heldout regression output must belong to the demoting round')
     jobs=image_jobs(root,args.split,args.inputs,allow_heldout=usage is not None)
     common.disk_guard(output); output.mkdir(parents=True)
     predictions,resources=run_worker(args,output,binding,jobs,usage)
@@ -961,7 +1402,7 @@ def evaluate(args):
                                      ('alignment','alignment-private.json')]}
         report={'schema_version':SCHEMA,'completed_utc':common.utc(),'outputs':outputs,
                 'split':args.split,'pipeline_binding':binding,'actual_cpu_inference':True,
-                'independent_heldout':args.split=='heldout','heldout_usage':usage,'promote':False,'enabled':False,
+                'independent_heldout':args.split=='heldout','heldout_usage':usage,'demotion':demotion,'promote':False,'enabled':False,
                 'scope':'Actual original-image baseline det/cls/rec and image-derived candidates, model-specific pixel views and fusion; no APP lifecycle acceptance',
                 'ground_truth_inference_input':False,'normalization':'none; exact raw Unicode, whitespace and graphemes',
                 'regional_alignment':'Visible-ink mask overlap only; a verified regional splice uses its actual automatic ROI and specialist text. Other mixed transcripts are not split using labels; unchanged body prefix/suffix bytes have no invented word boxes',
@@ -978,7 +1419,7 @@ def evaluate(args):
 
 def freeze_selection(args):
     report_path=output_path(args.dev_report)
-    config=configuration(args.config); binding=pipeline_binding(args.dataset,args.candidate,args.baseline_models,config,args.inputs)
+    config=configuration(args.config, classifier=getattr(args,'classifier',None)); binding=pipeline_binding(args.dataset,args.candidate,args.baseline_models,config,args.inputs)
     final_families(binding); report=verify_dev_evidence(report_path,binding)
     if args.selected_id not in {item['id'] for item in binding['models']} or not args.reason.strip():
         raise ValueError('Frozen research selection needs a measured model identity and explicit development reason')
@@ -999,9 +1440,9 @@ def main(argv=None):
         command=commands.add_parser(name)
         for key in ('dataset','baseline-models','output'): command.add_argument('--'+key,required=True)
         command.add_argument('--candidate',action='append',default=[])
-        command.add_argument('--inputs'); command.add_argument('--config')
+        command.add_argument('--inputs'); command.add_argument('--config'); command.add_argument('--classifier')
         if name in ('evaluate','_worker'):
-            command.add_argument('--split',choices=('dev','heldout'),default='dev')
+            command.add_argument('--split',choices=('dev','heldout',REGRESSION_SPLIT),default='dev')
         if name=='evaluate':
             command.add_argument('--selection'); command.add_argument('--dual-freeze')
         elif name=='_worker':

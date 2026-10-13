@@ -8,12 +8,16 @@ import hashlib
 import json
 import random
 from .corpus import CN_WORDS, EN_WORDS
+from . import kaomoji_grammar as kg
 
 SPLITS = ('train', 'dev', 'heldout')
-BRACKETS = (('(', ')'), ('[', ']'), ('{', '}'), ('（', '）'), ('【', '】'), ('〈', '〉'))
-EYES = tuple('ωДoOTxX^•°><')
-MOUTHS = tuple('_∀▽益皿^•°□‿-3')
-ARMS = ('つ', 'ノ', '╯')
+# The v1 generator keeps its frozen 2026-10-12 pools, projected from the canonical atom table.
+ATOM_SUBSET = 'quality-20261012-v1'
+_POOLS = kg.default_atoms().subset(ATOM_SUBSET)
+BRACKETS = _POOLS['brackets']
+EYES = _POOLS['eyes']
+MOUTHS = _POOLS['mouths']
+ARMS = _POOLS['arms']
 EMOJI = ('😀','😁','😂','😃','😄','😅','😆','😇','😉','😊','😍','😎','🐱','🌈','👩‍💻','👨‍🔬')
 CORE = '{left}{eye1}{gap1}{mouth}{gap2}{eye2}{right}'
 FACE_FORMS = {
