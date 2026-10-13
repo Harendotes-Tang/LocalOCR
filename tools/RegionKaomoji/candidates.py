@@ -27,10 +27,16 @@ DEFAULT_CONFIG = {
     'line_overlap': 0.45, 'horizontal_gap_height': 0.58,
     'padding': 3, 'baseline_coverage': 0.80, 'baseline_ink_coverage': 0.98, 'merge_iou': 0.45,
     'minimum_context_blank_band': 2,
-    'background_window': 51,
+    'background_window': 51, 'exterior_bridge_ratio': 0.45,
 }
 # Keys introduced after a configuration was frozen take their default when absent, so frozen files stay valid.
-OPTIONAL_CONFIG = {'background_window': 51}
+OPTIONAL_CONFIG = {'background_window': 51, 'exterior_bridge_ratio': 0.45}
+# Bridging from a bracket pair absorbs exterior atoms (arms, tails) but must stop at body glyphs. On the
+# development scenes exterior atom cells are never "full-square" while most attached CJK body glyph cells
+# are; cells group components whose x-ranges lie within CELL_TOLERANCE pixels (radicals of one glyph).
+CELL_TOLERANCE = 2
+FULL_SQUARE_RATIO = .65
+BODY_DENSITY = .4
 # Every grammar set is a projection of the canonical atom table; no literal copy lives here.
 ATOMS = kg.default_atoms()
 FACE_LETTERS = kg.face_letters(ATOMS)
@@ -186,6 +192,9 @@ def configuration(config=None):
     window = value['background_window']
     if not isinstance(window, int) or window % 2 == 0 or not 3 <= window <= 201:
         raise ValueError('Background window must be an odd integer between 3 and 201 pixels')
+    ratio = value['exterior_bridge_ratio']
+    if not isinstance(ratio, float) or not .3 <= ratio <= .8:
+        raise ValueError('Exterior bridge ratio must be a float between 0.3 and 0.8 of the bracket height')
     return value
 
 
@@ -298,26 +307,44 @@ def _physical_lines(components, config):
     return lines
 
 
+def _line_chunks(line, config):
+    """Split one physical line into chunks at horizontal gaps wider than the line-height ratio."""
+    chunks = []
+    # Tall emblems or icons on a text line must not widen the gap that joins chunks: the line
+    # height is the tallest component that is not an outlier against the 80th-percentile height,
+    # so bracket strokes of an expression still set the scale while a 2-3x taller icon does not.
+    heights = sorted(item['bbox'][3] - item['bbox'][1] for item in line['components'])
+    typical = heights[int(.8 * (len(heights) - 1))]
+    line_height = max(h for h in heights if h <= typical * 1.3)
+    for component in sorted(line['components'], key=lambda c: c['bbox'][0]):
+        box = component['bbox']
+        if chunks and box[0] - chunks[-1]['bbox'][2] <= line_height * config['horizontal_gap_height']:
+            chunk = chunks[-1]
+            chunk['components'].append(component)
+            chunk['bbox'] = [min(chunk['bbox'][0], box[0]), min(chunk['bbox'][1], box[1]), max(chunk['bbox'][2], box[2]), max(chunk['bbox'][3], box[3])]
+        else:
+            chunks.append({'bbox': list(box), 'components': [component]})
+    return chunks
+
+
 def _line_groups(components, config):
     groups = []
     for line in _physical_lines(components, config):
-        chunks = []
-        # Tall emblems or icons on a text line must not widen the gap that joins chunks: the line
-        # height is the tallest component that is not an outlier against the 80th-percentile height,
-        # so bracket strokes of an expression still set the scale while a 2-3x taller icon does not.
-        heights = sorted(item['bbox'][3] - item['bbox'][1] for item in line['components'])
-        typical = heights[int(.8 * (len(heights) - 1))]
-        line_height = max(h for h in heights if h <= typical * 1.3)
-        for component in sorted(line['components'], key=lambda c: c['bbox'][0]):
-            box = component['bbox']
-            if chunks and box[0] - chunks[-1]['bbox'][2] <= line_height * config['horizontal_gap_height']:
-                chunk = chunks[-1]
-                chunk['components'].append(component)
-                chunk['bbox'] = [min(chunk['bbox'][0], box[0]), min(chunk['bbox'][1], box[1]), max(chunk['bbox'][2], box[2]), max(chunk['bbox'][3], box[3])]
-            else:
-                chunks.append({'bbox': list(box), 'components': [component]})
-        groups.extend(chunks)
+        groups.extend(_line_chunks(line, config))
     return groups
+
+
+def _structural_split(components, config):
+    """Separate structural components (card borders, separators, whole columns) from glyph-sized ones.
+
+    A component taller than the maximum glyph height or wider than the maximum crop width can never
+    belong to a candidate; left in place it would merge every text line it overlaps into one line.
+    """
+    glyphs, structural = [], []
+    for component in components:
+        left, top, right, bottom = component['bbox']
+        (structural if bottom - top > config['maximum_height'] or right - left > config['maximum_width'] else glyphs).append(component)
+    return glyphs, structural
 
 
 def _right_angle_profile(local):
@@ -450,38 +477,100 @@ def _bracket_shapes(mask, origin):
     return pairs
 
 
+def _glyph_cells(components, tolerance=CELL_TOLERANCE):
+    """Group components of one physical line into glyph cells: x-ranges overlapping or within ``tolerance``.
+
+    Returns (cells, owner) where cells is a list of {'bbox', 'components'} sorted by x and owner maps a
+    component index to its cell index. Radicals of one CJK glyph share a cell; an arm stroke is its own cell.
+    """
+    order = sorted(range(len(components)), key=lambda i: components[i]['bbox'][0])
+    cells, owner = [], {}
+    reach = None
+    for index in order:
+        box = components[index]['bbox']
+        if cells and box[0] - reach <= tolerance:
+            cell = cells[-1]
+            cell['bbox'] = [min(cell['bbox'][0], box[0]), min(cell['bbox'][1], box[1]), max(cell['bbox'][2], box[2]), max(cell['bbox'][3], box[3])]
+            cell['components'].append(components[index])
+            reach = max(reach, box[2])
+        else:
+            cells.append({'bbox': list(box), 'components': [components[index]]})
+            reach = box[2]
+        owner[index] = len(cells) - 1
+    return cells, owner
+
+
+def _full_square(cell, height):
+    box = cell['bbox']
+    return (box[3] - box[1]) >= height * FULL_SQUARE_RATIO and (box[2] - box[0]) >= height * FULL_SQUARE_RATIO
+
+
+def _body_like(cell, height):
+    """A full-square cell whose ink density reaches BODY_DENSITY: a body glyph on the development scenes.
+
+    Full-square exterior atoms (⊂ ∩ つ ☆ outlines) are thin, so density separates them from CJK body
+    glyphs: at 0.4 no outline arm and 1% of exterior cells are flagged while 71% of attached body cells are.
+    """
+    box = cell['bbox']
+    area_ = max(1, (box[2] - box[0]) * (box[3] - box[1]))
+    density = sum(item['pixels'] for item in cell['components']) / area_
+    return _full_square(cell, height) and density >= BODY_DENSITY
+
+
+def _line_scale(line):
+    """Line height for scaling: the tallest component that is not an outlier against the 80th percentile."""
+    heights = sorted(item['bbox'][3] - item['bbox'][1] for item in line['components'])
+    typical = heights[int(.8 * (len(heights) - 1))]
+    return max(h for h in heights if h <= typical * 1.3)
+
+
 def _bracket_groups(mask, components, config):
-    """Use actual paired strokes to bridge internal spaces, without label hints."""
+    """Use actual paired strokes to bridge internal spaces, without label hints.
+
+    Pairs are detected per chunk and, when the line height is in range, per line, so a taller icon or
+    body glyph elsewhere on the line cannot hide bracket strokes behind the whole-line ink-height filter.
+    A group is the run of glyph cells around the pair: every cell inside the pair span, then cells
+    outward on each side while the gap stays within the bridge ratio of the line height, the cell is not
+    taller than the line and is not a full-square glyph (a body character on the development scenes).
+    """
     groups=[]
+    ratio=config['exterior_bridge_ratio']
     for line in _physical_lines(components,config):
-        left,top,right,bottom=line['bbox'];height=bottom-top
-        if not config['minimum_height']<=height<=config['maximum_height'] or right-left>config['maximum_bracket_scan_width']:
-            continue
-        pairs=_bracket_shapes(mask[top:bottom,left:right],(left,top))
-        for pair in pairs:
-            a,b=pair['left_bbox'],pair['right_bbox']
-            selected=[item for item in line['components'] if item['bbox'][0]<b[2] and item['bbox'][2]>a[0]]
-            if not selected:
+        line_components=line['components']
+        cells,_=_glyph_cells(line_components)
+        height=_line_scale(line)
+        seen=set()
+        for unit in (*_line_chunks(line,config),line):
+            left,top,right,bottom=unit['bbox'];unit_height=bottom-top
+            if not config['minimum_height']<=unit_height<=config['maximum_height'] or right-left>config['maximum_bracket_scan_width']:
                 continue
-            # Nearby arms/terminal marks use their actual stroke envelopes.
-            # The limited pixel gap cannot bridge the wider layout field gap.
-            for _ in range(4):
-                low=min(item['bbox'][0] for item in selected);high=max(item['bbox'][2] for item in selected)
-                added=[]
-                for item in line['components']:
-                    if item in selected:
-                        continue
-                    box=item['bbox'];h=box[3]-box[1];w=box[2]-box[0]
-                    gap=low-box[2] if box[2]<=low else box[0]-high if box[0]>=high else 0
-                    thin_terminal=h<=height*.22 and w<=height*3
-                    if 0<=gap<=height*.45 and (w<=height*1.2 or thin_terminal) and h<=height*1.25:
-                        added.append(item)
-                if not added:
-                    break
-                selected.extend(added)
-            box=[min(item['bbox'][0] for item in selected),min(item['bbox'][1] for item in selected),max(item['bbox'][2] for item in selected),max(item['bbox'][3] for item in selected)]
-            if box[2]-box[0]<=config['maximum_width']:
-                groups.append({'bbox':box,'components':selected})
+            for pair in _bracket_shapes(mask[top:bottom,left:right],(left,top)):
+                key=(tuple(pair['left_bbox']),tuple(pair['right_bbox']))
+                if key in seen:
+                    continue
+                seen.add(key)
+                a,b=pair['left_bbox'],pair['right_bbox']
+                inside=[i for i,cell in enumerate(cells) if cell['bbox'][0]<b[2] and cell['bbox'][2]>a[0]]
+                if not inside:
+                    continue
+                low,high=min(inside),max(inside)
+                for step in (-1,1):
+                    index=(low if step<0 else high)+step
+                    extent=cells[low]['bbox'][0] if step<0 else cells[high]['bbox'][2]
+                    while 0<=index<len(cells):
+                        cell=cells[index];box=cell['bbox']
+                        gap=extent-box[2] if step<0 else box[0]-extent
+                        if gap>height*ratio or box[3]-box[1]>height*1.25 or _body_like(cell,height):
+                            break
+                        extent=box[0] if step<0 else box[2]
+                        if step<0: low=index
+                        else: high=index
+                        index+=step
+                selected=[item for cell in cells[low:high+1] for item in cell['components']]
+                box=[min(item['bbox'][0] for item in selected),min(item['bbox'][1] for item in selected),max(item['bbox'][2] for item in selected),max(item['bbox'][3] for item in selected)]
+                if box[2]-box[0]<=config['maximum_width']:
+                    groups.append({'bbox':box,'components':selected,'pair_span':[a[0],b[2]],'scale':height,
+                                   'line_cells':cells})
     return groups
 
 
@@ -622,11 +711,67 @@ def _route_eligibility(original, evidence):
     return True,'independent-pixels-and-bounded-face-evidence'
 
 
+def _body_beside_pair(container, pair_box, cells, scale):
+    """Does ``container`` hold a full-square glyph cell outside the pair box on the pair's line?"""
+    for cell in cells:
+        box = cell['bbox']
+        if box[2] <= container[0] or box[0] >= container[2] or box[3] <= container[1] or box[1] >= container[3]:
+            continue
+        if box[2] <= pair_box[0] or box[0] >= pair_box[2]:
+            if _body_like(cell, scale):
+                return True
+    return False
+
+
+def _merge_proposals(proposed, config):
+    """Merge overlapping proposals; a bracket-pair envelope decides against containers that hold body glyphs.
+
+    A chunk or first-pass box that contains a pair is kept (union) when its extra ink is only arm-like cells,
+    because the pair bridge may stop short of a far arm; it yields to the pair box when it also holds a
+    full-square glyph cell, which on the development scenes is body text.
+    """
+    merged = []
+    for proposal in proposed:
+        box = proposal['ink_bbox']
+        pair = proposal.get('pair')
+        same = None
+        for existing in merged:
+            old = existing['ink_bbox']; overlap = intersection(box, old)
+            # Containment merges only a pixel chunk with its pair. A first-pass box that is much larger than the
+            # pair stays a separate candidate (as before): the pair may stop short of a far arm the box covers.
+            contained = ((pair is not None and 'image-components' in existing['sources'] and overlap >= .9 * area(box))
+                         or (existing.get('pair') is not None and 'image-components' in proposal['sources'] and overlap >= .9 * area(old)))
+            if overlap / max(1, area(box) + area(old) - overlap) >= config['merge_iou'] or contained:
+                same = existing; break
+        if same is None:
+            merged.append(dict(proposal))
+            continue
+        same['sources'] = sorted(set(same['sources'] + proposal['sources']))
+        old = same['ink_bbox']
+        union = [min(old[0], box[0]), min(old[1], box[1]), max(old[2], box[2]), max(old[3], box[3])]
+        pixel_container = 'image-components' in same['sources'] and same.get('pair') is None
+        if pair is not None and same.get('pair') is None:
+            # A pixel chunk meets its pair: keep the chunk unless it holds body beside the pair. A first-pass
+            # box never widens a candidate: pixel envelopes stay authoritative over OCR padding.
+            same['pair'] = pair
+            same['ink_bbox'] = union if pixel_container and not _body_beside_pair(old, box, pair['cells'], pair['scale']) else list(box)
+        elif pair is None and same.get('pair') is not None and 'image-components' in proposal['sources']:
+            anchor = same['pair']
+            same['ink_bbox'] = same['ink_bbox'] if _body_beside_pair(box, anchor['box'], anchor['cells'], anchor['scale']) else union
+        elif pair is None and 'first-pass-symbol-geometry' in proposal['sources']:
+            pass  # OCR geometry only adds its source; the pixel envelope is unchanged.
+        else:
+            same['ink_bbox'] = union
+    return merged
+
+
 def locate_candidates(image, baseline, config=None, classifier=None):
     """Discover candidates from pixels and first-pass geometry; an optional classifier adds face evidence.
 
     The classifier only contributes a recorded probability compared with its
     frozen threshold; bracket-pair shapes remain an independent alternative.
+    Structural components (borders, separators) are excluded before line
+    construction; bracket-pair envelopes decide against containers holding body.
     """
     config = configuration(config)
     array = rgb_image(image, config['maximum_pixels'])
@@ -636,6 +781,7 @@ def locate_candidates(image, baseline, config=None, classifier=None):
     components = _components(mask, config['minimum_component_area'])
     if len(components)>config['maximum_components']:
         raise ValueError('Original image exceeds component complexity ceiling')
+    components, structural = _structural_split(components, config)
     proposed = []
     rejections = {}
     def reject(reason):
@@ -648,7 +794,8 @@ def locate_candidates(image, baseline, config=None, classifier=None):
             continue
         proposed.append({'ink_bbox': box, 'sources': ['image-components']})
     for group in _bracket_groups(mask,components,config):
-        proposed.append({'ink_bbox':group['bbox'],'sources':['image-bracket-pair']})
+        proposed.append({'ink_bbox':group['bbox'],'sources':['image-bracket-pair'],
+                         'pair':{'box':list(group['bbox']),'cells':group['line_cells'],'scale':group['scale']}})
     for entry in entries:
         text = entry['text']
         symbols = sum(unicodedata.category(c)[0] in 'PS' for c in text)
@@ -658,21 +805,7 @@ def locate_candidates(image, baseline, config=None, classifier=None):
         if not config['minimum_height'] <= h <= config['maximum_height'] or box[2]-box[0] > config['maximum_width']:
             reject('ocr-size-limit'); continue
         proposed.append({'ink_bbox': list(box), 'sources': ['first-pass-symbol-geometry']})
-    merged = []
-    for proposal in proposed:
-        box = proposal['ink_bbox']
-        same = None
-        for existing in merged:
-            old = existing['ink_bbox']; overlap = intersection(box, old)
-            if overlap / max(1, area(box)+area(old)-overlap) >= config['merge_iou']:
-                same = existing; break
-        if same is None:
-            merged.append(proposal)
-        else:
-            # Pixel envelopes remain authoritative when OCR merged adjacent fields.
-            same['sources'] = sorted(set(same['sources'] + proposal['sources']))
-            if 'image-bracket-pair' in proposal['sources']:
-                old=same['ink_bbox'];same['ink_bbox']=[min(old[0],box[0]),min(old[1],box[1]),max(old[2],box[2]),max(old[3],box[3])]
+    merged = _merge_proposals(proposed, config)
     candidates = []; crop_pixels = 0
     for proposal in sorted(merged, key=lambda p: (p['ink_bbox'][1], p['ink_bbox'][0])):
         left, top, right, bottom = proposal['ink_bbox']; padding = config['padding']
@@ -734,4 +867,5 @@ def locate_candidates(image, baseline, config=None, classifier=None):
                            'context_crops':context_crops,'evidence':evidence})
     return {'schema_version':SCHEMA,'image_size':[width,height],'image_sha256':image_digest(array),
             'config':config,'candidates':candidates,'rejections':rejections,'crop_pixels':crop_pixels,
+            'structural_components':len(structural),
             'discovered_count':len(candidates),'route_eligible_count':sum(item['route_eligible'] for item in candidates)}

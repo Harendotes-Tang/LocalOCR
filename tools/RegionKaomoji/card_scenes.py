@@ -40,6 +40,7 @@ STYLES = {
                 'recipe': 'card-list heldout palette: three card colours, 92px rows, 20px text, two-line comments wrap at segment boundaries'},
 }
 PUNCTUATION = ('，', '。', '！', '？', '...', '…', '（', '）', ';;', '.jpg', '030', '（目移', '哈哈哈', '！！！', '（。', '233')
+
 # Each plan is a sequence of (segment kind, separator before the segment); separators are '' (attached), ' ' or '\n' (wrap).
 COMMENT_PLANS = {
     'empty': (),
@@ -61,9 +62,49 @@ NEGATIVE_KINDS = ('empty', 'plain', 'wrap-plain')
 NEGATIVE_EVERY = 5  # every fifth scene carries no face at all: the negative-scene population for the research gates
 SCENE_KINDS = ('card-list', 'card-list-negative')
 
+# ---- v2: real multi-line layouts (improve-region-candidate-localization) ----
+# Comments wrap by width at any character, duty and timestamp columns fold into two lines on tall rows, a face
+# can be cut by the wrap (both parts are `unsupported` regions: counted, never scored) and line-end fragments
+# such as a lone bracket or doubled semicolon are ordinary body text.
+GENERATOR_ID_V2 = 'localocr.card-scenes.20261013.v2'
+GENERATOR_IDS = (GENERATOR_ID, GENERATOR_ID_V2)
+STYLES_V2 = {
+    'dev': {**STYLES['dev'], 'tall_extra': 24, 'comment_width': 1080,
+            'recipe': 'card-list v2 dev palette: two card colours, 88px rows (+24px when wrapped), 19px text, width wrap at any character, folded columns, cut faces, fragments'},
+    'heldout': {**STYLES['heldout'], 'tall_extra': 26, 'comment_width': 1040,
+                'recipe': 'card-list v2 heldout palette: three card colours, 92px rows (+26px when wrapped), 20px text, width wrap at any character, folded columns, cut faces, fragments'},
+}
+FRAGMENTS = ('（。', '；；', ';;', '（', '）', '…', '、', '（目移', '！！', '~')
+# v2 plans reuse the v1 separator vocabulary plus three markers: 'long' (body long enough to wrap by width),
+# 'split' (the face is cut at the wrap point into two unsupported parts) and 'fragment' (a line-end residue).
+COMMENT_PLANS_V2 = {
+    **COMMENT_PLANS,
+    'wrap-anywhere': (('body', 'long'),),
+    'wrap-anywhere-face': (('body', 'long'), ('face', '?')),
+    'wrap-face-split': (('body', ''), ('face', 'split'), ('body', '?')),
+    'fragment-tail': (('body', ''), ('body', 'fragment')),
+    'face-fragment': (('body', ''), ('face', '?'), ('body', 'fragment')),
+}
+COMMENT_WEIGHTS_V2 = {**COMMENT_WEIGHTS, 'plain': 24, 'wrap-anywhere': 10, 'wrap-anywhere-face': 8, 'wrap-face-split': 6,
+                      'fragment-tail': 6, 'face-fragment': 6}
+NEGATIVE_KINDS_V2 = NEGATIVE_KINDS + ('wrap-anywhere', 'fragment-tail')
+COLUMN_FOLD_PROBABILITY = .6
 
-def family(split):
-    return 'card-scene-grammar:' + th(STYLES[split]['recipe'])
+
+def family(split, version=1):
+    return 'card-scene-grammar:' + th((STYLES_V2 if version == 2 else STYLES)[split]['recipe'])
+
+
+def split_face_index(text, atoms, rng):
+    """A cut index strictly inside the bracket pair, so neither part can parse as a complete face."""
+    chars = atoms.bracket_chars
+    positions = [index for index, char in enumerate(text) if char in chars]
+    if len(positions) < 2:
+        raise Unsupported('face-without-pair')
+    first, last = positions[0], positions[-1]
+    if last - first < 1:
+        raise Unsupported('face-too-short-to-cut')
+    return rng.randrange(first + 1, last + 1)
 
 
 def comment_words(rng, count):
@@ -89,10 +130,12 @@ def contains_face(text, atoms):
                for i, a in enumerate(positions) for b in positions[i + 1:])
 
 
-def plan_comment(rng, split, seen, atoms, allowed, negative=False):
+def plan_comment(rng, split, seen, atoms, allowed, negative=False, version=1):
     """Ordered segments [(kind, payload, separator)] for one comment; faces come from the split's core partition."""
-    kinds = [k for k in COMMENT_WEIGHTS if not negative or k in NEGATIVE_KINDS]
-    kind = rng.choices(kinds, [COMMENT_WEIGHTS[k] for k in kinds])[0]
+    plans, weights, negatives = ((COMMENT_PLANS_V2, COMMENT_WEIGHTS_V2, NEGATIVE_KINDS_V2) if version == 2
+                                 else (COMMENT_PLANS, COMMENT_WEIGHTS, NEGATIVE_KINDS))
+    kinds = [k for k in weights if not negative or k in negatives]
+    kind = rng.choices(kinds, [weights[k] for k in kinds])[0]
     def face():
         for _ in range(10000):
             composed = gc.compose_face(split, rng, atoms, allowed)
@@ -109,11 +152,15 @@ def plan_comment(rng, split, seen, atoms, allowed, negative=False):
                 return text
         raise ValueError('Original comment pool exhausted')
     segments = []
-    for position, (segment_kind, separator) in enumerate(COMMENT_PLANS[kind]):
+    for position, (segment_kind, separator) in enumerate(plans[kind]):
         if separator == '?':
             separator = rng.choice(('', ' '))
-        if segment_kind == 'face':
+        if separator == 'fragment':
+            segments.append(('body', rng.choice(FRAGMENTS), ''))
+        elif segment_kind == 'face':
             segments.append(('face', face(), separator))
+        elif separator == 'long':
+            segments.append(('body', body(rng.randrange(40, 64)), ''))
         else:
             long = kind.startswith('wrap') and position == 0
             segments.append(('body', body(rng.randrange(12, 20) if long else rng.randrange(2, 9)), separator))
@@ -227,6 +274,163 @@ def layout_comment(renderer, segments, style, card, start_x, limit_x):
     return placed, line
 
 
+def layout_comment_v2(renderer, segments, style, card, start_x, limit_x, rng, atoms):
+    """Pre-render comment tiles for v2: wrap by width at any character, cut a 'split' face, keep two lines at most.
+
+    Returns (placed, lines) like layout_comment; a placed entry's kind is 'body', 'face' or 'unsupported'
+    (one of the two parts of a face cut by the wrap). Overflow beyond two lines is Unsupported.
+    """
+    size = style['size']
+    space = advance(renderer, ' ', size)
+    placed, cursor, line = [], start_x, 0
+
+    def put(kind, payload, separator, text, extra=None):
+        nonlocal cursor
+        tile, mask, fonts, evidence = render_text(renderer, text, size, style['text'], card)
+        x = int(round(cursor))
+        if x + tile.width > limit_x:
+            raise Unsupported('card-row-overflow')
+        placed.append((kind, payload, separator, tile, mask, fonts, evidence, x, line, text, extra))
+        cursor = x + tile.width
+
+    def newline():
+        nonlocal cursor, line
+        line += 1
+        cursor = start_x
+        if line > 1:
+            raise Unsupported('card-row-overflow')
+
+    for kind, payload, separator in segments:
+        text = payload['text'] if kind == 'face' else payload
+        if separator == '\n':
+            newline()
+            separator_used = '\n'
+        else:
+            separator_used = '' if separator in ('split', 'long') else separator
+            if separator_used == ' ':
+                cursor += space
+        if kind == 'face' and separator == 'split':
+            cut = split_face_index(text, atoms, rng)
+            extra = {'source_face': text, 'core_key': payload['core_key'], 'core_digest': payload['core_digest'],
+                     'core_partition': payload['core_partition'], 'structure': payload['structure']}
+            put('unsupported', payload, separator_used, text[:cut], {**extra, 'part': 'left', 'cut': cut})
+            newline()
+            put('unsupported', payload, '\n', text[cut:], {**extra, 'part': 'right', 'cut': cut})
+            continue
+        if kind == 'face':
+            put('face', payload, separator_used, text)
+            continue
+        # Body text wraps by width at any character; the remainder continues on the next line.
+        remaining = text
+        current_separator = separator_used
+        while remaining:
+            available = limit_x - int(round(cursor))
+            fits = len(remaining)
+            while fits > 0 and advance(renderer, remaining[:fits], size) + 4 > available:
+                fits -= 1
+            if fits == len(remaining):
+                put('body', payload, current_separator, remaining)
+                break
+            if fits < 1:
+                raise Unsupported('card-row-overflow')
+            put('body', payload, current_separator, remaining[:fits], {'wrapped': 'width'})
+            remaining = remaining[fits:]
+            newline()
+            current_separator = '\n'
+    return placed, line
+
+
+def render_scene_v2(renderer, split, rng, seen, atoms, allowed, negative=False):
+    """v2 scene: rows grow when the comment wraps, columns may fold, faces may be cut, fragments appear.
+
+    Column tiles are rendered first so the comment starts exactly where the real columns end; the
+    page height follows the planned row heights, and every tile is pasted once in reading order.
+    """
+    style = STYLES_V2[split]
+    width, size = style['width'], style['size']
+    comment_kinds, emblems = Counter(), Counter()
+    planned = []
+    for _ in range(style['rows']):
+        card = rng.choice(style['cards'])
+        kind, segments = plan_comment(rng, split, seen, atoms, allowed, negative, version=2)
+        level = f'Lv.{rng.randrange(10, 101)}'
+        duty = ''.join(rng.choice(CN_WORDS) for _ in range(rng.randrange(2, 5))) + rng.choice(('', '', '！'))
+        stamp = f'{rng.randrange(2024, 2027)}-{rng.randrange(1, 13):02d}-{rng.randrange(1, 29):02d} {rng.randrange(24):02d}:{rng.randrange(60):02d}:{rng.randrange(60):02d}'
+        tiles = {name: render_text(renderer, text, size, style['text'], card) for name, text in (('level', level), ('duty', duty), ('stamp', stamp))}
+        level_end = 146 + tiles['level'][0].width
+        icon_right = level_end + 56
+        duty_x = icon_right + 24
+        stamp_x = duty_x + tiles['duty'][0].width + 24
+        comment_start = stamp_x + tiles['stamp'][0].width + 28
+        limit = min(width - 96, comment_start + style['comment_width'])
+        placed, lines = layout_comment_v2(renderer, segments, style, card, comment_start, limit, rng, atoms)
+        fold = bool(lines) and len(duty) >= 4 and rng.random() < COLUMN_FOLD_PROBABILITY
+        planned.append({'card': card, 'kind': kind, 'level': level, 'duty': duty, 'stamp': stamp, 'tiles': tiles,
+                        'level_end': level_end, 'duty_x': duty_x, 'stamp_x': stamp_x, 'placed': placed, 'lines': lines, 'fold': fold,
+                        'height': style['height'] + (style['tall_extra'] if lines else 0)})
+        comment_kinds[kind] += 1
+    total = 16 + sum(row['height'] + style['gap'] for row in planned)
+    background = Image.new('RGB', (width, total), style['page'])
+    draw = ImageDraw.Draw(background)
+    top = 8
+    for row in planned:
+        draw.rounded_rectangle((10, top, width - 10, top + row['height']), radius=style['radius'], fill=row['card'])
+        row['top'] = top
+        top += row['height'] + style['gap']
+    page = Page(background.copy())
+    folded_columns = cut_faces = wrapped_bodies = 0
+    for row in planned:
+        card = row['card']
+        cy = row['top'] + row['height'] // 2
+        shift = int(round(size * LINE_SHIFT)) if row['lines'] else 0
+        if page.whole:
+            page.whole += '\n'
+        mask = Image.new('L', page.canvas.size)
+        emblems[draw_gold_glyph(page.canvas, mask, (76, cy), style['gold'], rng)] += 1
+        page.graphic(mask, 'gold-emblem')
+
+        def paste_text(text, x, centre, separator=COLUMN_GAP, extra=None, tile=None):
+            tile, tmask, fonts, evidence = tile or render_text(renderer, text, size, style['text'], card)
+            page.paste(tile, tmask, x, centre - tile.height // 2, 'body', text, fonts, evidence, size, separator, extra)
+
+        paste_text(row['level'], 146, cy, tile=row['tiles']['level'])
+        icon_box = (row['level_end'] + 26, cy - 15, row['level_end'] + 56, cy + 15)
+        imask = Image.new('L', page.canvas.size)
+        draw_square_icon(page.canvas, imask, icon_box, rng.choice(style['icons']), rng)
+        page.graphic(imask, 'square-icon')
+        duty, stamp = row['duty'], row['stamp']
+        if row['fold']:
+            folded_columns += 1
+            cut = rng.randrange(2, len(duty) - 1)
+            paste_text(duty[:cut], row['duty_x'], cy - shift, COLUMN_GAP, {'column': 'duty', 'part': 'left'})
+            paste_text(duty[cut:], row['duty_x'], cy + shift, '\n', {'column': 'duty', 'part': 'right'})
+            date, clock = stamp.split(' ')
+            paste_text(date, row['stamp_x'], cy - shift, COLUMN_GAP, {'column': 'stamp', 'part': 'left'})
+            paste_text(clock, row['stamp_x'], cy + shift, '\n', {'column': 'stamp', 'part': 'right'})
+        else:
+            paste_text(duty, row['duty_x'], cy, tile=row['tiles']['duty'])
+            paste_text(stamp, row['stamp_x'], cy, tile=row['tiles']['stamp'])
+        for index, (segment_kind, payload, separator, tile, tmask, fonts, evidence, x, line, text, extra) in enumerate(row['placed']):
+            centre = cy - shift if line == 0 else cy + shift
+            region_extra = dict(extra or {})
+            if segment_kind == 'face':
+                region_extra.update({'core_key': payload['core_key'], 'core_digest': payload['core_digest'], 'core_partition': payload['core_partition'], 'structure': payload['structure']})
+            if segment_kind == 'unsupported' and region_extra.get('part') == 'left':
+                cut_faces += 1
+            if region_extra.get('wrapped') == 'width':
+                wrapped_bodies += 1
+            kind = {'face': 'kaomoji', 'unsupported': 'unsupported'}.get(segment_kind, 'body')
+            page.paste(tile, tmask, x, centre - tile.height // 2, kind, text, fonts, evidence, size,
+                       COLUMN_GAP if index == 0 and separator != '\n' else separator, region_extra or None)
+        close_tile, cmask, fonts, evidence = render_text(renderer, '×', size + 2, style['muted'], card)
+        page.paste(close_tile, cmask, width - 64, cy - close_tile.height // 2, 'body', '×', fonts, evidence, size + 2, COLUMN_GAP)
+    stats = {'comment_kinds': dict(comment_kinds), 'emblem_styles': {str(k): v for k, v in emblems.items()},
+             'scene_kind': 'card-list-negative' if negative else 'card-list',
+             'two_line_rows': sum(1 for row in planned if row['lines']), 'folded_columns': folded_columns,
+             'cut_faces': cut_faces, 'wrapped_bodies': wrapped_bodies}
+    return page.canvas, background, page.whole, page.regions, page.masks, stats
+
+
 def render_scene(renderer, split, rng, seen, atoms, allowed, negative=False):
     style = STYLES[split]
     width, size = style['width'], style['size']
@@ -282,8 +486,10 @@ def render_scene(renderer, split, rng, seen, atoms, allowed, negative=False):
 def validate(root):
     root = Path(root).resolve()
     meta = read(root / 'dataset.json')
-    if meta.get('schema_version') != 'localocr.region-scenes.v1' or meta.get('synthetic_only') is not True or meta.get('generator_id') != GENERATOR_ID:
+    if meta.get('schema_version') != 'localocr.region-scenes.v1' or meta.get('synthetic_only') is not True or meta.get('generator_id') not in GENERATOR_IDS:
         raise ValueError('Scene schema/synthetic declaration')
+    version = 2 if meta['generator_id'] == GENERATOR_ID_V2 else 1
+    unsupported_faces = Counter()
     atoms = kg.default_atoms()
     if meta.get('atoms_binding') != kg.binding(atoms):
         raise ValueError('Scene atoms binding differs from the canonical table')
@@ -299,7 +505,7 @@ def validate(root):
         if len(rows) != info['count']:
             raise ValueError('Scene count changed')
         for row in rows:
-            if row['split'] != split or row['source_split'] != split or row['recipe_family'] != family(split) or row['scene_kind'] not in SCENE_KINDS:
+            if row['split'] != split or row['source_split'] != split or row['recipe_family'] != family(split, version) or row['scene_kind'] not in SCENE_KINDS:
                 raise ValueError('Scene source/AST family differs')
             face_count = sum(region['kind'] == 'kaomoji' for region in row['regions'])
             if (row['scene_kind'] == 'card-list-negative') != (face_count == 0):
@@ -345,6 +551,21 @@ def validate(root):
                         raise ValueError('Missing genuine glyphs')
                 if region['kind'] == 'body' and contains_face(region['text'], atoms):
                     raise ValueError('Body region carries a grammatical face')
+                if region['kind'] == 'unsupported':
+                    # A face cut by the wrap: two parts, neither a face by itself, bound to one source face of this split.
+                    if version != 2 or region.get('part') not in ('left', 'right') or kg.parse_face(region['text'], atoms) is not None:
+                        raise ValueError('Unsupported regions are v2 cut-face parts that never parse as a face')
+                    source = region.get('source_face', '')
+                    cut = region.get('cut')
+                    if (kg.parse_face(source, atoms) is None or type(cut) is not int or not 0 < cut < len(source)
+                            or region['text'] != (source[:cut] if region['part'] == 'left' else source[cut:])):
+                        raise ValueError('Cut-face part differs from its source face')
+                    if (gc.core_digest(region['core_key']) != region['core_digest'] or gc.partition(region['core_key']) != split
+                            or region['core_partition'] != split):
+                        raise ValueError('Cut-face core partition differs')
+                    unsupported_faces[(row['id'], source)] += 1
+                elif region['kind'] not in ('body', 'kaomoji', 'graphic'):
+                    raise ValueError('Unknown region kind')
                 if region['kind'] == 'kaomoji':
                     key = th(region['text'])
                     if key in micros and micros[key] != split:
@@ -366,7 +587,12 @@ def validate(root):
         negatives = sum(row['scene_kind'] == 'card-list-negative' for row in rows)
         if not negatives:
             raise ValueError('Each split needs face-free negative card scenes')
+        if any(count != 2 for count in unsupported_faces.values()):
+            raise ValueError('Each cut face needs exactly a left and a right part')
         counts[split] = {'scenes': len(rows), 'faces': sum(r['kind'] == 'kaomoji' for row in rows for r in row['regions']), 'negative_scenes': negatives}
+        if version == 2:
+            counts[split]['unsupported_faces'] = sum(1 for (scene, _) in unsupported_faces if scene.startswith(split + '-'))
+            unsupported_faces = Counter()
     binding = {'schema_version': 'localocr.region-scenes.freeze.v1', 'dataset_sha256': sha(root / 'dataset.json'),
                'split_sha256': {s: meta['splits'][s]['sha256'] for s in ('dev', 'heldout')}, 'counts': counts}
     if (root / 'freeze.json').exists() and read(root / 'freeze.json') != binding:
@@ -385,9 +611,15 @@ def _dependency_digests():
     return {name: sha(base / name) for name in names}
 
 
-def generate(output, fonts, counts=(60, 120), seed=20261013):
+def generate(output, fonts, counts=(60, 120), seed=20261013, version=1):
     if len(counts) != 2 or any(not isinstance(n, int) or isinstance(n, bool) or n <= 0 for n in counts):
         raise ValueError('Positive scene counts required')
+    if version not in (1, 2):
+        raise ValueError('Card scene generator version must be 1 or 2')
+    styles = STYLES_V2 if version == 2 else STYLES
+    plans, weights, negatives = ((COMMENT_PLANS_V2, COMMENT_WEIGHTS_V2, NEGATIVE_KINDS_V2) if version == 2
+                                 else (COMMENT_PLANS, COMMENT_WEIGHTS, NEGATIVE_KINDS))
+    scene_renderer = render_scene_v2 if version == 2 else render_scene
     root = qd.output_root(output)
     if rp.profile_for(root) is None:
         raise ValueError('Card scenes must be generated inside a registered research round')
@@ -411,7 +643,7 @@ def generate(output, fonts, counts=(60, 120), seed=20261013):
             negative = index % NEGATIVE_EVERY == NEGATIVE_EVERY - 1
             for _ in range(200):
                 try:
-                    canvas, background, text, regions, masks, stats = render_scene(renderer, split, rng, seen, atoms, allowed, negative)
+                    canvas, background, text, regions, masks, stats = scene_renderer(renderer, split, rng, seen, atoms, allowed, negative)
                 except Unsupported as error:
                     exclusions[str(error)] += 1
                     continue
@@ -434,7 +666,9 @@ def generate(output, fonts, counts=(60, 120), seed=20261013):
                 mp = root / 'masks' / f'{identifier}-{ri}.png'
                 writer.image(mp, mask)
                 region.update(id=f'{identifier}-region-{ri}', mask=mp.relative_to(root).as_posix(), mask_sha256=sha(mp), pixel_count=int((np.asarray(mask) > 0).sum()))
-            rows.append({'id': identifier, 'split': split, 'source_split': split, 'scene_kind': stats['scene_kind'], 'recipe_family': family(split),
+            layout = {key: stats[key] for key in ('two_line_rows', 'folded_columns', 'cut_faces', 'wrapped_bodies') if key in stats}
+            rows.append({'id': identifier, 'split': split, 'source_split': split, 'scene_kind': stats['scene_kind'], 'recipe_family': family(split, version),
+                         **({'layout': layout} if layout else {}),
                          'text': text, 'text_sha256': th(text), 'image': path.relative_to(root).as_posix(), 'sha256': sha(path), 'pixel_sha256': pixel,
                          'background': bg_path.relative_to(root).as_posix(), 'background_sha256': sha(bg_path),
                          'width': canvas.width, 'height': canvas.height, 'regions': regions, 'provenance': {'source': 'original', 'license': 'CC0-1.0'},
@@ -450,11 +684,16 @@ def generate(output, fonts, counts=(60, 120), seed=20261013):
                           'faces': sum(region['kind'] == 'kaomoji' for row in rows for region in row['regions']),
                           'body_regions': sum(region['kind'] == 'body' for row in rows for region in row['regions']),
                           'graphic_regions': sum(region['kind'] == 'graphic' for row in rows for region in row['regions'])}
-    writer.json(root / 'dataset.json', {'schema_version': 'localocr.region-scenes.v1', 'generator_id': GENERATOR_ID, 'synthetic_only': True,
+        if version == 2:
+            summary[split].update({'unsupported_regions': sum(region['kind'] == 'unsupported' for row in rows for region in row['regions']),
+                                   **{key: sum(row['layout'][key] for row in rows) for key in ('two_line_rows', 'folded_columns', 'cut_faces', 'wrapped_bodies')}})
+    writer.json(root / 'dataset.json', {'schema_version': 'localocr.region-scenes.v1', 'generator_id': GENERATOR_ID_V2 if version == 2 else GENERATOR_ID, 'synthetic_only': True,
                 'private_inputs_consumed': False, 'license': 'CC0-1.0', 'seed': seed, 'splits': splits,
-                'recipes': {split: {kind: STYLES[split]['recipe'] for kind in SCENE_KINDS} for split in STYLES},
-                'negative_scenes': {'every': NEGATIVE_EVERY, 'comment_kinds': list(NEGATIVE_KINDS), 'scene_kind': 'card-list-negative'},
-                'styles': STYLES, 'comment_plans': {k: list(map(list, v)) for k, v in COMMENT_PLANS.items()}, 'comment_weights': COMMENT_WEIGHTS,
+                'recipes': {split: {kind: styles[split]['recipe'] for kind in SCENE_KINDS} for split in styles},
+                'negative_scenes': {'every': NEGATIVE_EVERY, 'comment_kinds': list(negatives), 'scene_kind': 'card-list-negative'},
+                'styles': styles, 'comment_plans': {k: list(map(list, v)) for k, v in plans.items()}, 'comment_weights': weights,
+                **({'unsupported_regions': 'faces cut by a width wrap are two `unsupported` parts bound to one source face; counted, never scored',
+                    'layout_v2': 'comments wrap by width at any character, duty/timestamp columns fold on tall rows, line-end fragments are body'} if version == 2 else {}),
                 'atoms_binding': kg.binding(atoms), 'excluded_atoms': excluded_atoms,
                 'core_partition_buckets': {k: list(v) for k, v in gc.PARTITION_BUCKETS.items()},
                 'renderer': renderer.versions, 'fonts': [{k: v for k, v in f.items() if k not in ('file', 'license_file')} for f in renderer.fonts],
@@ -486,8 +725,9 @@ def main():
     parser.add_argument('--fonts')
     parser.add_argument('--counts', nargs=2, type=int, default=(60, 120))
     parser.add_argument('--seed', type=int, default=20261013)
+    parser.add_argument('--version', type=int, choices=(1, 2), default=1, help='2 adds width wrapping, folded columns, cut faces and fragments')
     args = parser.parse_args()
-    print(json.dumps(generate(args.dataset, args.fonts, tuple(args.counts), args.seed) if args.action == 'generate' else validate(args.dataset), indent=2))
+    print(json.dumps(generate(args.dataset, args.fonts, tuple(args.counts), args.seed, args.version) if args.action == 'generate' else validate(args.dataset), indent=2))
 
 
 if __name__ == '__main__':

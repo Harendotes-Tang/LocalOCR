@@ -731,11 +731,14 @@ def usage_path(binding):
     return output_path(research_root(binding['inputs']['file']) / ('evaluation-heldout-first-use-' + binding['dataset']['split_sha256']['heldout'] + '.json'))
 
 
-def validate_budget(budget):
+def validate_budget(budget, path=None):
+    """A closed ledger whose ceiling is the owning round's declared GPU authorization (0 s for a CPU-only round)."""
+    profile = rp.profile_for(path) if path is not None else None
+    maximum = profile.maximum_seconds if profile is not None else 7200
     if (budget.get('schema_version') != 'localocr.gpu-budget.v1' or budget.get('active') is not None
-            or budget.get('maximum_seconds') != 7200 or type(budget.get('used_seconds')) not in (int, float)
-            or not math.isfinite(budget['used_seconds']) or not 0 <= budget['used_seconds'] <= 7200):
-        raise ValueError('Selection needs the completed shared 7200-second budget receipt')
+            or budget.get('maximum_seconds') != maximum or type(budget.get('used_seconds')) not in (int, float)
+            or not math.isfinite(budget['used_seconds']) or not 0 <= budget['used_seconds'] <= maximum):
+        raise ValueError(f'Selection needs the completed closed budget receipt with the round ceiling of {maximum} seconds')
 
 
 def final_families(binding):
@@ -803,7 +806,7 @@ def verify_selection(path, binding):
         raise ValueError('Frozen quality gates differ from actual development inference')
     if _timestamp(dev['completed_utc']) > frozen_time:
         raise ValueError('Development evaluation must complete before frozen selection')
-    validate_budget(common.read(value['budget_receipt']['file']))
+    validate_budget(common.read(value['budget_receipt']['file']), value['budget_receipt']['file'])
     return {'file': str(path), 'sha256': hashlib.sha256(raw).hexdigest(), 'value': value}
 
 
@@ -1079,10 +1082,16 @@ def load_truth(root, split, jobs, allow_heldout=False):
                 or hashlib.sha256(row['text'].encode('utf-8')).hexdigest()!=row['text_sha256']):
             raise ValueError('Scene truth identity/provenance differs')
         for region in row['regions']:
-            if region['kind'] not in ('body','kaomoji','graphic'): raise ValueError('Unknown scene truth region')
+            if region['kind'] not in ('body','kaomoji','graphic','unsupported'): raise ValueError('Unknown scene truth region')
             if region['kind']!='graphic':
                 a,b=region['span']
                 if not 0<=a<b<=len(row['text']) or row['text'][a:b]!=region['text']: raise ValueError('Exact truth span changed')
+            if region['kind']=='unsupported':
+                # A face cut by a line wrap: counted, never scored. Each part binds its whole source face.
+                source=region.get('source_face'); cut=region.get('cut')
+                if (region.get('part') not in ('left','right') or not isinstance(source,str) or type(cut) is not int or not 0<cut<len(source)
+                        or region['text']!=(source[:cut] if region['part']=='left' else source[cut:])):
+                    raise ValueError('Unknown or incomplete unsupported truth part')
     return rows
 
 
@@ -1236,6 +1245,7 @@ def summarize(root,rows,predictions,config,model_ids):
         first_pass=prediction.get('first_pass',{})
         localization['split_parents']+=int(first_pass.get('split_parents',0))
         localization['split_children']+=int(first_pass.get('split_children',0))
+        localization['structural_components']+=int(prediction['routing'].get('structural_components',0))
         for identity in model_ids:
             effectiveness[identity]['actual_routed_candidates']+=sum(bool(views) for views in prediction['models'][identity]['views'].values())
             split_stats=prediction['models'][identity].get('split',{})
@@ -1324,6 +1334,11 @@ def summarize(root,rows,predictions,config,model_ids):
                     counter['new_body_intersection_errors']+=int(literal_deleted or
                                                                (before!=after and after!=truth['text'] and final_text!=truth['text']
                                                                 and not preserved and not unchanged_reading))
+            elif truth['kind']=='unsupported':
+                # Cut-face parts: discovery is reported, nothing is scored, no population includes them.
+                localization['unsupported_regions']+=1
+                localization['unsupported_regions_with_candidate']+=int(any(mask_pixels(mask,item['bbox']) for item in routing))
+                localization['unsupported_regions_routed']+=int(any(mask_pixels(mask,item['bbox']) for item in routed))
             elif truth['kind']=='graphic':
                 localization['graphic_regions']+=1
                 localization['graphic_regions_with_candidate']+=int(any(mask_pixels(mask,item['bbox']) for item in routing))
@@ -1350,7 +1365,19 @@ def summarize(root,rows,predictions,config,model_ids):
                 negative[prefix+'_final_nonempty']+=int(bool(prediction['models'][identity]['text']))
                 negative[prefix+'_new_nonempty']+=int(not prediction['baseline_text'] and bool(prediction['models'][identity]['text']))
         details.append(scene_detail)
+    faces_total=localization.get('faces',0)
+    candidate_stage={'faces':faces_total,'safe_complete_coverage':localization.get('safe_complete_coverage',0),
+                     'safe_complete_coverage_ratio':(localization.get('safe_complete_coverage',0)/faces_total) if faces_total else None,
+                     'complete_ink_coverage':localization.get('complete_ink_coverage',0),'partial_only':localization.get('partial_only',0),
+                     'routed_candidate_count':localization.get('routed_candidate_count',0),
+                     'safe_routed_complete_coverage':localization.get('safe_routed_complete_coverage',0),
+                     'body_regions_routed':localization.get('body_regions_routed',0),
+                     'bracket_pair_candidates':candidates_by_source.get('image-bracket-pair',0),
+                     'structural_components':localization.get('structural_components',0),
+                     'unsupported_regions':localization.get('unsupported_regions',0),
+                     'note':'Candidate-stage development metrics; unsupported cut-face parts are counted here and excluded from every scored population.'}
     result={'scenes':len(rows),'scene_kinds':dict(kind_counts),'localization':dict(localization),
+            'candidate_stage':candidate_stage,
             'candidate_sources':dict(candidates_by_source),
             'coverage':{'mean':float(np.mean(coverage_values)) if coverage_values else None,
                         'minimum':min(coverage_values) if coverage_values else None},
@@ -1423,7 +1450,7 @@ def freeze_selection(args):
     final_families(binding); report=verify_dev_evidence(report_path,binding)
     if args.selected_id not in {item['id'] for item in binding['models']} or not args.reason.strip():
         raise ValueError('Frozen research selection needs a measured model identity and explicit development reason')
-    budget=safe_path(args.budget_receipt); validate_budget(common.read(budget))
+    budget=safe_path(args.budget_receipt); validate_budget(common.read(budget), budget)
     value={'schema_version':SELECTION_SCHEMA,'frozen_utc':common.utc(),'pipeline_binding':binding,
            'dev_report':{'file':str(report_path),'sha256':common.digest(report_path)},
            'budget_receipt':{'file':str(budget),'sha256':common.digest(budget)},

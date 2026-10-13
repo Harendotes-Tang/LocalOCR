@@ -108,7 +108,7 @@ def validate(root):
  if meta.get('generator_id')=='localocr.grammar-scenes.20261013.v1':
   from .grammar_scenes import validate as grammar_validate
   return grammar_validate(root)
- if meta.get('generator_id')=='localocr.card-scenes.20261013.v1':
+ if meta.get('generator_id') in ('localocr.card-scenes.20261013.v1','localocr.card-scenes.20261013.v2'):
   from .card_scenes import validate as card_validate
   return card_validate(root)
  texts={};micros={};families={};pixelsets={};counts={}

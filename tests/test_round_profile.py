@@ -24,7 +24,11 @@ def test_registered_rounds_have_distinct_roots_and_external_predecessors():
     assert rp.GRAMMAR.previous_budget == rp.QUALITY.root / 'gpu-budget.json'
     assert rp.GRAMMAR.maximum_bytes == 2 * rp.GIB and rp.QUALITY.maximum_bytes == rp.GIB
     assert rp.GRAMMAR.specialist_families == 1 and rp.QUALITY.specialist_families == 2
-    assert rp.CURRENT is rp.GRAMMAR and rp.by_name(rp.GRAMMAR.name) is rp.GRAMMAR
+    assert rp.CANDIDATES.previous_budget == rp.GRAMMAR.root / 'gpu-budget.json'
+    assert rp.CANDIDATES.maximum_seconds == 0.0 and rp.CANDIDATES.maximum_bytes == rp.GIB
+    assert rp.CANDIDATES.specialist_families == 1 and rp.CANDIDATES.change == 'improve-region-candidate-localization'
+    assert rp.CURRENT is rp.CANDIDATES and rp.by_name(rp.CANDIDATES.name) is rp.CANDIDATES
+    assert rp.by_name(rp.GRAMMAR.name) is rp.GRAMMAR
 
 
 def test_profile_lookup_is_root_scoped_not_prefix_scoped(tmp_path, monkeypatch):
@@ -45,10 +49,27 @@ def test_profile_lookup_is_root_scoped_not_prefix_scoped(tmp_path, monkeypatch):
 @pytest.mark.parametrize('changes', [
     {'maximum_bytes': 0}, {'owned_bytes': 65}, {'owned_bytes': 1.0}, {'previous_sha256': 'ABC'},
     {'specialist_families': 0}, {'specialist_families': 3},
+    {'maximum_seconds': -1.0}, {'maximum_seconds': 7201.0}, {'maximum_seconds': float('nan')}, {'maximum_seconds': True},
 ])
 def test_profile_invariants_fail_closed(tmp_path, changes):
     with pytest.raises(ValueError):
         unit_profile(tmp_path, **changes)
+
+
+def test_zero_second_profile_is_allowed_for_cpu_only_rounds(tmp_path):
+    assert unit_profile(tmp_path, maximum_seconds=0.0).maximum_seconds == 0.0
+
+
+def test_candidates_predecessor_ledger_matches_actual_closed_history():
+    ledger = Path(rp.CANDIDATES.previous_budget)
+    if not ledger.exists():
+        pytest.skip('Historical grammar-round ledger is absent on this host')
+    from tools.PretrainedOcr.common import digest, read
+    assert digest(ledger) == rp.CANDIDATES.previous_sha256
+    state = read(ledger)
+    assert state['active'] is None
+    assert math.isclose(state['used_seconds'], rp.CANDIDATES.previous_used_seconds, abs_tol=1e-6)
+    assert not ledger.with_name(ledger.name + '.lock').exists()
 
 
 def test_predecessor_inside_round_root_is_rejected(tmp_path):

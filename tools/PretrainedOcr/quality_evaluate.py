@@ -149,9 +149,29 @@ def validate_round_budget(path):
     return reference(path)
 
 
+def predecessor_crop_receipt(crop_selection,crop_dataset,scene_dataset):
+    """The predecessor round's consumed crop first-use receipt bound to ``crop_selection``, or None.
+
+    Only a CPU-only scene round (0 s GPU) that reuses the frozen specialist of a different registered round may
+    build on a consumed crop heldout; the receipt must name this selection, its bytes and the crop dataset.
+    """
+    crop_round,scene_round=rp.profile_for(crop_dataset),rp.profile_for(scene_dataset)
+    receipt_path=Path(crop_dataset)/'heldout-first-use.json'
+    if (not receipt_path.exists() or crop_round is None or scene_round is None or crop_round.name==scene_round.name
+            or scene_round.maximum_seconds!=0 or not Path(crop_selection).resolve().is_relative_to(Path(crop_round.root).resolve())):
+        return None
+    receipt=common.read(receipt_path)
+    if (receipt.get('schema_version')!='localocr.pretrained.heldout-first-use.v1'
+            or Path(receipt.get('selection_file','')).resolve()!=Path(crop_selection).resolve()
+            or receipt.get('selection_sha256')!=common.digest(crop_selection)
+            or receipt.get('dataset_binding')!=common.dataset_binding(crop_dataset)):
+        raise ValueError('Predecessor crop first use does not bind this crop selection and dataset')
+    return {'round':crop_round.name,'heldout_first_use':reference(receipt_path)}
+
 def recompute_development(crop_selection,scene_selection,crop_dataset,scene_dataset):
     from . import evaluate as crop
     from tools.RegionKaomoji import evaluate as scene
+    predecessor=predecessor_crop_receipt(crop_selection,crop_dataset,scene_dataset)
     cs=common.read(crop_selection);ss=common.read(scene_selection)
     if cs['schema_version']!=crop.SELECTION_SCHEMA or ss['schema_version']!=scene.SELECTION_SCHEMA:raise ValueError('Two real frozen selections required')
     timestamp(cs['frozen_utc']);timestamp(ss['frozen_utc'])
@@ -165,7 +185,8 @@ def recompute_development(crop_selection,scene_selection,crop_dataset,scene_data
     pipeline=scene.pipeline_binding(scene_dataset,candidates,baseline_root,ss['pipeline_binding']['config'],ss['pipeline_binding']['inputs']['file'])
     scene.verify_selection(scene_selection,pipeline)
     cdev_path=bound(cs['dev_report']);sdev_path=bound(ss['dev_report']);cdev=common.read(cdev_path)
-    models=crop.validate_dev_evidence(cdev,cdev_path,crop_dataset,cs['candidate_bindings'],cs['baseline_binding'])
+    models=crop.validate_dev_evidence(cdev,cdev_path,crop_dataset,cs['candidate_bindings'],cs['baseline_binding'],
+                                      source_inventory=cdev.get('source_inventory') if predecessor is not None else None)
     sdev=scene.verify_dev_evidence(sdev_path,pipeline)
     jobs=scene.image_jobs(scene_dataset,'dev',pipeline['inputs']['file'])
     rows=scene.load_truth(scene_dataset,'dev',jobs)
@@ -182,13 +203,21 @@ def recompute_development(crop_selection,scene_selection,crop_dataset,scene_data
 def freeze_dual(crop_selection,scene_selection,crop_dataset,scene_dataset,output):
     selections=[Path(crop_selection),Path(scene_selection)];datasets=[Path(crop_dataset),Path(scene_dataset)]
     if not all(is_round(p) for p in selections+datasets+[Path(output)]):raise ValueError('Dual selection must belong to the new research round')
-    # Refuse manufacturing a new freeze after either crop or scene first-use exists.
+    # Refuse manufacturing a new freeze after either crop or scene first-use exists. A CPU-only round
+    # (0 s GPU) that reuses a predecessor round's frozen specialist binds that round's consumed crop
+    # first use as provenance instead: no new crop heldout exists to protect.
+    predecessor=predecessor_crop_receipt(crop_selection,datasets[0],datasets[1])
     for dataset in datasets:
-        if (dataset/'heldout-first-use.json').exists():raise ValueError('New heldout already consumed')
+        if (dataset/'heldout-first-use.json').exists():
+            if dataset is datasets[0] and predecessor is not None:
+                continue
+            raise ValueError('New heldout already consumed')
     round_root=round_scope(datasets[1])[0] or ROUND
     if any(Path(round_root).glob('evaluation-heldout-first-use-*.json')):raise ValueError('Scene heldout already consumed')
     gates=recompute_development(*selections,*datasets)
     value={'schema_version':DUAL_SCHEMA,'frozen_utc':common.utc(),'crop_selection':reference(selections[0]),'scene_selection':reference(selections[1]),'crop_dataset':{'path':str(datasets[0].resolve()),'binding':common.dataset_binding(datasets[0])},'scene_dataset':{'path':str(datasets[1].resolve()),'binding':common.read(datasets[1]/'freeze.json')},'source_inventory':source_inventory(),'gates':gates,'production_enabled':False,'promote':False,'enabled':False,'usage':'both selections frozen before either first new heldout; no tuning on results'}
+    if predecessor is not None:
+        value['crop_predecessor']=predecessor;value['usage']='scene selection frozen before its first new heldout; the crop side is the predecessor round\'s frozen specialist whose crop heldout that round consumed; no tuning on results'
     from .evaluate import write_new
     write_new(output,value);return value
 

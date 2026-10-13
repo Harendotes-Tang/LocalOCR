@@ -286,3 +286,64 @@ def test_registered_round_budget_binds_profile_predecessor_and_quota(tmp_path, m
     monkeypatch.setattr(rp, 'ROUNDS', ())
     with pytest.raises(ValueError, match='sole-authority'):
         q.validate_round_budget(ledger)
+
+
+def test_cpu_only_round_binds_predecessor_crop_first_use_instead_of_a_new_crop_heldout(monkeypatch,tmp_path):
+    """A 0 s round reusing the predecessor's frozen specialist may dual-freeze although that round consumed the crop heldout."""
+    import dataclasses
+    from tools.PretrainedOcr import common, round_profile as rp, evaluate as crop_evaluate
+    old_root=tmp_path/'old-round';new_root=tmp_path/'new-round'
+    old=rp.RoundProfile(name='old',change='old',root=old_root,maximum_bytes=64,owned_bytes=32,previous_budget=tmp_path/'p.json',
+                        previous_sha256='0'*64,previous_used_seconds=1.0,specialist_families=1)
+    new=rp.RoundProfile(name='new',change='new',root=new_root,maximum_bytes=64,owned_bytes=32,previous_budget=tmp_path/'q.json',
+                        previous_sha256='1'*64,previous_used_seconds=2.0,maximum_seconds=0.0,specialist_families=1)
+    monkeypatch.setattr(rp,'ROUNDS',(old,new))
+    crop=old_root/'data'/'corpus';scene=new_root/'scenes'/'cards';crop.mkdir(parents=True);scene.mkdir(parents=True)
+    common.write(scene/'freeze.json',{'dataset_sha256':'x'})
+    crop_selection=old_root/'evaluation'/'crop-selection.json';scene_selection=new_root/'evaluation'/'scene-selection.json'
+    crop_selection.parent.mkdir();scene_selection.parent.mkdir();common.write(crop_selection,{});common.write(scene_selection,{})
+    common.write(crop/'heldout-first-use.json',{'schema_version':'localocr.pretrained.heldout-first-use.v1','selection_file':str(crop_selection),
+                                                'selection_sha256':common.digest(crop_selection),'dataset_binding':{'bound':True}})
+    monkeypatch.setattr(common,'dataset_binding',lambda _:{'bound':True})
+    monkeypatch.setattr(q,'recompute_development',lambda *_:{'selected_id':'unit'})
+    monkeypatch.setattr(q,'source_inventory',lambda:{})
+    written={}
+    monkeypatch.setattr(crop_evaluate,'write_new',lambda path,value:written.update({'path':path,'value':value}))
+    output=new_root/'evaluation'/'dual.json'
+    value=q.freeze_dual(crop_selection,scene_selection,crop,scene,output)
+    assert value['crop_predecessor']['round']=='old' and value['crop_predecessor']['heldout_first_use']['sha256']==common.digest(crop/'heldout-first-use.json')
+    assert written['path']==output and 'predecessor' in value['usage']
+    # A round with its own GPU authorization must not reuse a consumed crop heldout.
+    monkeypatch.setattr(rp,'ROUNDS',(old,dataclasses.replace(new,maximum_seconds=10.0)))
+    with pytest.raises(ValueError,match='already consumed'):q.freeze_dual(crop_selection,scene_selection,crop,scene,output)
+    # The crop selection must live in the predecessor round that consumed the heldout.
+    monkeypatch.setattr(rp,'ROUNDS',(old,new))
+    foreign=new_root/'evaluation'/'crop-selection.json';common.write(foreign,{})
+    with pytest.raises(ValueError,match='already consumed'):q.freeze_dual(foreign,scene_selection,crop,scene,output)
+    # A consumed scene heldout is never reusable.
+    common.write(scene/'heldout-first-use.json',{'claimed':True})
+    with pytest.raises(ValueError,match='already consumed'):q.freeze_dual(crop_selection,scene_selection,crop,scene,output)
+
+
+def test_predecessor_crop_receipt_requires_a_cpu_only_round_and_a_bound_receipt(monkeypatch,tmp_path):
+    import dataclasses
+    from tools.PretrainedOcr import common, round_profile as rp
+    old_root=tmp_path/'old';new_root=tmp_path/'new'
+    old=rp.RoundProfile(name='old',change='old',root=old_root,maximum_bytes=64,owned_bytes=32,previous_budget=tmp_path/'p.json',previous_sha256='0'*64,previous_used_seconds=1.0,specialist_families=1)
+    new=rp.RoundProfile(name='new',change='new',root=new_root,maximum_bytes=64,owned_bytes=32,previous_budget=tmp_path/'q.json',previous_sha256='1'*64,previous_used_seconds=2.0,maximum_seconds=0.0,specialist_families=1)
+    monkeypatch.setattr(rp,'ROUNDS',(old,new))
+    crop=old_root/'data'/'corpus';scene=new_root/'scenes'/'s';crop.mkdir(parents=True);scene.mkdir(parents=True)
+    selection=old_root/'evaluation'/'crop-selection.json';selection.parent.mkdir();common.write(selection,{'frozen':True})
+    monkeypatch.setattr(common,'dataset_binding',lambda _:{'bound':True})
+    assert q.predecessor_crop_receipt(selection,crop,scene) is None  # no consumed receipt yet
+    receipt={'schema_version':'localocr.pretrained.heldout-first-use.v1','selection_file':str(selection),'selection_sha256':common.digest(selection),'dataset_binding':{'bound':True}}
+    common.write(crop/'heldout-first-use.json',receipt)
+    value=q.predecessor_crop_receipt(selection,crop,scene)
+    assert value['round']=='old' and value['heldout_first_use']['sha256']==common.digest(crop/'heldout-first-use.json')
+    monkeypatch.setattr(rp,'ROUNDS',(old,dataclasses.replace(new,maximum_seconds=5.0)))
+    assert q.predecessor_crop_receipt(selection,crop,scene) is None  # GPU-authorized rounds get no predecessor path
+    monkeypatch.setattr(rp,'ROUNDS',(old,new))
+    common.write(crop/'heldout-first-use.json',dict(receipt,selection_sha256='f'*64))
+    with pytest.raises(ValueError,match='does not bind'):q.predecessor_crop_receipt(selection,crop,scene)
+    common.write(crop/'heldout-first-use.json',dict(receipt,dataset_binding={'bound':False}))
+    with pytest.raises(ValueError,match='does not bind'):q.predecessor_crop_receipt(selection,crop,scene)

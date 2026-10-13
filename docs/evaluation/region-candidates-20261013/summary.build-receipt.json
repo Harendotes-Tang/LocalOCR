@@ -1,0 +1,88 @@
+{
+  "built_utc": "2026-10-13T18:11:00.659146+00:00",
+  "figures": [
+    {
+      "file": "evaluation/region-candidates-20261013/figures/candidate-stage-dev-funnel.svg",
+      "sha256": "68512bd70ee1ec838441a58682c41e65985ebacb5048c495a23e0be4c0724e4e"
+    },
+    {
+      "file": "evaluation/region-candidates-20261013/figures/scene-dev-face-exact-accuracy.svg",
+      "sha256": "858fd96ee86f0cdbb27163e25af7148a5b7bb0eed4541c06654e385ebec9db27"
+    },
+    {
+      "file": "evaluation/region-candidates-20261013/figures/scene-heldout-face-exact-accuracy.svg",
+      "sha256": "169b07aefd671c42a66392b3f497ae8f7210e96e41f63a2a7e891f161c0d3724"
+    }
+  ],
+  "schema_version": "localocr.region-candidates.assets-build.v1",
+  "script_sha256": "9c653a20b39c9c52ef7dafa4f59eefdd2eaa78f1f2ba92a4c8c64c485145474e",
+  "sources": [
+    {
+      "file": "artifacts/kaomoji-grammar-20261013/evaluation/scene-cards-dev-006/evaluation.json",
+      "role": "dev-previous:cards-v2",
+      "sha256": "7ceca082fe4492b960fc39308dff8ec464d61cebf3527abeb87de5ddd594d964"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/scene-cards-dev-007/evaluation.json",
+      "role": "dev-current:cards-v2",
+      "sha256": "f5235acf4681999c68c1c07195b02c6c17d3c0c281403268f0abd33bc479d543"
+    },
+    {
+      "file": "artifacts/kaomoji-grammar-20261013/evaluation/scene-mixed-dev-006/evaluation.json",
+      "role": "dev-previous:atoms-mixed-v1",
+      "sha256": "2b70ef58ca3be9a4c79a2e1fc7fec997693fffa56077e4e9a368f1231d4e965a"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/scene-mixed-dev-007/evaluation.json",
+      "role": "dev-current:atoms-mixed-v1",
+      "sha256": "dc752083969f6460f623c0ea248b03489079e62d555299e5c9b70d186779bd08"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/scene-cards-v3-dev-007/evaluation.json",
+      "role": "dev:cards-v3",
+      "sha256": "5558f4724048b4cd1ac0319c8cd1ce0dfcfa57ad243fd92260776ec5514e19fe"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/scene-mixed-v2-dev-007/evaluation.json",
+      "role": "dev:atoms-mixed-v2",
+      "sha256": "40bf1cacf8a83e6db12795c889e9aef9556f240e7b72c1f8d7d6ef3fafed8070"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/scene-mixed-heldout-001/evaluation.json",
+      "role": "heldout:atoms-mixed-v2",
+      "sha256": "f431b60a3e33932778742c25dfa9c68f6d49a65a2a3b0a513382db9618973795"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/scene-cards-heldout-001/evaluation.json",
+      "role": "heldout:cards-v3",
+      "sha256": "9ff626e6202304c5759e806e219be01348d244b864f1654f5ae5f9bcceacb3ea"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/real-screens-001/evaluation.json",
+      "role": "real-screens:record-list-probe",
+      "sha256": "4c6b2525af9c5854bfb67cbc3010784dbb8dae9f4a0a0c41d0c64379d8a21a58"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/real-screens-001/pixel-branch.json",
+      "role": "real-screens-pixel-branch:record-list-probe",
+      "sha256": "6c5c4025566932fc12627dc6a22d6275da18f4ca5e0db235d67ba3605e70e1cb"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/known-input-001/evaluation.json",
+      "role": "real-screens:known-input",
+      "sha256": "7eb5545273450a70442490103ba43b5f0b869aab0136dac3a780da152efb4562"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/known-input-001/pixel-branch.json",
+      "role": "real-screens-pixel-branch:known-input",
+      "sha256": "5b6e3b9829d460cd893ba811e62b6f6224daed750929caec739db729ebb2b87b"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/gpu-budget.json",
+      "role": "gpu-budget",
+      "sha256": "a650a5777d347fd15efce32e32a2c4e36515031345b8da35e4224c8eb9161e3d"
+    }
+  ],
+  "statement": "Built from explicit completed local reports; no images, labels, row predictions, private screenshots or weights opened; no inference; no network.",
+  "summary_sha256": "4fc88573c0d6825c4a52aee98dbda179928534dd20cbdae6516830fbb39d491d"
+}

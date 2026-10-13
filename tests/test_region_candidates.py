@@ -434,3 +434,142 @@ def test_line_height_ignores_tall_icons_when_joining_chunks():
     face = [{'bbox': [70, 30, 76, 60], 'pixels': 60}, {'bbox': [82, 42, 88, 48], 'pixels': 20}, {'bbox': [94, 44, 104, 47], 'pixels': 15},
             {'bbox': [110, 42, 116, 48], 'pixels': 20}, {'bbox': [122, 30, 128, 60], 'pixels': 60}, {'bbox': [144, 32, 156, 58], 'pixels': 80}]
     assert len(c._line_groups(face, c.configuration())) == 1
+
+
+# --- improve-region-candidate-localization: structural components, per-chunk pairs, pair-first candidates ---
+
+def page_face(draw, ox, oy, ink=(0, 0, 0)):
+    """The face_fixture strokes translated to (ox, oy): brackets 30px tall spanning x ox..ox+82."""
+    draw.arc((ox, oy, ox+14, oy+30), 90, 270, fill=ink, width=2)
+    draw.arc((ox+68, oy, ox+82, oy+30), 270, 90, fill=ink, width=2)
+    draw.ellipse((ox+23, oy+11, ox+30, oy+18), outline=ink, width=2)
+    draw.ellipse((ox+52, oy+11, ox+59, oy+18), outline=ink, width=2)
+    draw.line((ox+34, oy+23, ox+48, oy+23), fill=ink, width=2)
+
+
+def bordered_card_fixture():
+    """Dark card with two faces on separate rows and a page-high separator line beside the card."""
+    image=Image.new('RGB',(420,200),(232,230,226));draw=ImageDraw.Draw(image)
+    draw.rounded_rectangle((30,10,410,190),radius=10,fill=(92,46,44))
+    draw.line((8,0,8,199),fill=(40,40,40),width=2)  # 200px tall structural component
+    ink=(242,240,236)
+    page_face(draw,120,30,ink)
+    page_face(draw,120,120,ink)
+    return np.asarray(image)
+
+
+def test_structural_components_are_excluded_before_line_construction():
+    output=c.locate_candidates(bordered_card_fixture(),[])
+    assert output['structural_components']>=1
+    faces=[item for item in output['candidates'] if 'image-bracket-pair' in item['sources']]
+    assert len(faces)==2
+    for item in faces:
+        left,top,right,bottom=item['bbox']
+        assert left>=100 and left<=120 and right>=202 and bottom-top<=45
+    # Without the separator the same two faces are found: exclusion only removes the structural component.
+    plain=bordered_card_fixture().copy();plain[:,4:12]=(232,230,226)
+    without=c.locate_candidates(plain,[])
+    assert without['structural_components']==0 and output['structural_components']>=1
+    assert sorted(i['bbox'] for i in without['candidates'] if 'image-bracket-pair' in i['sources'])==sorted(i['bbox'] for i in faces)
+
+
+def test_bracket_pairs_are_detected_per_chunk_beside_taller_line_elements():
+    image=Image.new('RGB',(360,100),'white');draw=ImageDraw.Draw(image)
+    draw.rectangle((20,15,76,71),fill='black')  # 56px icon on the same physical line
+    page_face(draw,150,28)                      # 30px brackets: below 60% of the line's ink height
+    output=c.locate_candidates(np.asarray(image),[])
+    faces=[item for item in output['candidates'] if 'image-bracket-pair' in item['sources']]
+    assert len(faces)==1 and faces[0]['evidence']['extra_shape_support']
+    left,top,right,bottom=faces[0]['bbox']
+    assert left<=150 and right>=232 and left>80
+
+
+def arm_body_fixture(arm_gap=10, body=True, ratio_key=None):
+    image=Image.new('RGB',(320,80),'white');draw=ImageDraw.Draw(image)
+    page_face(draw,40,20)                                   # brackets x 40..122, y 20..50 (H=30)
+    ax=122+arm_gap
+    draw.line((ax,28,ax+10,44),fill='black',width=2)        # exterior arm: 16px tall, 10px wide
+    if body:
+        draw.rectangle((ax+10+6,22,ax+10+6+26,48),fill='black')  # full-square body glyph 6px beyond the arm
+    return np.asarray(image)
+
+
+def test_pair_candidate_keeps_exterior_arm_but_stops_at_full_square_body():
+    output=c.locate_candidates(arm_body_fixture(),[])
+    faces=[item for item in output['candidates'] if 'image-bracket-pair' in item['sources']]
+    assert len(faces)==1
+    left,top,right,bottom=faces[0]['bbox']
+    assert right>=143 and right<149  # the arm (ends at x 142) is inside, the body glyph (starts at 148) is outside
+
+
+def test_exterior_bridge_ratio_is_optional_and_bounded():
+    # Arm 16px beyond the pair (0.53H) followed by a body glyph: the body forces the pair box, so the arm
+    # is kept only when the bridge ratio reaches it. Without body the container keeps the arm regardless.
+    wide=arm_body_fixture(arm_gap=16,body=True)
+    default=[i for i in c.locate_candidates(wide,[])['candidates'] if 'image-bracket-pair' in i['sources']]
+    assert default and default[0]['bbox'][2]<138
+    config=dict(c.DEFAULT_CONFIG,exterior_bridge_ratio=.6)
+    bridged=[i for i in c.locate_candidates(wide,[],config)['candidates'] if 'image-bracket-pair' in i['sources']]
+    assert bridged and 149<=bridged[0]['bbox'][2]<154
+    free=[i for i in c.locate_candidates(arm_body_fixture(arm_gap=16,body=False),[])['candidates'] if 'image-bracket-pair' in i['sources']]
+    assert free and free[0]['bbox'][2]>=149
+    legacy={key:value for key,value in c.DEFAULT_CONFIG.items() if key not in c.OPTIONAL_CONFIG}
+    assert c.configuration(legacy)['exterior_bridge_ratio']==c.OPTIONAL_CONFIG['exterior_bridge_ratio']==.45
+    for invalid in (.2,.9,'0.5',True):
+        with pytest.raises(ValueError):
+            c.configuration(dict(c.DEFAULT_CONFIG,exterior_bridge_ratio=invalid))
+
+
+def test_bridging_does_not_cross_physical_lines():
+    image=Image.new('RGB',(240,120),'white');draw=ImageDraw.Draw(image)
+    page_face(draw,40,10)                                   # line 1: y 10..40
+    draw.line((128,50,138,66),fill='black',width=2)        # line 2 stroke 10px below, within 0.45H horizontally
+    output=c.locate_candidates(np.asarray(image),[])
+    faces=[item for item in output['candidates'] if 'image-bracket-pair' in item['sources']]
+    assert len(faces)==1 and faces[0]['bbox'][3]<=46
+
+
+def test_pair_box_replaces_a_containing_mixed_first_pass_box():
+    image=Image.new('RGB',(320,80),'white');draw=ImageDraw.Draw(image)
+    draw.rectangle((20,22,46,48),fill='black');draw.rectangle((52,22,78,48),fill='black')  # body glyphs
+    page_face(draw,92,20)                                                                    # face 6px after the body
+    baseline=[{'bbox':[18,18,178,52],'text':'正文(ω_ω)','score':.2}]
+    output=c.locate_candidates(np.asarray(image),baseline)
+    faces=[item for item in output['candidates'] if 'image-bracket-pair' in item['sources']]
+    assert len(faces)==1
+    left,top,right,bottom=faces[0]['bbox']
+    assert left>=84 and right<=180 and 'first-pass-symbol-geometry' in faces[0]['sources']
+    assert faces[0]['evidence']['neighbor_body_overlap'] and faces[0]['evidence']['mixed_region_separable']
+    assert faces[0]['splice_baseline_index']==0 and faces[0]['baseline_indices']==[]
+
+
+def test_container_without_body_keeps_its_extent_but_body_containers_yield_to_the_pair():
+    """An OCR box that only adds a far arm to the pair is kept; one that adds a body glyph is replaced by the pair box."""
+    image=Image.new('RGB',(320,80),'white');draw=ImageDraw.Draw(image)
+    page_face(draw,40,20)                                   # brackets x 40..122 (H=30)
+    draw.line((138,28,148,44),fill='black',width=2)         # arm 16px beyond: 0.53H, outside the default bridge but inside the chunk gap
+    arm_only=[{'bbox':[36,16,152,54],'text':'(ω_ω)ノ','score':.3}]
+    kept=[i for i in c.locate_candidates(np.asarray(image),arm_only)['candidates'] if 'image-bracket-pair' in i['sources']]
+    assert kept and kept[0]['bbox'][2]>=149 and kept[0]['baseline_indices']==[0]
+    body=Image.new('RGB',(320,80),'white');draw=ImageDraw.Draw(body)
+    page_face(draw,40,20)
+    draw.rectangle((138,22,164,48),fill='black')            # full-square body glyph 16px beyond
+    with_body=[{'bbox':[36,16,168,54],'text':'(ω_ω)字','score':.3}]
+    pair=[i for i in c.locate_candidates(np.asarray(body),with_body)['candidates'] if 'image-bracket-pair' in i['sources']]
+    assert pair and pair[0]['bbox'][2]<138 and pair[0]['evidence']['neighbor_body_overlap']
+
+
+def test_thin_full_square_outline_arm_is_absorbed_but_dense_glyph_is_body():
+    """⊂-like outline arms are full-square yet sparse: they bridge; a dense full-square glyph is body and stops the bridge."""
+    image=Image.new('RGB',(320,80),'white');draw=ImageDraw.Draw(image)
+    page_face(draw,40,20)                                   # brackets x 40..122 (H=30)
+    draw.arc((132,22,158,48),90,270,fill='black',width=2)   # 26x26 outline arm 10px beyond the pair
+    output=c.locate_candidates(np.asarray(image),[])
+    faces=[item for item in output['candidates'] if 'image-bracket-pair' in item['sources']]
+    assert faces and faces[0]['bbox'][2]>=146  # the left-half arc spans x 132..~145 and is bridged (plus 3px padding)
+    dense=Image.new('RGB',(320,80),'white');draw=ImageDraw.Draw(dense)
+    page_face(draw,40,20)
+    draw.rectangle((132,22,158,48),fill='black')            # same cell, filled: density 1.0
+    output=c.locate_candidates(np.asarray(dense),[])
+    faces=[item for item in output['candidates'] if 'image-bracket-pair' in item['sources']]
+    assert faces and faces[0]['bbox'][2]<132

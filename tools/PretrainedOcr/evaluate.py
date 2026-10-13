@@ -50,10 +50,11 @@ def finite_number(value):
     return type(value) in (int, float) and math.isfinite(value)
 
 
-def validate_cpu_result(result, rows, binding, frozen, split):
+def validate_cpu_result(result, rows, binding, frozen, split, source_inventory=None):
+    expected_inventory = evaluator_source_inventory() if source_inventory is None else source_inventory
     if (result.get('actual_cpu') is not True or result.get('inference_binding') != binding
             or result.get('dataset_binding') != frozen or result.get('split') != split
-            or result.get('source_inventory') != evaluator_source_inventory()):
+            or result.get('source_inventory') != expected_inventory):
         raise ValueError('Actual CPU worker input/source evidence differs')
     validate_predictions(rows, result.get('predictions', []))
     tokens = result.get('tokens')
@@ -74,13 +75,20 @@ def validate_cpu_result(result, rows, binding, frozen, split):
             raise ValueError('Actual CPU latency evidence differs')
 
 
-def validate_dev_evidence(report, report_path, dataset, candidates, baseline):
+def validate_dev_evidence(report, report_path, dataset, candidates, baseline, source_inventory=None):
+    """Re-derive the development summaries from the bound worker outputs.
+
+    ``source_inventory`` defaults to the current evaluator closure. A predecessor round's frozen
+    crop report, whose identity is bound by that round's consumed first-use receipt, is checked
+    against the inventory it recorded instead: its predictions are still re-summarized here.
+    """
     frozen = dataset_binding(dataset)
+    expected_inventory = evaluator_source_inventory() if source_inventory is None else source_inventory
     if (report.get('schema_version') != REPORT_SCHEMA or report.get('split') != 'dev'
             or report.get('independent_heldout') is not False or report.get('promote') is not False
             or report.get('enabled') is not False or report.get('candidate_bindings') != candidates
             or report.get('baseline_binding') != baseline or report.get('dataset_binding') != frozen
-            or report.get('source_inventory') != evaluator_source_inventory()):
+            or report.get('source_inventory') != expected_inventory):
         raise ValueError('Selection requires actual development evaluation evidence')
     rows = read_split(dataset, 'dev')
     evidence = report.get('worker_results')
@@ -92,11 +100,11 @@ def validate_dev_evidence(report, report_path, dataset, candidates, baseline):
         path = referenced_file(Path(report_path).parent, evidence[identity], confined_path=True)
         result = read(path)
         expected_capture = {'file': path.name, 'sha256': digest(path), 'worker_pid': result.get('worker_pid'),
-                            'source_inventory': evaluator_source_inventory(), 'actual_cpu': True,
+                            'source_inventory': expected_inventory, 'actual_cpu': True,
                             'capture': 'successful-owned-subprocess-stdout'}
         if evidence[identity] != expected_capture or type(result.get('worker_pid')) is not int or result['worker_pid'] <= 0:
             raise ValueError('Captured worker/report completion evidence differs')
-        validate_cpu_result(result, rows, binding, frozen, 'dev')
+        validate_cpu_result(result, rows, binding, frozen, 'dev', expected_inventory)
         value = {'summary': summary(rows, result['predictions'], result['tokens']), 'resources': result['resources']}
         if predictions is None:
             predictions = result['predictions']

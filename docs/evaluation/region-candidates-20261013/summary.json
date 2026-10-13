@@ -1,0 +1,2012 @@
+{
+  "dual_freezes": [
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/dual-cards-003.json",
+      "frozen_utc": "2026-10-13T12:16:11.627729+00:00",
+      "schema_version": "localocr.quality-dual-freeze.v1",
+      "sha256": "9a1e92bddee7ffbaa3399d3d16aa0c7966fa619f70169ab781ed0d9ee909eda3"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/dual-mixed-003.json",
+      "frozen_utc": "2026-10-13T12:16:18.122495+00:00",
+      "schema_version": "localocr.quality-dual-freeze.v1",
+      "sha256": "1f940c2c301b9c1115a20ff5425c43615a219150ef1e76dbe4b7f8056d2f17f3"
+    }
+  ],
+  "enabled": false,
+  "figures": [
+    {
+      "file": "evaluation/region-candidates-20261013/figures/candidate-stage-dev-funnel.svg",
+      "sha256": "68512bd70ee1ec838441a58682c41e65985ebacb5048c495a23e0be4c0724e4e"
+    },
+    {
+      "file": "evaluation/region-candidates-20261013/figures/scene-dev-face-exact-accuracy.svg",
+      "sha256": "858fd96ee86f0cdbb27163e25af7148a5b7bb0eed4541c06654e385ebec9db27"
+    },
+    {
+      "file": "evaluation/region-candidates-20261013/figures/scene-heldout-face-exact-accuracy.svg",
+      "sha256": "169b07aefd671c42a66392b3f497ae8f7210e96e41f63a2a7e891f161c0d3724"
+    }
+  ],
+  "font": {
+    "id": "cjk",
+    "license": "OFL-1.1",
+    "sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b"
+  },
+  "generated_utc": "2026-10-13T18:11:00.659146+00:00",
+  "gpu_budget": {
+    "maximum_seconds": 0.0,
+    "previous_sha256": "b2feaecb0b24dadfd697636899df545a457c89a2ab3da09d2ebb16f4ac67dde0",
+    "previous_used_seconds": 3252.876000000001,
+    "runs": 0,
+    "used_seconds": 0.0
+  },
+  "normalization": "Raw Unicode exact match and codepoint CER; no width, space or combining-mark normalization; unsupported cut-face parts are counted and never scored.",
+  "production_enabled": false,
+  "promote": false,
+  "real_screens": {
+    "known-input": {
+      "baseline": {
+        "body_contained": 33,
+        "embedded_face_contained": 6,
+        "face_contained": 2,
+        "face_exact_region": 2
+      },
+      "body_lines": 69,
+      "environment": "导随记录 记录列表网页（深蓝/绿/红圆角卡片、白色无衬线字，每条记录含职业徽记、Lv、副本图标、副本名、时间戳、评论）；截图经聊天上传为 webp 后由助手无损转存为 PNG（1860×981）；浏览器、系统缩放、字体设置待用户确认",
+      "faces": 50,
+      "faces_ambiguous_excluded": 0,
+      "models": {
+        "ppocrv6-tiny-exp-20261013-001": {
+          "body_contained": 33,
+          "body_lost": 0,
+          "embedded_face_contained": 6,
+          "face_contained": 4,
+          "face_exact_region": 4,
+          "face_exact_to_wrong": 0,
+          "face_wrong_to_exact": 2,
+          "gates": {
+            "no_body_lost": true
+          }
+        }
+      },
+      "pixel_branch": {
+        "candidate_sources": {
+          "first-pass-symbol-geometry": 21,
+          "first-pass-symbol-geometry+image-bracket-pair+image-components": 19,
+          "first-pass-symbol-geometry+image-components": 146,
+          "image-bracket-pair+image-components": 23,
+          "image-components": 299
+        },
+        "decision_reasons": {
+          "context-not-unique-raw-prefix-suffix": 1,
+          "exact-unicode-view-disagreement": 22,
+          "exact-views-and-independent-pixels": 20,
+          "incomplete-or-edge-clipped-crop": 8,
+          "insufficient-independent-pixel-shape-support": 5,
+          "insufficient-interior-ink": 3,
+          "mixed-region-not-confirmed-face-fragment": 2,
+          "multiple-baseline-regions-not-one-face-expression": 1,
+          "neighbor-body-overlap": 4,
+          "observed-ordinary-body-anchors": 117,
+          "observed-ordinary-numbers": 4,
+          "ordinary-body-or-single-letter-brackets": 4,
+          "ordinary-body-region-protected": 2,
+          "raw-view-outside-agreement": 14,
+          "specialist-output-not-confirmed-face-grammar": 2,
+          "unconfirmed-independent-pixel-face-shape": 299
+        },
+        "note": "Counts only; no text, labels or coordinates. Diagnosis of the original-pixel candidate branch on private real screenshots.",
+        "route_reasons": {
+          "incomplete-or-edge-clipped-crop": 8,
+          "independent-pixels-and-bounded-face-evidence": 69,
+          "insufficient-interior-ink": 3,
+          "neighbor-body-overlap": 4,
+          "observed-ordinary-body-anchors": 117,
+          "observed-ordinary-numbers": 4,
+          "ordinary-body-or-single-letter-brackets": 4,
+          "unconfirmed-independent-pixel-face-shape": 299
+        },
+        "schema": "localocr.real-screens.pixel-branch-counts.v1",
+        "screens": 14,
+        "totals": {
+          "accepted": 20,
+          "bracket_pair_candidates": 42,
+          "candidates": 508,
+          "first_pass_entries": 604,
+          "pixel_only_candidates": 322,
+          "route_eligible": 69,
+          "structural_components": 20,
+          "views": 207
+        }
+      },
+      "scope": "Private real screenshots with typed-input labels; independent evaluation only; no training, selection or threshold use",
+      "screens": 14,
+      "timing": {
+        "count": 14,
+        "p50_seconds": 8.750189650003449,
+        "p95_seconds": 11.557483099999445
+      }
+    },
+    "record-list-probe": {
+      "baseline": {
+        "body_contained": 65,
+        "embedded_face_contained": 0,
+        "face_contained": 0,
+        "face_exact_region": 0
+      },
+      "body_lines": 75,
+      "environment": "User-supplied real record-list screenshots (webp, converted to PNG); labels transcribed by the assistant from pixels, kaomoji codepoints not uniquely determinable and flagged ambiguous; dark red/green rounded cards, white sans text.",
+      "faces": 0,
+      "faces_ambiguous_excluded": 1,
+      "models": {
+        "ppocrv6-tiny-exp-20261013-001": {
+          "body_contained": 65,
+          "body_lost": 0,
+          "embedded_face_contained": 0,
+          "face_contained": 0,
+          "face_exact_region": 0,
+          "face_exact_to_wrong": 0,
+          "face_wrong_to_exact": 0,
+          "gates": {
+            "no_body_lost": true
+          }
+        }
+      },
+      "pixel_branch": {
+        "candidate_sources": {
+          "first-pass-symbol-geometry": 10,
+          "first-pass-symbol-geometry+image-bracket-pair+image-components": 2,
+          "first-pass-symbol-geometry+image-components": 54,
+          "image-components": 107
+        },
+        "decision_reasons": {
+          "exact-unicode-view-disagreement": 3,
+          "incomplete-or-edge-clipped-crop": 25,
+          "observed-ordinary-body-anchors": 29,
+          "raw-view-outside-agreement": 1,
+          "unconfirmed-independent-pixel-face-shape": 115
+        },
+        "note": "Counts only; no text, labels or coordinates. Diagnosis of the original-pixel candidate branch on private real screenshots.",
+        "route_reasons": {
+          "incomplete-or-edge-clipped-crop": 25,
+          "independent-pixels-and-bounded-face-evidence": 4,
+          "observed-ordinary-body-anchors": 29,
+          "unconfirmed-independent-pixel-face-shape": 115
+        },
+        "schema": "localocr.real-screens.pixel-branch-counts.v1",
+        "screens": 4,
+        "totals": {
+          "accepted": 0,
+          "bracket_pair_candidates": 2,
+          "candidates": 173,
+          "first_pass_entries": 228,
+          "pixel_only_candidates": 107,
+          "route_eligible": 4,
+          "structural_components": 19,
+          "views": 12
+        }
+      },
+      "scope": "Private real screenshots with typed-input labels; independent evaluation only; no training, selection or threshold use",
+      "screens": 4,
+      "timing": {
+        "count": 4,
+        "p50_seconds": 13.958819949995814,
+        "p95_seconds": 16.675598424999407
+      }
+    }
+  },
+  "round": "region-candidates-20261013",
+  "scene": {
+    "dev": [
+      {
+        "baseline": {
+          "isolated_kaomoji": {
+            "cer": 0.9600709849157054,
+            "character_errors": 2164,
+            "characters": 2254,
+            "count": 266,
+            "exact": 0,
+            "grapheme_cer": 0.9600179694519317,
+            "grapheme_errors": 2137,
+            "grapheme_exact": 0,
+            "graphemes": 2226,
+            "ps_cer": 0.9617224880382775,
+            "ps_characters": 1672,
+            "ps_errors": 1608,
+            "symbol_cer": 0.9620628334321281,
+            "symbol_characters": 1687,
+            "symbol_errors": 1623
+          }
+        },
+        "candidate_sources": {
+          "first-pass-symbol-geometry": 1034,
+          "image-bracket-pair": 110,
+          "image-components": 2440
+        },
+        "candidate_stage": {
+          "body_regions_routed": 70,
+          "bracket_pair_candidates": 110,
+          "complete_ink_coverage": 120,
+          "faces": 266,
+          "note": "Candidate-stage development metrics; unsupported cut-face parts are counted here and excluded from every scored population.",
+          "partial_only": 131,
+          "routed_candidate_count": 170,
+          "safe_complete_coverage": 35,
+          "safe_complete_coverage_ratio": 0.13157894736842105,
+          "safe_routed_complete_coverage": 25,
+          "structural_components": 540,
+          "unsupported_regions": 44
+        },
+        "classifier": "kaomoji-crop-classifier-exp-20261013-002",
+        "config_views": [
+          "raw",
+          "edge-pad-4",
+          "edge-pad-6"
+        ],
+        "dataset_binding": {
+          "counts": {
+            "dev": {
+              "faces": 266,
+              "negative_scenes": 12,
+              "scenes": 60,
+              "unsupported_faces": 22
+            },
+            "heldout": {
+              "faces": 507,
+              "negative_scenes": 24,
+              "scenes": 120,
+              "unsupported_faces": 48
+            }
+          },
+          "dataset_sha256": "5d0925e4f0222afddc87536a63e9288267383608b9ac7817715d6e5ded2cb0ba",
+          "schema_version": "localocr.region-scenes.freeze.v1",
+          "split_sha256": {
+            "dev": "a2f861c9c751d3b1a6f9fde275debc0e5c65b303dfbdbabc74279a4a4b0c677b",
+            "heldout": "9dbeceacde7cdf7f62777c31654a32026ef803c50ab9544621a26ba8dee40abf"
+          }
+        },
+        "exterior_bridge_ratio": 0.45,
+        "label": "cards-v3",
+        "localization": {
+          "baseline_detection_missed_faces": 27,
+          "baseline_no_isolated_face_output": 200,
+          "body_regions": 3382,
+          "body_regions_routed": 70,
+          "body_regions_with_candidate": 2556,
+          "candidate_count": 2830,
+          "candidates_intersecting_body": 2646,
+          "candidates_intersecting_graphic": 0,
+          "complete_ink_coverage": 120,
+          "eligible_candidate_count": 170,
+          "eligible_complete_ink_coverage": 39,
+          "faces": 266,
+          "found_any": 251,
+          "graphic_regions": 1200,
+          "graphic_regions_routed": 0,
+          "graphic_regions_with_candidate": 0,
+          "image_branch_recovers_baseline_detection_miss": 24,
+          "missed": 15,
+          "negative_scenes": 12,
+          "negative_scenes_routed": 1,
+          "negative_scenes_with_candidate": 12,
+          "partial_only": 131,
+          "routed_candidate_count": 170,
+          "routed_candidates_intersecting_body": 62,
+          "routed_candidates_intersecting_graphic": 0,
+          "routed_complete_ink_coverage": 39,
+          "safe_complete_coverage": 35,
+          "safe_routed_complete_coverage": 25,
+          "split_children": 361,
+          "split_parents": 155,
+          "structural_components": 540,
+          "unsupported_regions": 44,
+          "unsupported_regions_routed": 1,
+          "unsupported_regions_with_candidate": 36
+        },
+        "models": {
+          "ppocrv6-tiny-exp-20261013-001": {
+            "body": {
+              "baseline_correct_to_wrong": 0,
+              "baseline_exact": 2268,
+              "baseline_mixed_regions": 636,
+              "body_intersection_transcript_changes": 16,
+              "body_literal_deleted": 0,
+              "erroneous_rewrites": 0,
+              "final_exact": 2268,
+              "final_mixed_regions": 636,
+              "new_body_intersection_errors": 0,
+              "regions": 3382,
+              "split_children_with_unchanged_reading": 3339,
+              "verified_body_preserving_splices": 12
+            },
+            "isolated_kaomoji": {
+              "cer": 0.8611357586512866,
+              "character_errors": 1941,
+              "characters": 2254,
+              "count": 266,
+              "exact": 12,
+              "grapheme_cer": 0.8607367475292004,
+              "grapheme_errors": 1916,
+              "grapheme_exact": 12,
+              "graphemes": 2226,
+              "ps_cer": 0.8546650717703349,
+              "ps_characters": 1672,
+              "ps_errors": 1429,
+              "symbol_cer": 0.8553645524599881,
+              "symbol_characters": 1687,
+              "symbol_errors": 1443
+            },
+            "label": "Tiny · 冻结专项（exp-20261013-001）",
+            "negative": {
+              "baseline_graphic_nonempty": 30,
+              "baseline_nonempty_scenes": 12,
+              "card_list_negative_baseline_nonempty": 12,
+              "card_list_negative_final_nonempty": 12,
+              "card_list_negative_new_nonempty": 0,
+              "card_list_negative_scenes": 12,
+              "final_graphic_nonempty": 30,
+              "final_nonempty_scenes": 12,
+              "graphic_regions": 1200,
+              "negative_scenes": 12,
+              "new_graphic_nonempty": 0,
+              "new_nonempty_scenes": 0
+            },
+            "research_quality_gates": {
+              "actual_routed_candidates": 170,
+              "app_acceptance": false,
+              "body_and_punctuation_new_errors": {
+                "baseline_correct_to_wrong": 0,
+                "body_literal_deleted": 0,
+                "erroneous_rewrites": 0,
+                "new_body_intersection_errors": 0
+              },
+              "effective_face_improvements": 12,
+              "face": {
+                "cer_reduction": 0.09893522626441886,
+                "exact_gain": 12,
+                "passed": true,
+                "ps_cer_reduction": 0.10705741626794263
+              },
+              "negative_new_nonempty": {
+                "new_graphic_nonempty": 0,
+                "new_nonempty_scenes": 0
+              },
+              "passed": true,
+              "production_enabled": false,
+              "promote": false,
+              "research_quality_passed": true
+            },
+            "routing_effectiveness": {
+              "actual_routed_candidates": 170,
+              "face_exact_to_wrong": 0,
+              "face_wrong_to_exact": 12,
+              "isolated_face_wrong_to_exact": 12,
+              "split_materialized": 5,
+              "split_restored": 150,
+              "split_restored_unverifiable": 2
+            }
+          }
+        },
+        "resources": {
+          "first_scene_seconds": 21.698581199998443,
+          "inter_op_threads": 1,
+          "intra_op_threads": 2,
+          "load_seconds": 0.9744687999991584,
+          "peak_rss_bytes": 638738432,
+          "total_warm_seconds": 957.2864806000216,
+          "warm": {
+            "count": 60,
+            "p50_seconds": 15.547190900000714,
+            "p95_seconds": 19.284849469999607
+          }
+        },
+        "scene_kinds": {
+          "card-list": 48,
+          "card-list-negative": 12
+        },
+        "scenes": 60,
+        "split": "dev"
+      },
+      {
+        "baseline": {
+          "isolated_kaomoji": {
+            "cer": 0.8441926345609065,
+            "character_errors": 1192,
+            "characters": 1412,
+            "count": 164,
+            "exact": 1,
+            "grapheme_cer": 0.8435032304379038,
+            "grapheme_errors": 1175,
+            "grapheme_exact": 1,
+            "graphemes": 1393,
+            "ps_cer": 0.8336557059961315,
+            "ps_characters": 1034,
+            "ps_errors": 862,
+            "symbol_cer": 0.8355640535372849,
+            "symbol_characters": 1046,
+            "symbol_errors": 874
+          }
+        },
+        "candidate_sources": {
+          "first-pass-symbol-geometry": 163,
+          "image-bracket-pair": 128,
+          "image-components": 377
+        },
+        "candidate_stage": {
+          "body_regions_routed": 20,
+          "bracket_pair_candidates": 128,
+          "complete_ink_coverage": 130,
+          "faces": 164,
+          "note": "Candidate-stage development metrics; unsupported cut-face parts are counted here and excluded from every scored population.",
+          "partial_only": 33,
+          "routed_candidate_count": 188,
+          "safe_complete_coverage": 117,
+          "safe_complete_coverage_ratio": 0.7134146341463414,
+          "safe_routed_complete_coverage": 90,
+          "structural_components": 0,
+          "unsupported_regions": 0
+        },
+        "classifier": "kaomoji-crop-classifier-exp-20261013-002",
+        "config_views": [
+          "raw",
+          "edge-pad-4",
+          "edge-pad-6"
+        ],
+        "dataset_binding": {
+          "counts": {
+            "dev": {
+              "faces": 164,
+              "scenes": 200
+            },
+            "heldout": {
+              "faces": 343,
+              "scenes": 400
+            }
+          },
+          "dataset_sha256": "bfaecf8fb0d438505fd70dd927f474cb0b6460035c71c95bf0967d8f9750daf3",
+          "schema_version": "localocr.region-scenes.freeze.v1",
+          "split_sha256": {
+            "dev": "ebafb483dc3604834778af24119098839da0c012ace906c1a419785ed7d23786",
+            "heldout": "3d81c6208649ba55bbf84f641696276a5dd361e479c8d61064fd0860976c0888"
+          }
+        },
+        "exterior_bridge_ratio": 0.45,
+        "label": "atoms-mixed-v2",
+        "localization": {
+          "baseline_detection_missed_faces": 7,
+          "baseline_no_isolated_face_output": 74,
+          "body_regions": 193,
+          "body_regions_routed": 20,
+          "body_regions_with_candidate": 193,
+          "candidate_count": 468,
+          "candidates_intersecting_body": 226,
+          "candidates_intersecting_graphic": 0,
+          "complete_ink_coverage": 130,
+          "eligible_candidate_count": 188,
+          "eligible_complete_ink_coverage": 94,
+          "faces": 164,
+          "found_any": 163,
+          "graphic_regions": 21,
+          "graphic_regions_routed": 0,
+          "graphic_regions_with_candidate": 0,
+          "image_branch_recovers_baseline_detection_miss": 7,
+          "missed": 1,
+          "negative_scenes": 14,
+          "negative_scenes_routed": 0,
+          "negative_scenes_with_candidate": 0,
+          "partial_only": 33,
+          "routed_candidate_count": 188,
+          "routed_candidates_intersecting_body": 30,
+          "routed_candidates_intersecting_graphic": 0,
+          "routed_complete_ink_coverage": 94,
+          "safe_complete_coverage": 117,
+          "safe_routed_complete_coverage": 90,
+          "split_children": 109,
+          "split_parents": 49,
+          "structural_components": 0
+        },
+        "models": {
+          "ppocrv6-tiny-exp-20261013-001": {
+            "body": {
+              "baseline_correct_to_wrong": 0,
+              "baseline_exact": 114,
+              "baseline_mixed_regions": 62,
+              "body_intersection_transcript_changes": 20,
+              "body_literal_deleted": 0,
+              "erroneous_rewrites": 0,
+              "final_exact": 122,
+              "final_mixed_regions": 45,
+              "new_body_intersection_errors": 0,
+              "regions": 193,
+              "split_children_with_unchanged_reading": 189,
+              "verified_body_preserving_splices": 3
+            },
+            "isolated_kaomoji": {
+              "cer": 0.5835694050991501,
+              "character_errors": 824,
+              "characters": 1412,
+              "count": 164,
+              "exact": 46,
+              "grapheme_cer": 0.5829145728643216,
+              "grapheme_errors": 812,
+              "grapheme_exact": 46,
+              "graphemes": 1393,
+              "ps_cer": 0.5831721470019342,
+              "ps_characters": 1034,
+              "ps_errors": 603,
+              "symbol_cer": 0.5850860420650096,
+              "symbol_characters": 1046,
+              "symbol_errors": 612
+            },
+            "label": "Tiny · 冻结专项（exp-20261013-001）",
+            "negative": {
+              "baseline_graphic_nonempty": 1,
+              "baseline_nonempty_scenes": 1,
+              "blank_baseline_nonempty": 0,
+              "blank_final_nonempty": 0,
+              "blank_new_nonempty": 0,
+              "blank_scenes": 7,
+              "final_graphic_nonempty": 1,
+              "final_nonempty_scenes": 1,
+              "graphic_only_baseline_nonempty": 1,
+              "graphic_only_final_nonempty": 1,
+              "graphic_only_new_nonempty": 0,
+              "graphic_only_scenes": 7,
+              "graphic_regions": 21,
+              "negative_scenes": 14,
+              "new_graphic_nonempty": 0,
+              "new_nonempty_scenes": 0
+            },
+            "research_quality_gates": {
+              "actual_routed_candidates": 188,
+              "app_acceptance": false,
+              "body_and_punctuation_new_errors": {
+                "baseline_correct_to_wrong": 0,
+                "body_literal_deleted": 0,
+                "erroneous_rewrites": 0,
+                "new_body_intersection_errors": 0
+              },
+              "effective_face_improvements": 44,
+              "face": {
+                "cer_reduction": 0.2606232294617564,
+                "exact_gain": 45,
+                "passed": true,
+                "ps_cer_reduction": 0.2504835589941973
+              },
+              "negative_new_nonempty": {
+                "new_graphic_nonempty": 0,
+                "new_nonempty_scenes": 0
+              },
+              "passed": true,
+              "production_enabled": false,
+              "promote": false,
+              "research_quality_passed": true
+            },
+            "routing_effectiveness": {
+              "actual_routed_candidates": 188,
+              "face_exact_to_wrong": 0,
+              "face_wrong_to_exact": 44,
+              "isolated_face_wrong_to_exact": 45,
+              "split_materialized": 17,
+              "split_restored": 32,
+              "split_restored_unverifiable": 5
+            }
+          }
+        },
+        "resources": {
+          "first_scene_seconds": 1.1729727999991155,
+          "inter_op_threads": 1,
+          "intra_op_threads": 2,
+          "load_seconds": 0.8826900999993086,
+          "peak_rss_bytes": 540606464,
+          "total_warm_seconds": 96.17826370005059,
+          "warm": {
+            "count": 200,
+            "p50_seconds": 0.43227939999997034,
+            "p95_seconds": 0.8349434550007572
+          }
+        },
+        "scene_kinds": {
+          "adjacent-faces": 6,
+          "arm-face": 7,
+          "blank": 7,
+          "body-graphic": 7,
+          "cheek-face": 7,
+          "combining-body": 7,
+          "corner-face": 7,
+          "curly-face": 7,
+          "different-line": 7,
+          "double-face": 7,
+          "edge-face": 7,
+          "fullwidth-face": 7,
+          "graphic-only": 7,
+          "letter-brackets": 7,
+          "low-body": 7,
+          "low-face": 7,
+          "middle-face": 7,
+          "mixed-width-face": 7,
+          "ordinary-brackets": 7,
+          "ordinary-numbers": 7,
+          "outlined-face": 6,
+          "same-line": 7,
+          "shadow-body": 6,
+          "small-face": 7,
+          "square-face": 7,
+          "table-lines": 7,
+          "tail-face": 7,
+          "tight-body": 7,
+          "wide-gap-body": 7
+        },
+        "scenes": 200,
+        "split": "dev"
+      }
+    ],
+    "dev_pairs": [
+      {
+        "current": {
+          "baseline": {
+            "isolated_kaomoji": {
+              "cer": 0.9560585885486018,
+              "character_errors": 2154,
+              "characters": 2253,
+              "count": 269,
+              "exact": 0,
+              "grapheme_cer": 0.9567567567567568,
+              "grapheme_errors": 2124,
+              "grapheme_exact": 0,
+              "graphemes": 2220,
+              "ps_cer": 0.9645345155161494,
+              "ps_characters": 1579,
+              "ps_errors": 1523,
+              "symbol_cer": 0.964824120603015,
+              "symbol_characters": 1592,
+              "symbol_errors": 1536
+            }
+          },
+          "candidate_sources": {
+            "first-pass-symbol-geometry": 915,
+            "image-bracket-pair": 118,
+            "image-components": 2605
+          },
+          "candidate_stage": {
+            "body_regions_routed": 76,
+            "bracket_pair_candidates": 118,
+            "complete_ink_coverage": 138,
+            "faces": 269,
+            "note": "Candidate-stage development metrics; unsupported cut-face parts are counted here and excluded from every scored population.",
+            "partial_only": 130,
+            "routed_candidate_count": 176,
+            "safe_complete_coverage": 44,
+            "safe_complete_coverage_ratio": 0.16356877323420074,
+            "safe_routed_complete_coverage": 26,
+            "structural_components": 540,
+            "unsupported_regions": 0
+          },
+          "classifier": "kaomoji-crop-classifier-exp-20261013-002",
+          "config_views": [
+            "raw",
+            "edge-pad-4",
+            "edge-pad-6"
+          ],
+          "dataset_binding": {
+            "counts": {
+              "dev": {
+                "faces": 269,
+                "negative_scenes": 12,
+                "scenes": 60
+              },
+              "heldout": {
+                "faces": 548,
+                "negative_scenes": 24,
+                "scenes": 120
+              }
+            },
+            "dataset_sha256": "c138b375e40fbf8ae655dc2f2398ac41e827e6f0df2ae054873cde10acb48230",
+            "schema_version": "localocr.region-scenes.freeze.v1",
+            "split_sha256": {
+              "dev": "1864e9f563188a525d7c948bee165e209782921f2969232acc4635ef1020852e",
+              "heldout": "232768a6fcf88e620aa1483e5745732a590c6da50b991b1c0b4631533c8a899a"
+            }
+          },
+          "exterior_bridge_ratio": 0.45,
+          "label": "cards-v2",
+          "localization": {
+            "baseline_detection_missed_faces": 20,
+            "baseline_no_isolated_face_output": 203,
+            "body_regions": 3078,
+            "body_regions_routed": 76,
+            "body_regions_with_candidate": 2412,
+            "candidate_count": 2777,
+            "candidates_intersecting_body": 2581,
+            "candidates_intersecting_graphic": 1,
+            "complete_ink_coverage": 138,
+            "eligible_candidate_count": 176,
+            "eligible_complete_ink_coverage": 52,
+            "faces": 269,
+            "found_any": 268,
+            "graphic_regions": 1200,
+            "graphic_regions_routed": 0,
+            "graphic_regions_with_candidate": 1,
+            "image_branch_recovers_baseline_detection_miss": 20,
+            "missed": 1,
+            "negative_scenes": 12,
+            "negative_scenes_routed": 3,
+            "negative_scenes_with_candidate": 12,
+            "partial_only": 130,
+            "routed_candidate_count": 176,
+            "routed_candidates_intersecting_body": 70,
+            "routed_candidates_intersecting_graphic": 0,
+            "routed_complete_ink_coverage": 52,
+            "safe_complete_coverage": 44,
+            "safe_routed_complete_coverage": 26,
+            "split_children": 257,
+            "split_parents": 116,
+            "structural_components": 540
+          },
+          "models": {
+            "ppocrv6-tiny-exp-20261013-001": {
+              "body": {
+                "baseline_correct_to_wrong": 0,
+                "baseline_exact": 2213,
+                "baseline_mixed_regions": 295,
+                "body_intersection_transcript_changes": 14,
+                "body_literal_deleted": 0,
+                "erroneous_rewrites": 0,
+                "final_exact": 2213,
+                "final_mixed_regions": 295,
+                "new_body_intersection_errors": 0,
+                "regions": 3078,
+                "split_children_with_unchanged_reading": 3061,
+                "verified_body_preserving_splices": 13
+              },
+              "isolated_kaomoji": {
+                "cer": 0.873058144695961,
+                "character_errors": 1967,
+                "characters": 2253,
+                "count": 269,
+                "exact": 7,
+                "grapheme_cer": 0.8729729729729729,
+                "grapheme_errors": 1938,
+                "grapheme_exact": 7,
+                "graphemes": 2220,
+                "ps_cer": 0.8752374920835972,
+                "ps_characters": 1579,
+                "ps_errors": 1382,
+                "symbol_cer": 0.8756281407035176,
+                "symbol_characters": 1592,
+                "symbol_errors": 1394
+              },
+              "label": "Tiny · 冻结专项（exp-20261013-001）",
+              "negative": {
+                "baseline_graphic_nonempty": 39,
+                "baseline_nonempty_scenes": 12,
+                "card_list_negative_baseline_nonempty": 12,
+                "card_list_negative_final_nonempty": 12,
+                "card_list_negative_new_nonempty": 0,
+                "card_list_negative_scenes": 12,
+                "final_graphic_nonempty": 39,
+                "final_nonempty_scenes": 12,
+                "graphic_regions": 1200,
+                "negative_scenes": 12,
+                "new_graphic_nonempty": 0,
+                "new_nonempty_scenes": 0
+              },
+              "research_quality_gates": {
+                "actual_routed_candidates": 176,
+                "app_acceptance": false,
+                "body_and_punctuation_new_errors": {
+                  "baseline_correct_to_wrong": 0,
+                  "body_literal_deleted": 0,
+                  "erroneous_rewrites": 0,
+                  "new_body_intersection_errors": 0
+                },
+                "effective_face_improvements": 7,
+                "face": {
+                  "cer_reduction": 0.08300044385264083,
+                  "exact_gain": 7,
+                  "passed": true,
+                  "ps_cer_reduction": 0.08929702343255219
+                },
+                "negative_new_nonempty": {
+                  "new_graphic_nonempty": 0,
+                  "new_nonempty_scenes": 0
+                },
+                "passed": true,
+                "production_enabled": false,
+                "promote": false,
+                "research_quality_passed": true
+              },
+              "routing_effectiveness": {
+                "actual_routed_candidates": 176,
+                "face_exact_to_wrong": 0,
+                "face_wrong_to_exact": 7,
+                "isolated_face_wrong_to_exact": 7,
+                "split_materialized": 2,
+                "split_restored": 112,
+                "split_restored_unverifiable": 3
+              }
+            }
+          },
+          "resources": {
+            "first_scene_seconds": 16.095688499997777,
+            "inter_op_threads": 1,
+            "intra_op_threads": 2,
+            "load_seconds": 0.8829837000012049,
+            "peak_rss_bytes": 549273600,
+            "total_warm_seconds": 803.6463410000288,
+            "warm": {
+              "count": 60,
+              "p50_seconds": 13.37287545000072,
+              "p95_seconds": 15.006127100002777
+            }
+          },
+          "scene_kinds": {
+            "card-list": 48,
+            "card-list-negative": 12
+          },
+          "scenes": 60,
+          "split": "dev"
+        },
+        "label": "cards-v2",
+        "previous": {
+          "baseline": {
+            "isolated_kaomoji": {
+              "cer": 0.9560585885486018,
+              "character_errors": 2154,
+              "characters": 2253,
+              "count": 269,
+              "exact": 0,
+              "grapheme_cer": 0.9567567567567568,
+              "grapheme_errors": 2124,
+              "grapheme_exact": 0,
+              "graphemes": 2220,
+              "ps_cer": 0.9645345155161494,
+              "ps_characters": 1579,
+              "ps_errors": 1523,
+              "symbol_cer": 0.964824120603015,
+              "symbol_characters": 1592,
+              "symbol_errors": 1536
+            }
+          },
+          "candidate_sources": {
+            "first-pass-symbol-geometry": 927,
+            "image-components": 2549
+          },
+          "candidate_stage": null,
+          "classifier": "kaomoji-crop-classifier-exp-20261013-002",
+          "config_views": [
+            "raw",
+            "edge-pad-4",
+            "edge-pad-6"
+          ],
+          "dataset_binding": {
+            "counts": {
+              "dev": {
+                "faces": 269,
+                "negative_scenes": 12,
+                "scenes": 60
+              },
+              "heldout": {
+                "faces": 548,
+                "negative_scenes": 24,
+                "scenes": 120
+              }
+            },
+            "dataset_sha256": "c138b375e40fbf8ae655dc2f2398ac41e827e6f0df2ae054873cde10acb48230",
+            "schema_version": "localocr.region-scenes.freeze.v1",
+            "split_sha256": {
+              "dev": "1864e9f563188a525d7c948bee165e209782921f2969232acc4635ef1020852e",
+              "heldout": "232768a6fcf88e620aa1483e5745732a590c6da50b991b1c0b4631533c8a899a"
+            }
+          },
+          "exterior_bridge_ratio": null,
+          "label": "cards-v2",
+          "localization": {
+            "baseline_detection_missed_faces": 20,
+            "baseline_no_isolated_face_output": 203,
+            "body_regions": 3078,
+            "body_regions_routed": 98,
+            "body_regions_with_candidate": 2380,
+            "candidate_count": 2712,
+            "candidates_intersecting_body": 2572,
+            "candidates_intersecting_graphic": 1,
+            "complete_ink_coverage": 134,
+            "eligible_candidate_count": 166,
+            "eligible_complete_ink_coverage": 65,
+            "faces": 269,
+            "found_any": 267,
+            "graphic_regions": 1200,
+            "graphic_regions_routed": 0,
+            "graphic_regions_with_candidate": 1,
+            "image_branch_recovers_baseline_detection_miss": 20,
+            "missed": 2,
+            "negative_scenes": 12,
+            "negative_scenes_routed": 3,
+            "negative_scenes_with_candidate": 12,
+            "partial_only": 133,
+            "routed_candidate_count": 166,
+            "routed_candidates_intersecting_body": 89,
+            "routed_candidates_intersecting_graphic": 0,
+            "routed_complete_ink_coverage": 65,
+            "safe_complete_coverage": 11,
+            "safe_routed_complete_coverage": 7,
+            "split_children": 257,
+            "split_parents": 116
+          },
+          "models": {
+            "ppocrv6-tiny-exp-20261013-001": {
+              "body": {
+                "baseline_correct_to_wrong": 0,
+                "baseline_exact": 2213,
+                "baseline_mixed_regions": 295,
+                "body_intersection_transcript_changes": 12,
+                "body_literal_deleted": 0,
+                "erroneous_rewrites": 0,
+                "final_exact": 2213,
+                "final_mixed_regions": 295,
+                "new_body_intersection_errors": 0,
+                "regions": 3078,
+                "split_children_with_unchanged_reading": 3063,
+                "verified_body_preserving_splices": 11
+              },
+              "isolated_kaomoji": {
+                "cer": 0.8779405237461163,
+                "character_errors": 1978,
+                "characters": 2253,
+                "count": 269,
+                "exact": 7,
+                "grapheme_cer": 0.8774774774774775,
+                "grapheme_errors": 1948,
+                "grapheme_exact": 7,
+                "graphemes": 2220,
+                "ps_cer": 0.8822039265357822,
+                "ps_characters": 1579,
+                "ps_errors": 1393,
+                "symbol_cer": 0.8831658291457286,
+                "symbol_characters": 1592,
+                "symbol_errors": 1406
+              },
+              "label": "Tiny · 冻结专项（exp-20261013-001）",
+              "negative": {
+                "baseline_graphic_nonempty": 39,
+                "baseline_nonempty_scenes": 12,
+                "card_list_negative_baseline_nonempty": 12,
+                "card_list_negative_final_nonempty": 12,
+                "card_list_negative_new_nonempty": 0,
+                "card_list_negative_scenes": 12,
+                "final_graphic_nonempty": 39,
+                "final_nonempty_scenes": 12,
+                "graphic_regions": 1200,
+                "negative_scenes": 12,
+                "new_graphic_nonempty": 0,
+                "new_nonempty_scenes": 0
+              },
+              "research_quality_gates": {
+                "actual_routed_candidates": 166,
+                "app_acceptance": false,
+                "body_and_punctuation_new_errors": {
+                  "baseline_correct_to_wrong": 0,
+                  "body_literal_deleted": 0,
+                  "erroneous_rewrites": 0,
+                  "new_body_intersection_errors": 0
+                },
+                "effective_face_improvements": 7,
+                "face": {
+                  "cer_reduction": 0.07811806480248551,
+                  "exact_gain": 7,
+                  "passed": true,
+                  "ps_cer_reduction": 0.08233058898036727
+                },
+                "negative_new_nonempty": {
+                  "new_graphic_nonempty": 0,
+                  "new_nonempty_scenes": 0
+                },
+                "passed": true,
+                "production_enabled": false,
+                "promote": false,
+                "research_quality_passed": true
+              },
+              "routing_effectiveness": {
+                "actual_routed_candidates": 166,
+                "face_exact_to_wrong": 0,
+                "face_wrong_to_exact": 7,
+                "isolated_face_wrong_to_exact": 7,
+                "split_materialized": 2,
+                "split_restored": 113,
+                "split_restored_unverifiable": 3
+              }
+            }
+          },
+          "resources": {
+            "first_scene_seconds": 14.619387900002039,
+            "inter_op_threads": 1,
+            "intra_op_threads": 2,
+            "load_seconds": 0.8908181000006152,
+            "peak_rss_bytes": 554582016,
+            "total_warm_seconds": 777.2367345000057,
+            "warm": {
+              "count": 60,
+              "p50_seconds": 12.709396750000451,
+              "p95_seconds": 14.458117010001297
+            }
+          },
+          "scene_kinds": {
+            "card-list": 48,
+            "card-list-negative": 12
+          },
+          "scenes": 60,
+          "split": "dev"
+        }
+      },
+      {
+        "current": {
+          "baseline": {
+            "isolated_kaomoji": {
+              "cer": 0.8321167883211679,
+              "character_errors": 1140,
+              "characters": 1370,
+              "count": 164,
+              "exact": 0,
+              "grapheme_cer": 0.8337028824833703,
+              "grapheme_errors": 1128,
+              "grapheme_exact": 0,
+              "graphemes": 1353,
+              "ps_cer": 0.8286573146292585,
+              "ps_characters": 998,
+              "ps_errors": 827,
+              "symbol_cer": 0.8303571428571429,
+              "symbol_characters": 1008,
+              "symbol_errors": 837
+            }
+          },
+          "candidate_sources": {
+            "first-pass-symbol-geometry": 170,
+            "image-bracket-pair": 130,
+            "image-components": 374
+          },
+          "candidate_stage": {
+            "body_regions_routed": 21,
+            "bracket_pair_candidates": 130,
+            "complete_ink_coverage": 122,
+            "faces": 164,
+            "note": "Candidate-stage development metrics; unsupported cut-face parts are counted here and excluded from every scored population.",
+            "partial_only": 42,
+            "routed_candidate_count": 181,
+            "safe_complete_coverage": 108,
+            "safe_complete_coverage_ratio": 0.6585365853658537,
+            "safe_routed_complete_coverage": 78,
+            "structural_components": 0,
+            "unsupported_regions": 0
+          },
+          "classifier": "kaomoji-crop-classifier-exp-20261013-002",
+          "config_views": [
+            "raw",
+            "edge-pad-4",
+            "edge-pad-6"
+          ],
+          "dataset_binding": {
+            "counts": {
+              "dev": {
+                "faces": 164,
+                "scenes": 200
+              },
+              "heldout": {
+                "faces": 343,
+                "scenes": 400
+              }
+            },
+            "dataset_sha256": "b562182d865cd1b2504772150fb46313d7903a678d96dd575038dac2fd9f84ab",
+            "schema_version": "localocr.region-scenes.freeze.v1",
+            "split_sha256": {
+              "dev": "37b927a018f7845308a762af669a57ed3e825e7da5053cc603914a2e90fedbec",
+              "heldout": "a4956d5552326d8958a656d1a784c587bc3a6a5e472a846674d97f54273bc387"
+            }
+          },
+          "exterior_bridge_ratio": 0.45,
+          "label": "atoms-mixed-v1",
+          "localization": {
+            "baseline_detection_missed_faces": 4,
+            "baseline_no_isolated_face_output": 68,
+            "body_regions": 193,
+            "body_regions_routed": 21,
+            "body_regions_with_candidate": 192,
+            "candidate_count": 458,
+            "candidates_intersecting_body": 228,
+            "candidates_intersecting_graphic": 0,
+            "complete_ink_coverage": 122,
+            "eligible_candidate_count": 181,
+            "eligible_complete_ink_coverage": 83,
+            "faces": 164,
+            "found_any": 164,
+            "graphic_regions": 21,
+            "graphic_regions_routed": 0,
+            "graphic_regions_with_candidate": 0,
+            "image_branch_recovers_baseline_detection_miss": 4,
+            "missed": 0,
+            "negative_scenes": 14,
+            "negative_scenes_routed": 0,
+            "negative_scenes_with_candidate": 0,
+            "partial_only": 42,
+            "routed_candidate_count": 181,
+            "routed_candidates_intersecting_body": 36,
+            "routed_candidates_intersecting_graphic": 0,
+            "routed_complete_ink_coverage": 83,
+            "safe_complete_coverage": 108,
+            "safe_routed_complete_coverage": 78,
+            "split_children": 97,
+            "split_parents": 45,
+            "structural_components": 0
+          },
+          "models": {
+            "ppocrv6-tiny-exp-20261013-001": {
+              "body": {
+                "baseline_correct_to_wrong": 0,
+                "baseline_exact": 119,
+                "baseline_mixed_regions": 58,
+                "body_intersection_transcript_changes": 9,
+                "body_literal_deleted": 0,
+                "erroneous_rewrites": 0,
+                "final_exact": 122,
+                "final_mixed_regions": 51,
+                "new_body_intersection_errors": 0,
+                "regions": 193,
+                "split_children_with_unchanged_reading": 190,
+                "verified_body_preserving_splices": 2
+              },
+              "isolated_kaomoji": {
+                "cer": 0.6518248175182482,
+                "character_errors": 893,
+                "characters": 1370,
+                "count": 164,
+                "exact": 35,
+                "grapheme_cer": 0.6548410938654841,
+                "grapheme_errors": 886,
+                "grapheme_exact": 35,
+                "graphemes": 1353,
+                "ps_cer": 0.6362725450901804,
+                "ps_characters": 998,
+                "ps_errors": 635,
+                "symbol_cer": 0.6359126984126984,
+                "symbol_characters": 1008,
+                "symbol_errors": 641
+              },
+              "label": "Tiny · 冻结专项（exp-20261013-001）",
+              "negative": {
+                "baseline_graphic_nonempty": 1,
+                "baseline_nonempty_scenes": 1,
+                "blank_baseline_nonempty": 0,
+                "blank_final_nonempty": 0,
+                "blank_new_nonempty": 0,
+                "blank_scenes": 7,
+                "final_graphic_nonempty": 1,
+                "final_nonempty_scenes": 1,
+                "graphic_only_baseline_nonempty": 1,
+                "graphic_only_final_nonempty": 1,
+                "graphic_only_new_nonempty": 0,
+                "graphic_only_scenes": 7,
+                "graphic_regions": 21,
+                "negative_scenes": 14,
+                "new_graphic_nonempty": 0,
+                "new_nonempty_scenes": 0
+              },
+              "research_quality_gates": {
+                "actual_routed_candidates": 181,
+                "app_acceptance": false,
+                "body_and_punctuation_new_errors": {
+                  "baseline_correct_to_wrong": 0,
+                  "body_literal_deleted": 0,
+                  "erroneous_rewrites": 0,
+                  "new_body_intersection_errors": 0
+                },
+                "effective_face_improvements": 35,
+                "face": {
+                  "cer_reduction": 0.1802919708029197,
+                  "exact_gain": 35,
+                  "passed": true,
+                  "ps_cer_reduction": 0.19238476953907813
+                },
+                "negative_new_nonempty": {
+                  "new_graphic_nonempty": 0,
+                  "new_nonempty_scenes": 0
+                },
+                "passed": true,
+                "production_enabled": false,
+                "promote": false,
+                "research_quality_passed": true
+              },
+              "routing_effectiveness": {
+                "actual_routed_candidates": 181,
+                "face_exact_to_wrong": 0,
+                "face_wrong_to_exact": 35,
+                "isolated_face_wrong_to_exact": 35,
+                "split_materialized": 9,
+                "split_restored": 36,
+                "split_restored_unverifiable": 8
+              }
+            }
+          },
+          "resources": {
+            "first_scene_seconds": 1.326100199999928,
+            "inter_op_threads": 1,
+            "intra_op_threads": 2,
+            "load_seconds": 0.905858400001307,
+            "peak_rss_bytes": 579293184,
+            "total_warm_seconds": 88.9284019000188,
+            "warm": {
+              "count": 200,
+              "p50_seconds": 0.3981684499995026,
+              "p95_seconds": 0.6924976949998378
+            }
+          },
+          "scene_kinds": {
+            "adjacent-faces": 6,
+            "arm-face": 7,
+            "blank": 7,
+            "body-graphic": 7,
+            "cheek-face": 7,
+            "combining-body": 7,
+            "corner-face": 7,
+            "curly-face": 7,
+            "different-line": 7,
+            "double-face": 7,
+            "edge-face": 7,
+            "fullwidth-face": 7,
+            "graphic-only": 7,
+            "letter-brackets": 7,
+            "low-body": 7,
+            "low-face": 7,
+            "middle-face": 7,
+            "mixed-width-face": 7,
+            "ordinary-brackets": 7,
+            "ordinary-numbers": 7,
+            "outlined-face": 6,
+            "same-line": 7,
+            "shadow-body": 6,
+            "small-face": 7,
+            "square-face": 7,
+            "table-lines": 7,
+            "tail-face": 7,
+            "tight-body": 7,
+            "wide-gap-body": 7
+          },
+          "scenes": 200,
+          "split": "dev"
+        },
+        "label": "atoms-mixed-v1",
+        "previous": {
+          "baseline": {
+            "isolated_kaomoji": {
+              "cer": 0.8321167883211679,
+              "character_errors": 1140,
+              "characters": 1370,
+              "count": 164,
+              "exact": 0,
+              "grapheme_cer": 0.8337028824833703,
+              "grapheme_errors": 1128,
+              "grapheme_exact": 0,
+              "graphemes": 1353,
+              "ps_cer": 0.8286573146292585,
+              "ps_characters": 998,
+              "ps_errors": 827,
+              "symbol_cer": 0.8303571428571429,
+              "symbol_characters": 1008,
+              "symbol_errors": 837
+            }
+          },
+          "candidate_sources": {
+            "first-pass-symbol-geometry": 170,
+            "image-bracket-pair": 131,
+            "image-components": 374
+          },
+          "candidate_stage": null,
+          "classifier": "kaomoji-crop-classifier-exp-20261013-002",
+          "config_views": [
+            "raw",
+            "edge-pad-4",
+            "edge-pad-6"
+          ],
+          "dataset_binding": {
+            "counts": {
+              "dev": {
+                "faces": 164,
+                "scenes": 200
+              },
+              "heldout": {
+                "faces": 343,
+                "scenes": 400
+              }
+            },
+            "dataset_sha256": "b562182d865cd1b2504772150fb46313d7903a678d96dd575038dac2fd9f84ab",
+            "schema_version": "localocr.region-scenes.freeze.v1",
+            "split_sha256": {
+              "dev": "37b927a018f7845308a762af669a57ed3e825e7da5053cc603914a2e90fedbec",
+              "heldout": "a4956d5552326d8958a656d1a784c587bc3a6a5e472a846674d97f54273bc387"
+            }
+          },
+          "exterior_bridge_ratio": null,
+          "label": "atoms-mixed-v1",
+          "localization": {
+            "baseline_detection_missed_faces": 4,
+            "baseline_no_isolated_face_output": 68,
+            "body_regions": 193,
+            "body_regions_routed": 22,
+            "body_regions_with_candidate": 192,
+            "candidate_count": 445,
+            "candidates_intersecting_body": 218,
+            "candidates_intersecting_graphic": 0,
+            "complete_ink_coverage": 127,
+            "eligible_candidate_count": 172,
+            "eligible_complete_ink_coverage": 89,
+            "faces": 164,
+            "found_any": 164,
+            "graphic_regions": 21,
+            "graphic_regions_routed": 0,
+            "graphic_regions_with_candidate": 0,
+            "image_branch_recovers_baseline_detection_miss": 4,
+            "missed": 0,
+            "negative_scenes": 14,
+            "negative_scenes_routed": 0,
+            "negative_scenes_with_candidate": 0,
+            "partial_only": 37,
+            "routed_candidate_count": 172,
+            "routed_candidates_intersecting_body": 26,
+            "routed_candidates_intersecting_graphic": 0,
+            "routed_complete_ink_coverage": 89,
+            "safe_complete_coverage": 110,
+            "safe_routed_complete_coverage": 81,
+            "split_children": 97,
+            "split_parents": 45
+          },
+          "models": {
+            "ppocrv6-tiny-exp-20261013-001": {
+              "body": {
+                "baseline_correct_to_wrong": 0,
+                "baseline_exact": 119,
+                "baseline_mixed_regions": 58,
+                "body_intersection_transcript_changes": 9,
+                "body_literal_deleted": 0,
+                "erroneous_rewrites": 0,
+                "final_exact": 123,
+                "final_mixed_regions": 50,
+                "new_body_intersection_errors": 0,
+                "regions": 193,
+                "split_children_with_unchanged_reading": 191,
+                "verified_body_preserving_splices": 1
+              },
+              "isolated_kaomoji": {
+                "cer": 0.6204379562043796,
+                "character_errors": 850,
+                "characters": 1370,
+                "count": 164,
+                "exact": 41,
+                "grapheme_cer": 0.6237989652623799,
+                "grapheme_errors": 844,
+                "grapheme_exact": 41,
+                "graphemes": 1353,
+                "ps_cer": 0.6052104208416834,
+                "ps_characters": 998,
+                "ps_errors": 604,
+                "symbol_cer": 0.6051587301587301,
+                "symbol_characters": 1008,
+                "symbol_errors": 610
+              },
+              "label": "Tiny · 冻结专项（exp-20261013-001）",
+              "negative": {
+                "baseline_graphic_nonempty": 1,
+                "baseline_nonempty_scenes": 1,
+                "blank_baseline_nonempty": 0,
+                "blank_final_nonempty": 0,
+                "blank_new_nonempty": 0,
+                "blank_scenes": 7,
+                "final_graphic_nonempty": 1,
+                "final_nonempty_scenes": 1,
+                "graphic_only_baseline_nonempty": 1,
+                "graphic_only_final_nonempty": 1,
+                "graphic_only_new_nonempty": 0,
+                "graphic_only_scenes": 7,
+                "graphic_regions": 21,
+                "negative_scenes": 14,
+                "new_graphic_nonempty": 0,
+                "new_nonempty_scenes": 0
+              },
+              "research_quality_gates": {
+                "actual_routed_candidates": 172,
+                "app_acceptance": false,
+                "body_and_punctuation_new_errors": {
+                  "baseline_correct_to_wrong": 0,
+                  "body_literal_deleted": 0,
+                  "erroneous_rewrites": 0,
+                  "new_body_intersection_errors": 0
+                },
+                "effective_face_improvements": 41,
+                "face": {
+                  "cer_reduction": 0.21167883211678828,
+                  "exact_gain": 41,
+                  "passed": true,
+                  "ps_cer_reduction": 0.2234468937875751
+                },
+                "negative_new_nonempty": {
+                  "new_graphic_nonempty": 0,
+                  "new_nonempty_scenes": 0
+                },
+                "passed": true,
+                "production_enabled": false,
+                "promote": false,
+                "research_quality_passed": true
+              },
+              "routing_effectiveness": {
+                "actual_routed_candidates": 172,
+                "face_exact_to_wrong": 0,
+                "face_wrong_to_exact": 41,
+                "isolated_face_wrong_to_exact": 41,
+                "split_materialized": 10,
+                "split_restored": 35,
+                "split_restored_unverifiable": 7
+              }
+            }
+          },
+          "resources": {
+            "first_scene_seconds": 0.9983623000007356,
+            "inter_op_threads": 1,
+            "intra_op_threads": 2,
+            "load_seconds": 0.9099889000026451,
+            "peak_rss_bytes": 582193152,
+            "total_warm_seconds": 171.90661629999522,
+            "warm": {
+              "count": 200,
+              "p50_seconds": 0.7729480500001955,
+              "p95_seconds": 1.435392285001944
+            }
+          },
+          "scene_kinds": {
+            "adjacent-faces": 6,
+            "arm-face": 7,
+            "blank": 7,
+            "body-graphic": 7,
+            "cheek-face": 7,
+            "combining-body": 7,
+            "corner-face": 7,
+            "curly-face": 7,
+            "different-line": 7,
+            "double-face": 7,
+            "edge-face": 7,
+            "fullwidth-face": 7,
+            "graphic-only": 7,
+            "letter-brackets": 7,
+            "low-body": 7,
+            "low-face": 7,
+            "middle-face": 7,
+            "mixed-width-face": 7,
+            "ordinary-brackets": 7,
+            "ordinary-numbers": 7,
+            "outlined-face": 6,
+            "same-line": 7,
+            "shadow-body": 6,
+            "small-face": 7,
+            "square-face": 7,
+            "table-lines": 7,
+            "tail-face": 7,
+            "tight-body": 7,
+            "wide-gap-body": 7
+          },
+          "scenes": 200,
+          "split": "dev"
+        }
+      }
+    ],
+    "heldout": [
+      {
+        "baseline": {
+          "isolated_kaomoji": {
+            "cer": 0.833972793861179,
+            "character_errors": 2391,
+            "characters": 2867,
+            "count": 343,
+            "exact": 2,
+            "grapheme_cer": 0.8358901177310025,
+            "grapheme_errors": 2343,
+            "grapheme_exact": 2,
+            "graphemes": 2803,
+            "ps_cer": 0.8330928330928331,
+            "ps_characters": 2079,
+            "ps_errors": 1732,
+            "symbol_cer": 0.8356229275225012,
+            "symbol_characters": 2111,
+            "symbol_errors": 1764
+          }
+        },
+        "candidate_sources": {
+          "first-pass-symbol-geometry": 335,
+          "image-bracket-pair": 233,
+          "image-components": 730
+        },
+        "candidate_stage": {
+          "body_regions_routed": 30,
+          "bracket_pair_candidates": 233,
+          "complete_ink_coverage": 260,
+          "faces": 343,
+          "note": "Candidate-stage development metrics; unsupported cut-face parts are counted here and excluded from every scored population.",
+          "partial_only": 71,
+          "routed_candidate_count": 345,
+          "safe_complete_coverage": 240,
+          "safe_complete_coverage_ratio": 0.6997084548104956,
+          "safe_routed_complete_coverage": 172,
+          "structural_components": 0,
+          "unsupported_regions": 0
+        },
+        "classifier": "kaomoji-crop-classifier-exp-20261013-002",
+        "config_views": [
+          "raw",
+          "edge-pad-4",
+          "edge-pad-6"
+        ],
+        "dataset_binding": {
+          "counts": {
+            "dev": {
+              "faces": 164,
+              "scenes": 200
+            },
+            "heldout": {
+              "faces": 343,
+              "scenes": 400
+            }
+          },
+          "dataset_sha256": "bfaecf8fb0d438505fd70dd927f474cb0b6460035c71c95bf0967d8f9750daf3",
+          "schema_version": "localocr.region-scenes.freeze.v1",
+          "split_sha256": {
+            "dev": "ebafb483dc3604834778af24119098839da0c012ace906c1a419785ed7d23786",
+            "heldout": "3d81c6208649ba55bbf84f641696276a5dd361e479c8d61064fd0860976c0888"
+          }
+        },
+        "exterior_bridge_ratio": 0.45,
+        "label": "atoms-mixed-v2",
+        "localization": {
+          "baseline_detection_missed_faces": 17,
+          "baseline_no_isolated_face_output": 136,
+          "body_regions": 414,
+          "body_regions_routed": 30,
+          "body_regions_with_candidate": 351,
+          "candidate_count": 850,
+          "candidates_intersecting_body": 381,
+          "candidates_intersecting_graphic": 0,
+          "complete_ink_coverage": 260,
+          "eligible_candidate_count": 345,
+          "eligible_complete_ink_coverage": 179,
+          "faces": 343,
+          "found_any": 331,
+          "graphic_regions": 42,
+          "graphic_regions_routed": 0,
+          "graphic_regions_with_candidate": 0,
+          "image_branch_recovers_baseline_detection_miss": 15,
+          "missed": 12,
+          "negative_scenes": 28,
+          "negative_scenes_routed": 0,
+          "negative_scenes_with_candidate": 0,
+          "partial_only": 71,
+          "routed_candidate_count": 345,
+          "routed_candidates_intersecting_body": 34,
+          "routed_candidates_intersecting_graphic": 0,
+          "routed_complete_ink_coverage": 179,
+          "safe_complete_coverage": 240,
+          "safe_routed_complete_coverage": 172,
+          "split_children": 178,
+          "split_parents": 84,
+          "structural_components": 0
+        },
+        "models": {
+          "ppocrv6-tiny-exp-20261013-001": {
+            "body": {
+              "baseline_correct_to_wrong": 0,
+              "baseline_exact": 81,
+              "baseline_mixed_regions": 75,
+              "body_intersection_transcript_changes": 16,
+              "body_literal_deleted": 0,
+              "erroneous_rewrites": 0,
+              "final_exact": 84,
+              "final_mixed_regions": 61,
+              "new_body_intersection_errors": 0,
+              "regions": 414,
+              "split_children_with_unchanged_reading": 413,
+              "verified_body_preserving_splices": 1
+            },
+            "isolated_kaomoji": {
+              "cer": 0.6442274154168119,
+              "character_errors": 1847,
+              "characters": 2867,
+              "count": 343,
+              "exact": 73,
+              "grapheme_cer": 0.643952907599001,
+              "grapheme_errors": 1805,
+              "grapheme_exact": 73,
+              "graphemes": 2803,
+              "ps_cer": 0.6517556517556518,
+              "ps_characters": 2079,
+              "ps_errors": 1355,
+              "symbol_cer": 0.655139744197063,
+              "symbol_characters": 2111,
+              "symbol_errors": 1383
+            },
+            "label": "Tiny · 冻结专项（exp-20261013-001）",
+            "negative": {
+              "baseline_graphic_nonempty": 0,
+              "baseline_nonempty_scenes": 0,
+              "blank_baseline_nonempty": 0,
+              "blank_final_nonempty": 0,
+              "blank_new_nonempty": 0,
+              "blank_scenes": 14,
+              "final_graphic_nonempty": 0,
+              "final_nonempty_scenes": 0,
+              "graphic_only_baseline_nonempty": 0,
+              "graphic_only_final_nonempty": 0,
+              "graphic_only_new_nonempty": 0,
+              "graphic_only_scenes": 14,
+              "graphic_regions": 42,
+              "negative_scenes": 28,
+              "new_graphic_nonempty": 0,
+              "new_nonempty_scenes": 0
+            },
+            "research_quality_gates": {
+              "actual_routed_candidates": 345,
+              "app_acceptance": false,
+              "body_and_punctuation_new_errors": {
+                "baseline_correct_to_wrong": 0,
+                "body_literal_deleted": 0,
+                "erroneous_rewrites": 0,
+                "new_body_intersection_errors": 0
+              },
+              "effective_face_improvements": 71,
+              "face": {
+                "cer_reduction": 0.189745378444367,
+                "exact_gain": 71,
+                "passed": true,
+                "ps_cer_reduction": 0.18133718133718135
+              },
+              "negative_new_nonempty": {
+                "new_graphic_nonempty": 0,
+                "new_nonempty_scenes": 0
+              },
+              "passed": true,
+              "production_enabled": false,
+              "promote": false,
+              "research_quality_passed": true
+            },
+            "routing_effectiveness": {
+              "actual_routed_candidates": 345,
+              "face_exact_to_wrong": 0,
+              "face_wrong_to_exact": 71,
+              "isolated_face_wrong_to_exact": 71,
+              "split_materialized": 24,
+              "split_restored": 60,
+              "split_restored_unverifiable": 16
+            }
+          }
+        },
+        "resources": {
+          "first_scene_seconds": 0.5582195000024512,
+          "inter_op_threads": 1,
+          "intra_op_threads": 2,
+          "load_seconds": 1.0700256999989506,
+          "peak_rss_bytes": 613621760,
+          "total_warm_seconds": 172.5255069000632,
+          "warm": {
+            "count": 400,
+            "p50_seconds": 0.36916740000015125,
+            "p95_seconds": 0.805650539998896
+          }
+        },
+        "scene_kinds": {
+          "adjacent-faces": 13,
+          "arm-face": 14,
+          "blank": 14,
+          "body-graphic": 14,
+          "cheek-face": 14,
+          "combining-body": 14,
+          "corner-face": 13,
+          "curly-face": 14,
+          "different-line": 14,
+          "double-face": 14,
+          "edge-face": 14,
+          "fullwidth-face": 14,
+          "graphic-only": 14,
+          "letter-brackets": 14,
+          "low-body": 14,
+          "low-face": 14,
+          "middle-face": 14,
+          "mixed-width-face": 13,
+          "ordinary-brackets": 14,
+          "ordinary-numbers": 14,
+          "outlined-face": 13,
+          "same-line": 14,
+          "shadow-body": 13,
+          "small-face": 14,
+          "square-face": 14,
+          "table-lines": 14,
+          "tail-face": 14,
+          "tight-body": 14,
+          "wide-gap-body": 13
+        },
+        "scenes": 400,
+        "split": "heldout"
+      },
+      {
+        "baseline": {
+          "isolated_kaomoji": {
+            "cer": 0.9550069220119981,
+            "character_errors": 4139,
+            "characters": 4334,
+            "count": 507,
+            "exact": 1,
+            "grapheme_cer": 0.9547797563261481,
+            "grapheme_errors": 4075,
+            "grapheme_exact": 1,
+            "graphemes": 4268,
+            "ps_cer": 0.9576702737110121,
+            "ps_characters": 3142,
+            "ps_errors": 3009,
+            "symbol_cer": 0.9581761006289308,
+            "symbol_characters": 3180,
+            "symbol_errors": 3047
+          }
+        },
+        "candidate_sources": {
+          "first-pass-symbol-geometry": 2102,
+          "image-bracket-pair": 214,
+          "image-components": 4899
+        },
+        "candidate_stage": {
+          "body_regions_routed": 136,
+          "bracket_pair_candidates": 214,
+          "complete_ink_coverage": 224,
+          "faces": 507,
+          "note": "Candidate-stage development metrics; unsupported cut-face parts are counted here and excluded from every scored population.",
+          "partial_only": 252,
+          "routed_candidate_count": 309,
+          "safe_complete_coverage": 62,
+          "safe_complete_coverage_ratio": 0.1222879684418146,
+          "safe_routed_complete_coverage": 34,
+          "structural_components": 1080,
+          "unsupported_regions": 96
+        },
+        "classifier": "kaomoji-crop-classifier-exp-20261013-002",
+        "config_views": [
+          "raw",
+          "edge-pad-4",
+          "edge-pad-6"
+        ],
+        "dataset_binding": {
+          "counts": {
+            "dev": {
+              "faces": 266,
+              "negative_scenes": 12,
+              "scenes": 60,
+              "unsupported_faces": 22
+            },
+            "heldout": {
+              "faces": 507,
+              "negative_scenes": 24,
+              "scenes": 120,
+              "unsupported_faces": 48
+            }
+          },
+          "dataset_sha256": "5d0925e4f0222afddc87536a63e9288267383608b9ac7817715d6e5ded2cb0ba",
+          "schema_version": "localocr.region-scenes.freeze.v1",
+          "split_sha256": {
+            "dev": "a2f861c9c751d3b1a6f9fde275debc0e5c65b303dfbdbabc74279a4a4b0c677b",
+            "heldout": "9dbeceacde7cdf7f62777c31654a32026ef803c50ab9544621a26ba8dee40abf"
+          }
+        },
+        "exterior_bridge_ratio": 0.45,
+        "label": "cards-v3",
+        "localization": {
+          "baseline_detection_missed_faces": 40,
+          "baseline_no_isolated_face_output": 390,
+          "body_regions": 6823,
+          "body_regions_routed": 136,
+          "body_regions_with_candidate": 5218,
+          "candidate_count": 5669,
+          "candidates_intersecting_body": 5343,
+          "candidates_intersecting_graphic": 0,
+          "complete_ink_coverage": 224,
+          "eligible_candidate_count": 309,
+          "eligible_complete_ink_coverage": 88,
+          "faces": 507,
+          "found_any": 476,
+          "graphic_regions": 2400,
+          "graphic_regions_routed": 0,
+          "graphic_regions_with_candidate": 0,
+          "image_branch_recovers_baseline_detection_miss": 38,
+          "missed": 31,
+          "negative_scenes": 24,
+          "negative_scenes_routed": 2,
+          "negative_scenes_with_candidate": 24,
+          "partial_only": 252,
+          "routed_candidate_count": 309,
+          "routed_candidates_intersecting_body": 123,
+          "routed_candidates_intersecting_graphic": 0,
+          "routed_complete_ink_coverage": 88,
+          "safe_complete_coverage": 62,
+          "safe_routed_complete_coverage": 34,
+          "split_children": 812,
+          "split_parents": 349,
+          "structural_components": 1080,
+          "unsupported_regions": 96,
+          "unsupported_regions_routed": 1,
+          "unsupported_regions_with_candidate": 92
+        },
+        "models": {
+          "ppocrv6-tiny-exp-20261013-001": {
+            "body": {
+              "baseline_correct_to_wrong": 0,
+              "baseline_exact": 4049,
+              "baseline_mixed_regions": 1893,
+              "body_intersection_transcript_changes": 29,
+              "body_literal_deleted": 0,
+              "erroneous_rewrites": 0,
+              "final_exact": 4049,
+              "final_mixed_regions": 1894,
+              "new_body_intersection_errors": 1,
+              "regions": 6823,
+              "split_children_with_unchanged_reading": 6765,
+              "verified_body_preserving_splices": 19
+            },
+            "isolated_kaomoji": {
+              "cer": 0.8650207660359944,
+              "character_errors": 3749,
+              "characters": 4334,
+              "count": 507,
+              "exact": 20,
+              "grapheme_cer": 0.8643392689784443,
+              "grapheme_errors": 3689,
+              "grapheme_exact": 20,
+              "graphemes": 4268,
+              "ps_cer": 0.8605983450031827,
+              "ps_characters": 3142,
+              "ps_errors": 2704,
+              "symbol_cer": 0.8616352201257862,
+              "symbol_characters": 3180,
+              "symbol_errors": 2740
+            },
+            "label": "Tiny · 冻结专项（exp-20261013-001）",
+            "negative": {
+              "baseline_graphic_nonempty": 88,
+              "baseline_nonempty_scenes": 24,
+              "card_list_negative_baseline_nonempty": 24,
+              "card_list_negative_final_nonempty": 24,
+              "card_list_negative_new_nonempty": 0,
+              "card_list_negative_scenes": 24,
+              "final_graphic_nonempty": 88,
+              "final_nonempty_scenes": 24,
+              "graphic_regions": 2400,
+              "negative_scenes": 24,
+              "new_graphic_nonempty": 0,
+              "new_nonempty_scenes": 0
+            },
+            "research_quality_gates": {
+              "actual_routed_candidates": 309,
+              "app_acceptance": false,
+              "body_and_punctuation_new_errors": {
+                "baseline_correct_to_wrong": 0,
+                "body_literal_deleted": 0,
+                "erroneous_rewrites": 0,
+                "new_body_intersection_errors": 1
+              },
+              "effective_face_improvements": 19,
+              "face": {
+                "cer_reduction": 0.08998615597600368,
+                "exact_gain": 19,
+                "passed": true,
+                "ps_cer_reduction": 0.09707192870782944
+              },
+              "negative_new_nonempty": {
+                "new_graphic_nonempty": 0,
+                "new_nonempty_scenes": 0
+              },
+              "passed": false,
+              "production_enabled": false,
+              "promote": false,
+              "research_quality_passed": false
+            },
+            "routing_effectiveness": {
+              "actual_routed_candidates": 309,
+              "face_exact_to_wrong": 0,
+              "face_wrong_to_exact": 19,
+              "isolated_face_wrong_to_exact": 19,
+              "split_materialized": 8,
+              "split_restored": 340,
+              "split_restored_unverifiable": 6
+            }
+          }
+        },
+        "resources": {
+          "first_scene_seconds": 13.98346329999913,
+          "inter_op_threads": 1,
+          "intra_op_threads": 2,
+          "load_seconds": 1.0835086000006413,
+          "peak_rss_bytes": 631119872,
+          "total_warm_seconds": 1868.514506300031,
+          "warm": {
+            "count": 120,
+            "p50_seconds": 15.55795555000077,
+            "p95_seconds": 19.8218144599974
+          }
+        },
+        "scene_kinds": {
+          "card-list": 96,
+          "card-list-negative": 24
+        },
+        "scenes": 120,
+        "split": "heldout"
+      }
+    ]
+  },
+  "schema_version": "localocr.region-candidates.anonymous-evaluation.v1",
+  "scope": "Synthetic CC0 scenes only; counts and bindings; no real-screenshot accuracy claim; candidate and classifier stay disabled.",
+  "sources": [
+    {
+      "file": "artifacts/kaomoji-grammar-20261013/evaluation/scene-cards-dev-006/evaluation.json",
+      "role": "dev-previous:cards-v2",
+      "sha256": "7ceca082fe4492b960fc39308dff8ec464d61cebf3527abeb87de5ddd594d964"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/scene-cards-dev-007/evaluation.json",
+      "role": "dev-current:cards-v2",
+      "sha256": "f5235acf4681999c68c1c07195b02c6c17d3c0c281403268f0abd33bc479d543"
+    },
+    {
+      "file": "artifacts/kaomoji-grammar-20261013/evaluation/scene-mixed-dev-006/evaluation.json",
+      "role": "dev-previous:atoms-mixed-v1",
+      "sha256": "2b70ef58ca3be9a4c79a2e1fc7fec997693fffa56077e4e9a368f1231d4e965a"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/scene-mixed-dev-007/evaluation.json",
+      "role": "dev-current:atoms-mixed-v1",
+      "sha256": "dc752083969f6460f623c0ea248b03489079e62d555299e5c9b70d186779bd08"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/scene-cards-v3-dev-007/evaluation.json",
+      "role": "dev:cards-v3",
+      "sha256": "5558f4724048b4cd1ac0319c8cd1ce0dfcfa57ad243fd92260776ec5514e19fe"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/scene-mixed-v2-dev-007/evaluation.json",
+      "role": "dev:atoms-mixed-v2",
+      "sha256": "40bf1cacf8a83e6db12795c889e9aef9556f240e7b72c1f8d7d6ef3fafed8070"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/scene-mixed-heldout-001/evaluation.json",
+      "role": "heldout:atoms-mixed-v2",
+      "sha256": "f431b60a3e33932778742c25dfa9c68f6d49a65a2a3b0a513382db9618973795"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/scene-cards-heldout-001/evaluation.json",
+      "role": "heldout:cards-v3",
+      "sha256": "9ff626e6202304c5759e806e219be01348d244b864f1654f5ae5f9bcceacb3ea"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/real-screens-001/evaluation.json",
+      "role": "real-screens:record-list-probe",
+      "sha256": "4c6b2525af9c5854bfb67cbc3010784dbb8dae9f4a0a0c41d0c64379d8a21a58"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/real-screens-001/pixel-branch.json",
+      "role": "real-screens-pixel-branch:record-list-probe",
+      "sha256": "6c5c4025566932fc12627dc6a22d6275da18f4ca5e0db235d67ba3605e70e1cb"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/known-input-001/evaluation.json",
+      "role": "real-screens:known-input",
+      "sha256": "7eb5545273450a70442490103ba43b5f0b869aab0136dac3a780da152efb4562"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/evaluation/known-input-001/pixel-branch.json",
+      "role": "real-screens-pixel-branch:known-input",
+      "sha256": "5b6e3b9829d460cd893ba811e62b6f6224daed750929caec739db729ebb2b87b"
+    },
+    {
+      "file": "artifacts/region-candidates-20261013/gpu-budget.json",
+      "role": "gpu-budget",
+      "sha256": "a650a5777d347fd15efce32e32a2c4e36515031345b8da35e4224c8eb9161e3d"
+    }
+  ]
+}

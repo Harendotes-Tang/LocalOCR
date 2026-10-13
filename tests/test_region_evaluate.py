@@ -468,3 +468,77 @@ def test_declared_views_are_a_unique_supported_set_with_the_raw_view(root):
         config=e.configuration();config['views']=views;common.write(root/'config.json',config)
         with pytest.raises(ValueError):e.configuration(root/'config.json')
     assert e.configuration()['views']==e.VIEWS==['raw','edge-pad-6']
+
+
+def test_unsupported_cut_face_parts_are_counted_but_never_scored(root):
+    """A face cut by a wrap is two `unsupported` truth parts: counted in the report, outside every scored population."""
+    image=Image.new('RGB',(60,30),'white');image.save(root/'image.png')
+    specs=[('body','AB',3,8,5,10,{}),
+           ('unsupported','(ω',20,25,5,10,{'part':'left','source_face':'(ω_ω)','cut':2}),
+           ('unsupported','_ω)',10,15,15,20,{'part':'right','source_face':'(ω_ω)','cut':2})]
+    regions=[]
+    for index,(kind,text,left,right,top,bottom,extra) in enumerate(specs):
+        mask=np.zeros((30,60),dtype='uint8');mask[top:bottom,left:right]=255
+        path=root/('u'+str(index)+'.png');Image.fromarray(mask).save(path)
+        regions.append({'id':str(index),'kind':kind,'text':text,'bbox':[left,top,right,bottom],
+                        'mask':path.name,'mask_sha256':common.digest(path),'pixel_count':25,**extra})
+    baseline=[{'bbox':[2,4,9,11],'text':'AB','score':.5},{'bbox':[19,4,26,11],'text':'(w','score':.2},{'bbox':[9,14,16,21],'text':'_w)','score':.2}]
+    candidate={'candidate_id':'candidate-000','bbox':[19,4,26,11],'sources':['image-components'],'route_eligible':False,'route_reason':'x','evidence':{}}
+    job={'id':'cut-face','sha256':common.digest(root/'image.png'),'pixel_sha256':e.c.image_digest(image)}
+    row=dict(job,width=60,height=30,scene_kind='card-list',regions=regions,text='AB  (ω\n_ω)')
+    prediction={'baseline':baseline,'baseline_text':'AB  (w\n_w)','routing':{'candidates':[candidate],'structural_components':3},
+                'models':{'unit':{'regions':baseline,'text':'AB  (w\n_w)','views':{}}}}
+    summary,details=e.summarize(root,[row],[dict(job,image_sha256=job['sha256'],prediction=prediction)],e.configuration(),['unit'])
+    localization=summary['localization']
+    assert localization['unsupported_regions']==2 and localization['unsupported_regions_with_candidate']==1
+    assert localization.get('faces',0)==0 and localization['body_regions']==1
+    assert summary['models']['unit']['isolated_kaomoji']['count']==0 and summary['baseline']['isolated_kaomoji']['count']==0
+    assert summary['models']['unit']['body']['regions']==1
+    stage=summary['candidate_stage']
+    assert stage['structural_components']==3 and stage['unsupported_regions']==2 and stage['faces']==0
+    assert set(stage)>={'faces','safe_complete_coverage','routed_candidate_count','safe_routed_complete_coverage','bracket_pair_candidates','structural_components','unsupported_regions'}
+    assert details[0]['regions']==[] or all(item['kind']!='unsupported' for item in details[0]['regions'])
+
+
+def test_truth_loader_accepts_unsupported_parts_only_with_their_source_face(root):
+    dataset,job=fixture_dataset(root/'data')
+    rows=common.read(dataset/'dev.json')
+    mask=Image.new('L',(80,40));ImageDraw.Draw(mask).rectangle((30,5,40,18),fill=255);mask.save(dataset/'cut.png')
+    part={'id':'cut','kind':'unsupported','text':'(ω','span':[0,2],'bbox':[30,5,41,19],'mask':'cut.png',
+          'mask_sha256':common.digest(dataset/'cut.png'),'pixel_count':11*14,'part':'left','source_face':'(ω_ω)','cut':2}
+    rows[0]['text']='(ω  '; rows[0]['text_sha256']=sha(rows[0]['text'].encode('utf-8'))
+    rows[0]['regions'][0]['text']='(ω  '
+    rows[0]['regions'].append(part)
+    common.write(dataset/'dev.json',rows)
+    meta=common.read(dataset/'dataset.json'); meta['splits']['dev']['sha256']=common.digest(dataset/'dev.json'); common.write(dataset/'dataset.json',meta)
+    frozen=common.read(dataset/'freeze.json'); frozen['dataset_sha256']=common.digest(dataset/'dataset.json'); frozen['split_sha256']['dev']=meta['splits']['dev']['sha256']; common.write(dataset/'freeze.json',frozen)
+    seal=common.read(dataset/'heldout-seal.json'); seal['dataset_sha256']=frozen['dataset_sha256']; common.write(dataset/'heldout-seal.json',seal)
+    loaded=e.load_truth(dataset,'dev',[job])
+    assert [region['kind'] for region in loaded[0]['regions']]==['body','unsupported']
+    bad=copy.deepcopy(rows); bad[0]['regions'][1].pop('source_face')
+    common.write(dataset/'dev.json',bad)
+    meta['splits']['dev']['sha256']=common.digest(dataset/'dev.json'); common.write(dataset/'dataset.json',meta)
+    frozen['dataset_sha256']=common.digest(dataset/'dataset.json'); frozen['split_sha256']['dev']=meta['splits']['dev']['sha256']; common.write(dataset/'freeze.json',frozen)
+    seal['dataset_sha256']=frozen['dataset_sha256']; common.write(dataset/'heldout-seal.json',seal)
+    with pytest.raises(ValueError,match='unsupported'):
+        e.load_truth(dataset,'dev',[job])
+
+
+def test_zero_second_round_ledger_is_a_valid_selection_budget_receipt(root,monkeypatch):
+    """A CPU-only round freezes against its own closed 0 s ledger; other rounds keep the 7200 s expectation."""
+    from tools.PretrainedOcr import round_profile as rp
+    profile=rp.RoundProfile(name='unit-zero',change='unit',root=root/'unit-zero',maximum_bytes=64,owned_bytes=32,
+                            previous_budget=root/'old.json',previous_sha256='0'*64,previous_used_seconds=1.0,
+                            maximum_seconds=0.0,specialist_families=1)
+    monkeypatch.setattr(rp,'ROUNDS',(profile,))
+    ledger=profile.root/'gpu-budget.json'
+    zero={'schema_version':'localocr.gpu-budget.v1','maximum_seconds':0.0,'used_seconds':0.0,'runs':[],'active':None}
+    common.write(ledger,zero)
+    e.validate_budget(zero,ledger)
+    with pytest.raises(ValueError,match='budget'):
+        e.validate_budget(dict(zero,maximum_seconds=7200.0),ledger)
+    with pytest.raises(ValueError,match='budget'):
+        e.validate_budget(zero,root/'elsewhere'/'gpu-budget.json')  # outside any round: the shared 7200 s receipt is required
+    e.validate_budget({'schema_version':'localocr.gpu-budget.v1','maximum_seconds':7200,'used_seconds':5.0,'runs':[],'active':None})
+    with pytest.raises(ValueError,match='budget'):
+        e.validate_budget(dict(zero,used_seconds=1.0),ledger)

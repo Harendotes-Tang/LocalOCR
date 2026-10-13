@@ -261,7 +261,7 @@ def fuse_candidates(image, baseline, candidates, views, config=None, candidate_c
     expected = {item['candidate_id']:item for item in regenerated['candidates']}
     if len(views)>candidate_config['maximum_candidates'] or not set(views).issubset(expected) or not set(contexts).issubset(expected):
         raise ValueError('View collection includes unknown automatic candidates')
-    replacements={};removed=set();insertions=[];decisions=[];seen=set();consumed=set()
+    replacements={};removed=set();insertions=[];decisions=[];seen=set();consumed=set();pending=[]
     for candidate in candidates:
         if not isinstance(candidate,dict) or 'candidate_id' not in candidate:
             raise ValueError('Missing candidate identity')
@@ -312,8 +312,6 @@ def fuse_candidates(image, baseline, candidates, views, config=None, candidate_c
             else:
                 spliced_text,splice=_whole_reading_proof(entries[indices[0]],indices[0],whole)
         claim_indices=indices if mixed_index is None else [mixed_index]
-        if reason is None and any(index in consumed for index in claim_indices):
-            reason='baseline-region-already-consumed'
         if reason is None and mixed_index is None and not indices and not config['allow_pixel_only_insertions']:
             reason='pixel-only-insertion-disabled'
         if reason is None and len(indices)>1 and not c.is_face_text(original):
@@ -348,29 +346,41 @@ def fuse_candidates(image, baseline, candidates, views, config=None, candidate_c
                 reason='ordinary-body-region-protected'
         if reason is None and text==original and indices:
             reason='unchanged-baseline'
-        accepted=reason is None
-        decision={'candidate_id':identity,'bbox':bbox,'accepted':accepted,'reason':reason or 'exact-views-and-independent-pixels',
-                  'original_text':entries[mixed_index]['text'] if mixed_index is not None else original,'specialist_text':text,'baseline_indices':claim_indices,
-                  'splice':splice,'pixel_evidence':evidence,'view_scores':[_recorded_score(record) for record in views.get(identity,[])],
-                  'score_semantics':'Uncalibrated scores are recorded; no cross-model score comparison.'}
-        decisions.append(decision)
-        if accepted:
-            score=float(views[identity][0]['score'])
-            region={'bbox':bbox,'text':text,'score':score,'source':'specialist-exact-views','ink_bbox':list(evidence['ink_bbox']),
-                    'candidate_id':identity,'model_id':views[identity][0]['model_id'],'baseline_indices':list(claim_indices)}
-            if mixed_index is not None:
-                parent=entries[mixed_index]
-                region.update(bbox=parent['bbox'],text=spliced_text,score=parent['score'],source='baseline-with-regional-splice',baseline_index=mixed_index,regional_bbox=bbox,regional_ink_bbox=list(evidence['ink_bbox']),regional_text=text,splice=splice)
-                replacements[mixed_index]=region;consumed.add(mixed_index)
-            elif whole is not None:
-                parent=entries[indices[0]];geometry=evidence['pair_geometry']
-                regional=[geometry['left_bbox'][0],min(geometry['left_bbox'][1],geometry['right_bbox'][1]),geometry['right_bbox'][2],max(geometry['left_bbox'][3],geometry['right_bbox'][3])]
-                region.update(bbox=parent['bbox'],text=spliced_text,score=parent['score'],source='baseline-with-regional-splice',baseline_index=indices[0],regional_bbox=regional,regional_ink_bbox=regional,regional_text=text,splice=splice)
-                replacements[indices[0]]=region;consumed.add(indices[0])
-            elif indices:
-                replacements[indices[0]]=region;removed.update(indices[1:]);consumed.update(indices)
-            else:
-                insertions.append(region)
+        pending.append({'identity':identity,'bbox':bbox,'accepted':reason is None,'reason':reason,'text':text,'spliced_text':spliced_text,
+                        'splice':splice,'whole':whole,'mixed_index':mixed_index,'indices':indices,'claim_indices':claim_indices,
+                        'evidence':evidence,'original':original})
+    # Candidates competing for one baseline region: the containing (larger) accepted candidate wins, so a
+    # bracket-pair envelope that stopped short of a far arm cannot consume the region before the box that
+    # covers the arm. Decisions keep the candidate order; only consumption is resolved by area.
+    for item in sorted(pending,key=lambda item:-c.area(item['bbox'])):
+        if item['accepted'] and any(index in consumed for index in item['claim_indices']):
+            item['accepted']=False;item['reason']='baseline-region-already-consumed'
+        if not item['accepted']:
+            continue
+        identity=item['identity'];bbox=item['bbox'];text=item['text'];evidence=item['evidence'];indices=item['indices']
+        mixed_index=item['mixed_index'];whole=item['whole'];spliced_text=item['spliced_text'];splice=item['splice'];claim_indices=item['claim_indices']
+        score=float(views[identity][0]['score'])
+        region={'bbox':bbox,'text':text,'score':score,'source':'specialist-exact-views','ink_bbox':list(evidence['ink_bbox']),
+                'candidate_id':identity,'model_id':views[identity][0]['model_id'],'baseline_indices':list(claim_indices)}
+        if mixed_index is not None:
+            parent=entries[mixed_index]
+            region.update(bbox=parent['bbox'],text=spliced_text,score=parent['score'],source='baseline-with-regional-splice',baseline_index=mixed_index,regional_bbox=bbox,regional_ink_bbox=list(evidence['ink_bbox']),regional_text=text,splice=splice)
+            replacements[mixed_index]=region;consumed.add(mixed_index)
+        elif whole is not None:
+            parent=entries[indices[0]];geometry=evidence['pair_geometry']
+            regional=[geometry['left_bbox'][0],min(geometry['left_bbox'][1],geometry['right_bbox'][1]),geometry['right_bbox'][2],max(geometry['left_bbox'][3],geometry['right_bbox'][3])]
+            region.update(bbox=parent['bbox'],text=spliced_text,score=parent['score'],source='baseline-with-regional-splice',baseline_index=indices[0],regional_bbox=regional,regional_ink_bbox=regional,regional_text=text,splice=splice)
+            replacements[indices[0]]=region;consumed.add(indices[0])
+        elif indices:
+            replacements[indices[0]]=region;removed.update(indices[1:]);consumed.update(indices)
+        else:
+            insertions.append(region)
+    for item in pending:
+        identity=item['identity'];mixed_index=item['mixed_index']
+        decisions.append({'candidate_id':identity,'bbox':item['bbox'],'accepted':item['accepted'],'reason':item['reason'] or 'exact-views-and-independent-pixels',
+                  'original_text':entries[mixed_index]['text'] if mixed_index is not None else item['original'],'specialist_text':item['text'],'baseline_indices':item['claim_indices'],
+                  'splice':item['splice'],'pixel_evidence':item['evidence'],'view_scores':[_recorded_score(record) for record in views.get(identity,[])],
+                  'score_semantics':'Uncalibrated scores are recorded; no cross-model score comparison.'})
     output=[]
     for entry in entries:
         index=entry['index']

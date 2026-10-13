@@ -178,6 +178,35 @@ def test_new_budget_cannot_change_authorization(limits, invalid):
         BoundGPUBudget(limits, invalid)
 
 
+def test_zero_second_ledger_binds_history_and_refuses_every_lease(limits, capsys):
+    """A CPU-only round keeps a closed, bound ledger whose ceiling is 0 s: no lease can ever open."""
+    from tools.PretrainedOcr import round_limits as rl
+    budget = BoundGPUBudget(limits, 0.0)
+    state = budget.initialize()
+    assert state['maximum_seconds'] == 0.0 and state['used_seconds'] == 0.0 and state['active'] is None
+    assert state['round_binding']['previous_used_seconds'] == 4
+    with pytest.raises(RuntimeError, match='exhausted'):
+        with budget.run('never', 10):
+            pass
+    after = read(budget.path)
+    assert after['used_seconds'] == 0.0 and after['runs'] == [] and after['active'] is None
+    assert not budget.lock.exists()
+    # The CLI exposes the same ceiling explicitly; the default stays the authorized 7200 s.
+    rl.main(['initialize', '--root', str(limits.root), '--previous-budget', str(limits.previous_budget),
+             '--previous-sha256', limits.previous_sha256, '--maximum-seconds', '0'])
+    printed = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert printed['maximum_seconds'] == 0.0
+    with pytest.raises(ValueError):
+        BoundGPUBudget(limits, 7200.0).initialize()  # identity of the existing zero-second ledger cannot change
+
+
+def test_zero_second_ledger_is_a_valid_closed_predecessor(tmp_path):
+    old = tmp_path / 'zero.json'
+    write(old, {'schema_version': 'localocr.gpu-budget.v1', 'maximum_seconds': 0.0,
+                'used_seconds': 0.0, 'runs': [], 'active': None})
+    assert RoundLimits(tmp_path / 'next', old, digest(old)).history() == 0.0
+
+
 @pytest.mark.parametrize('field', ['seconds', 'cleanup_seconds'])
 @pytest.mark.parametrize('invalid', [float('nan'), float('inf'), True, -1])
 def test_supervisor_deadline_configuration_is_finite(limits, field, invalid):

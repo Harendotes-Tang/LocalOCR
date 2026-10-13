@@ -7,6 +7,7 @@ root-scoped: a sibling directory sharing a name prefix never inherits a quota.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -37,6 +38,9 @@ class RoundProfile:
             raise ValueError('Round predecessor ledger must stay outside the round root')
         if type(self.specialist_families) is not int or not 1 <= self.specialist_families <= 2:
             raise ValueError('A round freezes one or two specialist families')
+        seconds = self.maximum_seconds
+        if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or not math.isfinite(seconds) or not 0 <= seconds <= 7200:
+            raise ValueError('A round authorizes between 0 and 7200 GPU seconds; 0 means a CPU-only round')
 
 
 QUALITY = RoundProfile(
@@ -51,8 +55,16 @@ GRAMMAR = RoundProfile(
     previous_budget=ARTIFACTS / 'quality-optimization-20261012/gpu-budget.json',
     previous_sha256='b7d8f5186d7c19ca6464ea07d72e19eb31146b0a8a1a80418d6bc5f3d10174b3',
     previous_used_seconds=1266.4519999999939, specialist_families=1)
-ROUNDS = (QUALITY, GRAMMAR)
-CURRENT = GRAMMAR
+# CPU-only candidate-localization round: a zero-second ledger bound to the closed grammar ledger,
+# so no GPU lease can open while freezes and first-use receipts keep their ledger binding.
+CANDIDATES = RoundProfile(
+    name='region-candidates-20261013', change='improve-region-candidate-localization',
+    root=ARTIFACTS / 'region-candidates-20261013', maximum_bytes=GIB, owned_bytes=600 * 1024 ** 2,
+    previous_budget=ARTIFACTS / 'kaomoji-grammar-20261013/gpu-budget.json',
+    previous_sha256='b2feaecb0b24dadfd697636899df545a457c89a2ab3da09d2ebb16f4ac67dde0',
+    previous_used_seconds=3252.876000000001, maximum_seconds=0.0, specialist_families=1)
+ROUNDS = (QUALITY, GRAMMAR, CANDIDATES)
+CURRENT = CANDIDATES
 
 
 def _resolved(path):

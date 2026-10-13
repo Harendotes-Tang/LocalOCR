@@ -466,3 +466,27 @@ def test_whole_reading_keeps_surrounding_spaces_in_the_preserved_bytes():
     assert output['accepted_count'] == 1
     region = output['regions'][0]
     assert region['text'] == 'AB (ω_ω)' and region['regional_text'] == '(ω_ω)' and region['splice']['preserved_prefix'] == 'AB '
+
+
+def test_containing_candidate_wins_the_baseline_region_regardless_of_order():
+    """A pair envelope that stopped short of a far arm and the padded first-pass box covering the arm both pass:
+    the containing box keeps the region, the smaller one is recorded as already consumed."""
+    image=Image.new('RGB',(220,80),'white');draw=ImageDraw.Draw(image)
+    draw.arc((20,20,34,50),90,270,fill='black',width=2);draw.arc((88,20,102,50),270,90,fill='black',width=2)
+    draw.ellipse((43,31,50,38),outline='black',width=2);draw.ellipse((72,31,79,38),outline='black',width=2)
+    draw.line((54,43,68,43),fill='black',width=2)
+    draw.rectangle((135,30,135,32),fill='black')              # tiny far arm: outside the bridge, inside the padded OCR box
+    array=np.asarray(image);baseline=[{'bbox':[16,5,150,70],'text':'(Д_Д)ノ','score':.3}]
+    candidates=c.locate_candidates(array,baseline)['candidates']
+    widths={item['candidate_id']:item['bbox'][2]-item['bbox'][0] for item in candidates}
+    assert len(candidates)==2, [item['bbox'] for item in candidates]
+    small,large=sorted(candidates,key=lambda item:widths[item['candidate_id']])
+    texts={small['candidate_id']:'(ω_ω)',large['candidate_id']:'(ω_ω)ノ'}
+    views={item['candidate_id']:[{'model_id':'m','view_id':t,'transform':t,'image_sha256':c.image_digest(f.view_image(array,item['bbox'],t)),
+                                  'text':texts[item['candidate_id']],'score':.9} for t in ('raw','edge-pad-6')] for item in candidates}
+    for ordering in (candidates,list(reversed(candidates))):
+        output=f.fuse_candidates(array,baseline,ordering,views)
+        by_id={d['candidate_id']:d for d in output['decisions']}
+        assert by_id[large['candidate_id']]['accepted'] and output['regions'][0]['text']=='(ω_ω)ノ'
+        assert by_id[small['candidate_id']]['reason'] in ('baseline-region-already-consumed','neighbor-body-overlap')
+        assert output['accepted_count']==1

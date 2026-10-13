@@ -69,7 +69,8 @@ class RoundLimits:
         state = read(self.previous_budget)
         maximum = _finite(state.get('maximum_seconds'), 'historical maximum')
         used = _finite(state.get('used_seconds'), 'historical usage')
-        if state.get('schema_version') != 'localocr.gpu-budget.v1' or not 0 < maximum <= MAXIMUM_SECONDS or used > maximum:
+        # A closed zero-second ledger (CPU-only round) is a valid predecessor: it binds history without usage.
+        if state.get('schema_version') != 'localocr.gpu-budget.v1' or not 0 <= maximum <= MAXIMUM_SECONDS or used > maximum:
             raise ValueError('Invalid historical GPU ledger')
         if state.get('active') is not None or self.previous_budget.with_name(self.previous_budget.name + '.lock').exists():
             raise RuntimeError('Historical GPU lease is not closed')
@@ -127,7 +128,9 @@ class RoundLimits:
 class BoundGPUBudget(GPUBudget):
     """Persist the historical binding alongside common's exclusive total lease."""
     def __init__(self, limits, maximum_seconds=MAXIMUM_SECONDS):
-        if not 0 < _finite(maximum_seconds, 'new maximum') <= MAXIMUM_SECONDS:
+        # A 0 s ceiling is the explicit CPU-only authorization: the ledger exists and binds
+        # history, and every lease is refused as exhausted before any native process starts.
+        if not 0 <= _finite(maximum_seconds, 'new maximum') <= MAXIMUM_SECONDS:
             raise ValueError('GPU budget exceeds user authorization')
         self.limits = limits
         self.native_process = None
@@ -346,13 +349,15 @@ def main(argv=None):
     parser.add_argument('--reserve-bytes', type=int, default=0)
     parser.add_argument('--maximum-bytes', type=int, default=MAXIMUM_ARTIFACT_BYTES,
                         help='Explicitly authorized new-artifact quota for this round')
+    parser.add_argument('--maximum-seconds', type=float, default=MAXIMUM_SECONDS,
+                        help='Authorized GPU ceiling for a new ledger; 0 declares a CPU-only round')
     arguments = list(sys.argv[1:] if argv is None else argv)
     marker = arguments.index('--') if '--' in arguments else len(arguments)
     command = arguments[marker + 1:] if marker < len(arguments) else []
     args = parser.parse_args(arguments[:marker])
     limits = RoundLimits(args.root, args.previous_budget, args.previous_sha256, maximum_bytes=args.maximum_bytes)
     if args.action == 'initialize':
-        print(json.dumps(BoundGPUBudget(limits).initialize()))
+        print(json.dumps(BoundGPUBudget(limits, args.maximum_seconds).initialize()))
     elif args.action == 'audit':
         print(json.dumps(limits.audit(args.reserve_bytes)))
     else:

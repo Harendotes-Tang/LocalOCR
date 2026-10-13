@@ -173,7 +173,7 @@ class GPUBudget:
     def __init__(self, path, max_seconds=7200):
         self.path = Path(path).resolve()
         self.lock = self.path.with_name(self.path.name + '.lock')
-        if max_seconds <= 0 or max_seconds > 7200:
+        if isinstance(max_seconds, bool) or not isinstance(max_seconds, (int, float)) or max_seconds < 0 or max_seconds > 7200:
             raise ValueError('GPU budget cannot exceed approved 7200 seconds')
         self.maximum = float(max_seconds)
 
