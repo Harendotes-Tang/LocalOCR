@@ -5,6 +5,12 @@ then screenshotted. Labels are never read from pixels: the truth of each line is
 stored after typing, copied by the user into ``typed/shot-NNN.txt``. The entry script only guides
 typing; where the stored text differs from it (an input method may change bracket widths), the
 stored text wins and the difference is counted. Everything lives in an ignored private directory.
+
+Retired 2026-10-15 (add-browser-rendering-evaluation): typing a generated entry script is not a usable
+validation route. Real users type or paste expressions in either bracket width, so no set may require a
+particular input method or width. ``build`` stays only to reproduce the retired known-input-2 listing;
+``retire`` records an unused list, and ``build_manifest`` refuses any list a registered round has retired.
+Real screenshots now come from everyday use with the copied comment text as truth.
 """
 from __future__ import annotations
 import argparse
@@ -15,6 +21,7 @@ import random
 
 from tools.OcrDatasets.render import Unsupported
 from tools.PretrainedOcr import grammar_corpus as gc, kaomoji_grammar as kg
+from tools.PretrainedOcr import round_profile as rp
 from tools.PretrainedOcr.common import utc
 from tools.PretrainedOcr.data import MixedRenderer
 from tools.PretrainedOcr.grammar_data import renderable_atoms
@@ -22,6 +29,8 @@ from tools.RegionKaomoji import candidates as c, real_screens as rs
 
 LIST_SCHEMA = 'localocr.known-input-list.v1'
 SCRIPT_SCHEMA = 'localocr.known-input-entry-script.v1'
+RETIREMENT_SCHEMA = 'localocr.known-input-retirement.v1'
+RETIREMENT_PATTERN = 'known-input-*-retirement.json'
 USAGE = 'independent-evaluation-only'
 VARIANTS = {'A': '句尾，空格分隔', 'B': '句尾，紧贴正文', 'C': '句首，空格分隔', 'D': '句中，两侧空格', 'E': '句中，两侧紧贴'}
 # Six standalone screens of seven typed faces and one of eight (50 faces), then seven mixed screens of
@@ -52,20 +61,16 @@ BODY_LINES = (
     '清完周本顺便做日常', '装备等级终于够了', '开荒第一天还算顺利', '队长临时有事先散了', '补给买够了再出发',
     '练完手法再去挑战', '想把坐骑换成新的', '下周的活动记得参加', '这次换了个新职业体验', '成功过本后合影留念',
 )
-README = """# 已知输入真实截图验证集 known-input-2（仅本地独立验证）
+README = """# 已知输入录入集（已作废，2026-10-15）
 
-本目录位于忽略路径 `artifacts/`，截图、清单与逐项预测都不会进入仓库或发布包。该集合只在冻结后首测，不用于训练、选点或阈值选择。
+本目录位于忽略路径 `artifacts/`，内容不会进入仓库或发布包。
 
-## 录入方式（与真实使用一致：用输入法键入，不要粘贴）
+按录入脚本逐条键入颜文字再截图的验证方式已作废：其中的颜文字含大量无法用输入法直接打出的字符，
+而且真实用户既会用输入法键入，也会从网页找来粘贴，半角全角都会出现，不能要求用户按某种方式或宽度输入。
+本目录不再用于独立验证，`manifest` 会拒绝为已登记作废的输入清单构建清单。
 
-1. 打开 `entry-script.txt`，每个区块对应一张截图；区块内每行一条记录，按顺序用你平时的输入法键入到目标界面。
-   括号宽度由输入法决定即可，不必刻意切换半角或全角。
-2. 全部录入并保存后，把界面实际存储的文本逐条复制出来，按同样顺序写入 `typed/shot-NNN.txt`（每条记录一行，不要加编号或标记）。
-   清单以这些存储文本为真值；与脚本的差异会被计数，不会被改回脚本字面。
-3. 对每个区块截图保存为 `screens/shot-NNN.png`（整屏或整列表均可，不要裁掉任何一行）。
-4. 运行 `python -m tools.RegionKaomoji.known_input manifest --input-dir <本目录> --environment "<界面/字体/缩放>" --output <本目录>/manifest.json`。
-
-`expected/shot-NNN.txt` 是脚本字面，仅供核对，不是真值。
+真实字体下的评测改由浏览器真实字体渲染集完成；真实截图只来自日常使用，以复制出的评论文字为真值。
+`entry-script.txt` 与 `expected/` 仅为生成记录，不需要录入。
 """
 
 
@@ -263,6 +268,45 @@ def embedded_faces(text, atoms=None):
     return found
 
 
+def retired_lists(rounds=None):
+    """Map input-list SHA256 to the retirement record of every list retired inside a registered round root."""
+    found = {}
+    for profile in (rp.ROUNDS if rounds is None else rounds):
+        root = Path(profile.root)
+        if not root.is_dir():
+            continue
+        for path in sorted(root.glob(RETIREMENT_PATTERN)):
+            value = json.loads(path.read_text(encoding='utf-8'))
+            if value.get('schema') == RETIREMENT_SCHEMA:
+                found[value['input_list_sha256']] = path
+    return found
+
+
+def retire(input_dir, output, reason, change):
+    """Record that an entry-script list was never typed, screenshotted or evaluated, so it can never be used."""
+    root = Path(input_dir)
+    script = json.loads((root / 'entry-script.json').read_text(encoding='utf-8'))
+    listing_sha = _sha(root / 'input-list.json')
+    if script.get('schema') != SCRIPT_SCHEMA or listing_sha != script['input_list_sha256']:
+        raise ValueError('Entry script and input list do not belong together')
+    screens = sorted(p.name for p in (root / 'screens').glob('*') if p.is_file()) if (root / 'screens').is_dir() else []
+    typed = sorted(p.name for p in (root / 'typed').glob('shot-*.txt')) if (root / 'typed').is_dir() else []
+    if screens or typed or (root / 'manifest.json').exists():
+        raise ValueError('Only an unused known-input list can be retired')
+    # Only a record directly in a registered round root is found by retired_lists(); refuse anything else.
+    target = Path(output).resolve()
+    if (not any(target.parent == Path(profile.root).resolve() for profile in rp.ROUNDS)
+            or not target.match(RETIREMENT_PATTERN)):
+        raise ValueError('Retirement records live directly in a registered round root as ' + RETIREMENT_PATTERN)
+    # Without stored text there is no manifest, so no known-input first-use receipt can exist for this list.
+    record = {'schema': RETIREMENT_SCHEMA, 'created_utc': utc(), 'change': change, 'input_dir': str(root.resolve()),
+              'input_list_sha256': listing_sha, 'entry_script_sha256': _sha(root / 'entry-script.json'),
+              'faces': len(json.loads((root / 'input-list.json').read_text(encoding='utf-8'))['items']),
+              'screens': 0, 'typed_files': 0, 'manifest_present': False, 'first_use_receipt': None, 'reason': reason}
+    _write(output, record)
+    return record
+
+
 def build_manifest(input_dir, environment, output, delivery=None):
     """Assemble the evaluation manifest from the entry script and the user's stored-text files."""
     root = Path(input_dir)
@@ -272,6 +316,9 @@ def build_manifest(input_dir, environment, output, delivery=None):
     listing_sha = _sha(root / 'input-list.json')
     if listing_sha != script['input_list_sha256']:
         raise ValueError('Input list changed after the entry script was generated')
+    retired = retired_lists().get(listing_sha)
+    if retired is not None:
+        raise ValueError('Known-input list is retired; see ' + str(retired))
     atoms = kg.default_atoms()
     if atoms.sha256 != script['atoms_sha256']:
         raise ValueError('Atom table changed after the entry script was generated')
@@ -321,9 +368,16 @@ def main(argv=None):
     man.add_argument('--environment', required=True)
     man.add_argument('--output', required=True)
     man.add_argument('--delivery')
+    ret = sub.add_parser('retire')
+    ret.add_argument('--input-dir', required=True)
+    ret.add_argument('--output', required=True)
+    ret.add_argument('--reason', required=True)
+    ret.add_argument('--change', required=True)
     args = parser.parse_args(argv)
     if args.action == 'generate':
         print(json.dumps(build(args.output, args.fonts, args.seed, args.exclude), ensure_ascii=False))
+    elif args.action == 'retire':
+        print(json.dumps(retire(args.input_dir, args.output, args.reason, args.change), ensure_ascii=False))
     else:
         print(json.dumps(build_manifest(args.input_dir, args.environment, args.output, args.delivery), ensure_ascii=False))
 

@@ -111,6 +111,9 @@ def validate(root):
  if meta.get('generator_id') in ('localocr.card-scenes.20261013.v1','localocr.card-scenes.20261013.v2','localocr.card-scenes.20261015.v3'):
   from .card_scenes import validate as card_validate
   return card_validate(root)
+ if meta.get('generator_id')=='localocr.browser-card-scenes.20261015.v1':
+  from .browser_scenes import validate as browser_validate
+  return browser_validate(root)
  texts={};micros={};families={};pixelsets={};counts={}
  if meta.get('schema_version')!='localocr.region-scenes.v1' or meta.get('synthetic_only') is not True:raise ValueError('Scene schema/synthetic declaration')
  for split in ('dev','heldout'):

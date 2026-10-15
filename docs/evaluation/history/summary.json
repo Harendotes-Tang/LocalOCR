@@ -33,7 +33,7 @@
   "figures": [
     {
       "file": "docs/evaluation/history/figures/version-comparison.svg",
-      "sha256": "a2d45275929029e23ca201eef0fa55fc6b2c186d953368c78fbe61791509fe9a"
+      "sha256": "c39c491f0e2407b4b6812d9311c79a1925086f4b373f51ccb079289d1e34ebe1"
     }
   ],
   "font": {
@@ -41,7 +41,7 @@
     "license": "OFL-1.1",
     "sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b"
   },
-  "generated_utc": "2026-10-15T11:08:11.473167+00:00",
+  "generated_utc": "2026-10-15T16:05:49.015449+00:00",
   "model": "ppocrv6-tiny-exp-20261013-001",
   "normalization": "Raw Unicode exact match; the width-only count is a diagnostic of faces equal to the truth except for the outermost bracket width, never part of the exact score.",
   "promote": false,
@@ -203,6 +203,30 @@
       }
     },
     {
+      "faces": 255,
+      "key": "browser-cards-v1",
+      "kind": "browser-dev",
+      "label": "浏览器渲染卡片 dev",
+      "versions": {
+        "baseline": {
+          "exact": 0,
+          "width_only": 1
+        },
+        "candidates-20261013": {
+          "cer": 0.9048361934477379,
+          "exact": 8,
+          "research_gate_passed": false,
+          "width_only": 5
+        },
+        "real-rendering-20261015": {
+          "cer": 0.905876235049402,
+          "exact": 4,
+          "research_gate_passed": false,
+          "width_only": 9
+        }
+      }
+    },
+    {
       "faces": 50,
       "key": "known-input-001",
       "kind": "real-screens",
@@ -295,12 +319,12 @@
     }
   ],
   "schema_version": "localocr.version-history.anonymous-evaluation.v1",
-  "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15.",
+  "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15; the browser set is rendered by Edge with Windows system fonts, not real screenshots.",
   "sources": [
     {
-      "file": "artifacts/real-rendering-20261015/validation/version-comparison-counts.json",
+      "file": "artifacts/browser-rendering-20261015/validation/version-comparison-counts.json",
       "role": "version-comparison-counts",
-      "sha256": "936511fc28ff4a9937a498aaa6c3e7e50d92557f8773b9abcde6aefc2dd729d7"
+      "sha256": "fe5c64460f4d0b39efe95966827c74c24b35bd1ae2067033f4f6962fc1c0cb65"
     },
     {
       "file": "docs/evaluation/region-20261012/summary.json",
@@ -326,6 +350,11 @@
       "file": "docs/evaluation/real-rendering-20261015/summary.json",
       "role": "round:real-rendering-20261015",
       "sha256": "814f9f41d3dd57822b2cf1d6947583fb9e928b1f0644c350c483dfb1b0f62474"
+    },
+    {
+      "file": "docs/evaluation/browser-rendering-20261015/summary.json",
+      "role": "round:browser-rendering-20261015",
+      "sha256": "a1a66dee6707cb1bb38eb6e0379d7dc9bbb409d01a95ef12a6b761ac6badcc2c"
     },
     {
       "file": "docs/evaluation/kaomoji-v1-v4-20261011/metrics.json",

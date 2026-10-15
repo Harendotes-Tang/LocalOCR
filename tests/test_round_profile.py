@@ -31,7 +31,12 @@ def test_registered_rounds_have_distinct_roots_and_external_predecessors():
     assert rp.REAL_RENDERING.maximum_seconds == 0.0 and rp.REAL_RENDERING.previous_used_seconds == 0.0
     assert rp.REAL_RENDERING.maximum_bytes == rp.GIB and rp.REAL_RENDERING.specialist_families == 1
     assert rp.REAL_RENDERING.change == 'improve-real-rendering-bracket-evidence'
-    assert rp.CURRENT is rp.REAL_RENDERING and rp.by_name(rp.REAL_RENDERING.name) is rp.REAL_RENDERING
+    assert rp.by_name(rp.REAL_RENDERING.name) is rp.REAL_RENDERING
+    assert rp.BROWSER_RENDERING.previous_budget == rp.REAL_RENDERING.root / 'gpu-budget.json'
+    assert rp.BROWSER_RENDERING.maximum_seconds == 0.0 and rp.BROWSER_RENDERING.previous_used_seconds == 0.0
+    assert rp.BROWSER_RENDERING.maximum_bytes == rp.GIB and rp.BROWSER_RENDERING.specialist_families == 1
+    assert rp.BROWSER_RENDERING.change == 'add-browser-rendering-evaluation'
+    assert rp.CURRENT is rp.BROWSER_RENDERING and rp.by_name(rp.BROWSER_RENDERING.name) is rp.BROWSER_RENDERING
     assert rp.by_name(rp.CANDIDATES.name) is rp.CANDIDATES
     assert rp.by_name(rp.GRAMMAR.name) is rp.GRAMMAR
 
@@ -86,6 +91,18 @@ def test_real_rendering_predecessor_ledger_is_the_closed_zero_second_candidates_
     state = read(ledger)
     assert state['active'] is None and state['runs'] == []
     assert state['maximum_seconds'] == 0.0 and state['used_seconds'] == rp.REAL_RENDERING.previous_used_seconds == 0.0
+    assert not ledger.with_name(ledger.name + '.lock').exists()
+
+
+def test_browser_rendering_predecessor_ledger_is_the_closed_zero_second_real_rendering_ledger():
+    ledger = Path(rp.BROWSER_RENDERING.previous_budget)
+    if not ledger.exists():
+        pytest.skip('Historical real-rendering ledger is absent on this host')
+    from tools.PretrainedOcr.common import digest, read
+    assert digest(ledger) == rp.BROWSER_RENDERING.previous_sha256
+    state = read(ledger)
+    assert state['active'] is None and state['runs'] == []
+    assert state['maximum_seconds'] == 0.0 and state['used_seconds'] == rp.BROWSER_RENDERING.previous_used_seconds == 0.0
     assert not ledger.with_name(ledger.name + '.lock').exists()
 
 

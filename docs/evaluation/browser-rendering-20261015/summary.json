@@ -1,0 +1,886 @@
+{
+  "dataset": {
+    "browser": {
+      "blocked_requests": 0,
+      "headless": true,
+      "product": "Microsoft Edge",
+      "version": "155.0.4283.45"
+    },
+    "dataset_sha256": "9576a24fbc9ee177828c500ae43e8519cc11d4d9e787773942f8c7b06a8dd5a7",
+    "device_scales": [
+      1.0,
+      1.25,
+      1.5
+    ],
+    "driver": {
+      "channel": "msedge",
+      "installed": "1.63.0",
+      "package": "playwright",
+      "version": "1.63.0"
+    },
+    "exclusions": {},
+    "font_family": "\"Microsoft YaHei\", sans-serif",
+    "font_sizes": [
+      16,
+      17,
+      18,
+      19,
+      20
+    ],
+    "fonts_distributed": false,
+    "generation_seconds": 2635.305334500008,
+    "generator_id": "localocr.browser-card-scenes.20261015.v1",
+    "images_distributable": false,
+    "platform_fonts": {
+      "Cambria Math": [
+        {
+          "file": "cambria.ttc",
+          "sha256": "84e70ccc1664482f4a960442c7a166c91a1b2cf98ff88c33cb73f79403f66d7b"
+        }
+      ],
+      "Lucida Sans Unicode": [
+        {
+          "file": "l_10646.ttf",
+          "sha256": "97226e81f19eff8c8fb191745748bab920472c005d3ec4e23d9a50a12c471d92"
+        }
+      ],
+      "Malgun Gothic": [
+        {
+          "file": "malgun.ttf",
+          "sha256": "7a183cf1c6c56b9609fcc16eda8b5229fbc11758a21e669ec00343239b02192f"
+        },
+        {
+          "file": "malgunbd.ttf",
+          "sha256": "e8cbc0b2afcc14fb45dfb6086d5102c0b23a96e7b6e708f3122acde1b86c9082"
+        },
+        {
+          "file": "malgunsl.ttf",
+          "sha256": "c0ca810a242c4482594182db40f0f9d35a3d51bb2eeac750e6e867b2110eb00e"
+        }
+      ],
+      "Microsoft YaHei": [
+        {
+          "file": "msyh.ttc",
+          "sha256": "d79c55e68b1131eea0cc1c47be4f572d964f28c682e143db2ad09c1e4cb07a3f"
+        },
+        {
+          "file": "msyhbd.ttc",
+          "sha256": "4508821b3dffe01f0ef5e5326a3e60df705a44633858811f67b6982dce3f6ee6"
+        },
+        {
+          "file": "msyhl.ttc",
+          "sha256": "7e9bdf90bb5d3fe1b5975fc8ae31944b8fa674122261f92c28d4ec0b9c482fa1"
+        }
+      ],
+      "Nirmala UI": [
+        {
+          "file": "Nirmala.ttc",
+          "sha256": "ad02cdfc06e144ac45f318e8e5a64cbe04c7479d4beb91d25f5a319a466b1767"
+        }
+      ],
+      "Segoe UI Symbol": [
+        {
+          "file": "seguisym.ttf",
+          "sha256": "a4a35dcc62cd30e1a6c97b695ecef83e59d2b149e3af834f6a49f11851d56b37"
+        }
+      ],
+      "Tahoma": [
+        {
+          "file": "tahoma.ttf",
+          "sha256": "9af03d4ad44a3b413d92f7de48b94aa7cc8a1471a75d498406eae837f62ee1d1"
+        },
+        {
+          "file": "tahomabd.ttf",
+          "sha256": "b16ed1a15e0cabea8d41d9f8899c253cd61ac466af5e3980d02bd0cf311c2267"
+        }
+      ],
+      "Times New Roman": [
+        {
+          "file": "times.ttf",
+          "sha256": "931c5de5c70401d9324d5014c123802b4fb753000360ceb2f56c589403cd58c5"
+        },
+        {
+          "file": "timesbd.ttf",
+          "sha256": "54fbe2c70af7c85a97bed0573227e3ccc4b2486012e3ca2a40c6bc77065846f5"
+        },
+        {
+          "file": "timesbi.ttf",
+          "sha256": "3a29d114cb5229e8dbda5bef6c69be4a210a13b7277de4d66e9fc86963226f6c"
+        },
+        {
+          "file": "timesi.ttf",
+          "sha256": "e7f7a88b65188328aea58670f955022e23c712f55679524729da1e4e03c49d88"
+        }
+      ]
+    },
+    "seed": 20261015,
+    "splits": {
+      "dev": {
+        "count": 60,
+        "sha256": "76af8ca813b6f9a754e1de359e68ff1fde3bcbc06e15ba57383ac277745cc2c3"
+      },
+      "heldout": {
+        "count": 120,
+        "sha256": "66418c9bec8ef23fb580adc3c5b1efed893b5069e97a0b0b7c7021015eec8c0c"
+      }
+    },
+    "summary": {
+      "dev": {
+        "body_regions": 2439,
+        "bracket_width_classes": {
+          "ascii": 71,
+          "fullwidth": 99,
+          "mixed": 26,
+          "none": 59
+        },
+        "contact_faces": 3,
+        "deliveries": {
+          "png": 19,
+          "webp": 41
+        },
+        "device_scale_factors": {
+          "1.0": 23,
+          "1.25": 16,
+          "1.5": 21
+        },
+        "face_sources": {
+          "atom-table-dev-partition": 160,
+          "common-structure": 66,
+          "paste-structure": 29
+        },
+        "faces": 255,
+        "graphic_regions": 968,
+        "negative_scenes": 12,
+        "platform_fonts": {
+          "Cambria Math": 68,
+          "Lucida Sans Unicode": 8,
+          "Malgun Gothic": 2,
+          "Microsoft YaHei": 2694,
+          "Nirmala UI": 23,
+          "Segoe UI Symbol": 63,
+          "Tahoma": 16,
+          "Times New Roman": 24
+        },
+        "scenes": 60
+      },
+      "heldout": {
+        "body_regions": 4854,
+        "bracket_width_classes": {
+          "ascii": 188,
+          "fullwidth": 168,
+          "mixed": 40,
+          "none": 85
+        },
+        "contact_faces": 8,
+        "deliveries": {
+          "png": 63,
+          "webp": 57
+        },
+        "device_scale_factors": {
+          "1.0": 41,
+          "1.25": 34,
+          "1.5": 45
+        },
+        "face_sources": {
+          "atom-table-heldout-partition": 279,
+          "common-structure": 139,
+          "paste-structure": 63
+        },
+        "faces": 481,
+        "graphic_regions": 1904,
+        "negative_scenes": 24,
+        "platform_fonts": {
+          "Cambria Math": 126,
+          "Lucida Sans Unicode": 15,
+          "Malgun Gothic": 20,
+          "Microsoft YaHei": 5335,
+          "Nirmala UI": 37,
+          "Segoe UI Symbol": 102,
+          "Tahoma": 28,
+          "Times New Roman": 38
+        },
+        "scenes": 120
+      }
+    },
+    "webp": {
+      "method": 4,
+      "probability": 0.5,
+      "quality": [
+        70,
+        95
+      ]
+    },
+    "width_class_weights": {
+      "ascii": 45,
+      "fullwidth": 45,
+      "mixed": 10
+    },
+    "windows": "Windows-10-10.0.26300-SP0"
+  },
+  "dual_freezes": [],
+  "enabled": false,
+  "equivalence_probe": {
+    "mismatched": 0,
+    "scenes": 548
+  },
+  "figures": [
+    {
+      "file": "docs/evaluation/browser-rendering-20261015/figures/bracket-width-class-exact.svg",
+      "sha256": "f6db1c822d23f594c759d128170ce0507de0a483513ad0ed7766abbeab979ce8"
+    }
+  ],
+  "font": {
+    "id": "cjk",
+    "license": "OFL-1.1",
+    "sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b"
+  },
+  "generated_utc": "2026-10-15T16:05:48.256751+00:00",
+  "gpu_budget": {
+    "maximum_seconds": 0.0,
+    "previous_sha256": "29bfea13764ff5952e9627ef3c404fa51858996d179a4db38bdd97beb0db38ca",
+    "previous_used_seconds": 0.0,
+    "runs": 0,
+    "used_seconds": 0.0
+  },
+  "normalization": "Raw Unicode exact match and codepoint CER; no width, space or combining-mark normalization; width_only is a diagnostic count.",
+  "production_enabled": false,
+  "promote": false,
+  "round": "browser-rendering-20261015",
+  "scene": {
+    "dev": [
+      {
+        "baseline": {
+          "isolated_kaomoji": {
+            "cer": 0.9485179407176287,
+            "character_errors": 1824,
+            "characters": 1923,
+            "count": 255,
+            "exact": 0,
+            "grapheme_cer": 0.9481132075471698,
+            "grapheme_errors": 1809,
+            "grapheme_exact": 0,
+            "graphemes": 1908,
+            "ps_cer": 0.9540540540540541,
+            "ps_characters": 1480,
+            "ps_errors": 1412,
+            "symbol_cer": 0.9543317662860981,
+            "symbol_characters": 1489,
+            "symbol_errors": 1421
+          }
+        },
+        "breakdowns": {
+          "by_bracket_width_class": {
+            "ascii": {
+              "baseline_exact": 0,
+              "baseline_width_only": 0,
+              "faces": 71,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 0,
+                  "width_only": 1
+                }
+              }
+            },
+            "fullwidth": {
+              "baseline_exact": 0,
+              "baseline_width_only": 1,
+              "faces": 99,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 8,
+                  "width_only": 1
+                }
+              }
+            },
+            "mixed": {
+              "baseline_exact": 0,
+              "baseline_width_only": 0,
+              "faces": 26,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 0,
+                  "width_only": 3
+                }
+              }
+            },
+            "none": {
+              "baseline_exact": 0,
+              "baseline_width_only": 0,
+              "faces": 59,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 0,
+                  "width_only": 0
+                }
+              }
+            }
+          },
+          "by_delivery": {
+            "png": {
+              "baseline_exact": 0,
+              "baseline_width_only": 0,
+              "faces": 76,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 8,
+                  "width_only": 2
+                }
+              }
+            },
+            "webp": {
+              "baseline_exact": 0,
+              "baseline_width_only": 1,
+              "faces": 179,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 0,
+                  "width_only": 3
+                }
+              }
+            }
+          },
+          "by_device_scale_factor": {
+            "1.0": {
+              "baseline_exact": 0,
+              "baseline_width_only": 0,
+              "faces": 103,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 0,
+                  "width_only": 0
+                }
+              }
+            },
+            "1.25": {
+              "baseline_exact": 0,
+              "baseline_width_only": 0,
+              "faces": 65,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 2,
+                  "width_only": 2
+                }
+              }
+            },
+            "1.5": {
+              "baseline_exact": 0,
+              "baseline_width_only": 1,
+              "faces": 87,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 6,
+                  "width_only": 3
+                }
+              }
+            }
+          },
+          "contact_faces": {
+            "separate": {
+              "baseline_exact": 0,
+              "baseline_width_only": 1,
+              "faces": 252,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 8,
+                  "width_only": 5
+                }
+              }
+            },
+            "touching": {
+              "baseline_exact": 0,
+              "baseline_width_only": 0,
+              "faces": 3,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 0,
+                  "width_only": 0
+                }
+              }
+            }
+          },
+          "note": "Raw-byte exact counts per optional scene field; width_only (differs only in the outermost bracket width) is diagnostic and never a score."
+        },
+        "candidate_stage": {
+          "body_regions_routed": 27,
+          "bracket_pair_candidates": 91,
+          "complete_ink_coverage": 181,
+          "faces": 255,
+          "note": "Candidate-stage development metrics; unsupported cut-face parts are counted here and excluded from every scored population.",
+          "partial_only": 63,
+          "routed_candidate_count": 119,
+          "safe_complete_coverage": 78,
+          "safe_complete_coverage_ratio": 0.3058823529411765,
+          "safe_routed_complete_coverage": 37,
+          "structural_components": 350,
+          "unsupported_regions": 0
+        },
+        "classifier": "kaomoji-crop-classifier-exp-20261013-002",
+        "config": {
+          "exterior_bridge_ratio": 0.45,
+          "outer_bracket_width": "exact",
+          "shape_contrast_threshold": 8
+        },
+        "config_views": [
+          "raw",
+          "edge-pad-4",
+          "edge-pad-6"
+        ],
+        "dataset_binding": {
+          "counts": {
+            "dev": {
+              "faces": 255,
+              "negative_scenes": 12,
+              "scenes": 60
+            },
+            "heldout": {
+              "faces": 481,
+              "negative_scenes": 24,
+              "scenes": 120
+            }
+          },
+          "dataset_sha256": "9576a24fbc9ee177828c500ae43e8519cc11d4d9e787773942f8c7b06a8dd5a7",
+          "schema_version": "localocr.region-scenes.freeze.v1",
+          "split_sha256": {
+            "dev": "76af8ca813b6f9a754e1de359e68ff1fde3bcbc06e15ba57383ac277745cc2c3",
+            "heldout": "66418c9bec8ef23fb580adc3c5b1efed893b5069e97a0b0b7c7021015eec8c0c"
+          }
+        },
+        "label": "候选定位轮配置",
+        "model": {
+          "body": {
+            "baseline_correct_to_wrong": 0,
+            "baseline_exact": 1612,
+            "baseline_mixed_regions": 293,
+            "body_intersection_transcript_changes": 18,
+            "body_literal_deleted": 1,
+            "erroneous_rewrites": 0,
+            "final_exact": 1618,
+            "final_mixed_regions": 286,
+            "new_body_intersection_errors": 2,
+            "regions": 2439,
+            "split_children_with_unchanged_reading": 2196,
+            "verified_body_preserving_splices": 5
+          },
+          "id": "ppocrv6-tiny-exp-20261013-001",
+          "isolated_kaomoji": {
+            "cer": 0.9048361934477379,
+            "character_errors": 1740,
+            "characters": 1923,
+            "count": 255,
+            "exact": 8,
+            "grapheme_cer": 0.9040880503144654,
+            "grapheme_errors": 1725,
+            "grapheme_exact": 8,
+            "graphemes": 1908,
+            "ps_cer": 0.904054054054054,
+            "ps_characters": 1480,
+            "ps_errors": 1338,
+            "symbol_cer": 0.9046339825386165,
+            "symbol_characters": 1489,
+            "symbol_errors": 1347
+          },
+          "negative": {
+            "baseline_graphic_nonempty": 63,
+            "baseline_nonempty_scenes": 12,
+            "card_list_negative_baseline_nonempty": 12,
+            "card_list_negative_final_nonempty": 12,
+            "card_list_negative_new_nonempty": 0,
+            "card_list_negative_scenes": 12,
+            "final_graphic_nonempty": 63,
+            "final_nonempty_scenes": 12,
+            "graphic_regions": 968,
+            "negative_scenes": 12,
+            "new_graphic_nonempty": 0,
+            "new_nonempty_scenes": 0
+          },
+          "research_quality_gates": {
+            "actual_routed_candidates": 119,
+            "app_acceptance": false,
+            "body_and_punctuation_new_errors": {
+              "baseline_correct_to_wrong": 0,
+              "body_literal_deleted": 1,
+              "erroneous_rewrites": 0,
+              "new_body_intersection_errors": 2
+            },
+            "effective_face_improvements": 8,
+            "face": {
+              "cer_reduction": 0.043681747269890825,
+              "exact_gain": 8,
+              "passed": true,
+              "ps_cer_reduction": 0.050000000000000044
+            },
+            "negative_new_nonempty": {
+              "new_graphic_nonempty": 0,
+              "new_nonempty_scenes": 0
+            },
+            "passed": false,
+            "production_enabled": false,
+            "promote": false,
+            "research_quality_passed": false
+          },
+          "routing_effectiveness": {
+            "actual_routed_candidates": 119,
+            "face_exact_except_outer_bracket_width": 5,
+            "face_exact_to_wrong": 0,
+            "face_wrong_to_exact": 8,
+            "isolated_face_wrong_to_exact": 8,
+            "split_materialized": 10,
+            "split_restored": 50,
+            "split_restored_unverifiable": 3
+          }
+        },
+        "resources": {
+          "peak_private_bytes": 548438016,
+          "scenes": 60,
+          "warm_p50_seconds": 3.016556700000365,
+          "warm_p95_seconds": 3.7531329849938624
+        },
+        "scene_kinds": {
+          "card-list": 48,
+          "card-list-negative": 12
+        },
+        "scenes": 60,
+        "split": "dev"
+      },
+      {
+        "baseline": {
+          "isolated_kaomoji": {
+            "cer": 0.9485179407176287,
+            "character_errors": 1824,
+            "characters": 1923,
+            "count": 255,
+            "exact": 0,
+            "grapheme_cer": 0.9481132075471698,
+            "grapheme_errors": 1809,
+            "grapheme_exact": 0,
+            "graphemes": 1908,
+            "ps_cer": 0.9540540540540541,
+            "ps_characters": 1480,
+            "ps_errors": 1412,
+            "symbol_cer": 0.9543317662860981,
+            "symbol_characters": 1489,
+            "symbol_errors": 1421
+          }
+        },
+        "breakdowns": {
+          "by_bracket_width_class": {
+            "ascii": {
+              "baseline_exact": 0,
+              "baseline_width_only": 0,
+              "faces": 71,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 1,
+                  "width_only": 0
+                }
+              }
+            },
+            "fullwidth": {
+              "baseline_exact": 0,
+              "baseline_width_only": 1,
+              "faces": 99,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 2,
+                  "width_only": 7
+                }
+              }
+            },
+            "mixed": {
+              "baseline_exact": 0,
+              "baseline_width_only": 0,
+              "faces": 26,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 1,
+                  "width_only": 2
+                }
+              }
+            },
+            "none": {
+              "baseline_exact": 0,
+              "baseline_width_only": 0,
+              "faces": 59,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 0,
+                  "width_only": 0
+                }
+              }
+            }
+          },
+          "by_delivery": {
+            "png": {
+              "baseline_exact": 0,
+              "baseline_width_only": 0,
+              "faces": 76,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 3,
+                  "width_only": 7
+                }
+              }
+            },
+            "webp": {
+              "baseline_exact": 0,
+              "baseline_width_only": 1,
+              "faces": 179,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 1,
+                  "width_only": 2
+                }
+              }
+            }
+          },
+          "by_device_scale_factor": {
+            "1.0": {
+              "baseline_exact": 0,
+              "baseline_width_only": 0,
+              "faces": 103,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 0,
+                  "width_only": 0
+                }
+              }
+            },
+            "1.25": {
+              "baseline_exact": 0,
+              "baseline_width_only": 0,
+              "faces": 65,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 1,
+                  "width_only": 3
+                }
+              }
+            },
+            "1.5": {
+              "baseline_exact": 0,
+              "baseline_width_only": 1,
+              "faces": 87,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 3,
+                  "width_only": 6
+                }
+              }
+            }
+          },
+          "contact_faces": {
+            "separate": {
+              "baseline_exact": 0,
+              "baseline_width_only": 1,
+              "faces": 252,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 4,
+                  "width_only": 9
+                }
+              }
+            },
+            "touching": {
+              "baseline_exact": 0,
+              "baseline_width_only": 0,
+              "faces": 3,
+              "models": {
+                "ppocrv6-tiny-exp-20261013-001": {
+                  "exact": 0,
+                  "width_only": 0
+                }
+              }
+            }
+          },
+          "note": "Raw-byte exact counts per optional scene field; width_only (differs only in the outermost bracket width) is diagnostic and never a score."
+        },
+        "candidate_stage": {
+          "body_regions_routed": 39,
+          "bracket_pair_candidates": 99,
+          "complete_ink_coverage": 180,
+          "faces": 255,
+          "note": "Candidate-stage development metrics; unsupported cut-face parts are counted here and excluded from every scored population.",
+          "partial_only": 64,
+          "routed_candidate_count": 136,
+          "safe_complete_coverage": 80,
+          "safe_complete_coverage_ratio": 0.3137254901960784,
+          "safe_routed_complete_coverage": 44,
+          "structural_components": 350,
+          "unsupported_regions": 0
+        },
+        "classifier": "kaomoji-crop-classifier-exp-20261013-002",
+        "config": {
+          "exterior_bridge_ratio": 0.45,
+          "outer_bracket_width": "baseline-else-raw",
+          "shape_contrast_threshold": 80
+        },
+        "config_views": [
+          "raw",
+          "edge-pad-4",
+          "edge-pad-6"
+        ],
+        "dataset_binding": {
+          "counts": {
+            "dev": {
+              "faces": 255,
+              "negative_scenes": 12,
+              "scenes": 60
+            },
+            "heldout": {
+              "faces": 481,
+              "negative_scenes": 24,
+              "scenes": 120
+            }
+          },
+          "dataset_sha256": "9576a24fbc9ee177828c500ae43e8519cc11d4d9e787773942f8c7b06a8dd5a7",
+          "schema_version": "localocr.region-scenes.freeze.v1",
+          "split_sha256": {
+            "dev": "76af8ca813b6f9a754e1de359e68ff1fde3bcbc06e15ba57383ac277745cc2c3",
+            "heldout": "66418c9bec8ef23fb580adc3c5b1efed893b5069e97a0b0b7c7021015eec8c0c"
+          }
+        },
+        "label": "当前冻结配置",
+        "model": {
+          "body": {
+            "baseline_correct_to_wrong": 0,
+            "baseline_exact": 1612,
+            "baseline_mixed_regions": 293,
+            "body_intersection_transcript_changes": 16,
+            "body_literal_deleted": 1,
+            "erroneous_rewrites": 0,
+            "final_exact": 1618,
+            "final_mixed_regions": 286,
+            "new_body_intersection_errors": 2,
+            "regions": 2439,
+            "split_children_with_unchanged_reading": 2195,
+            "verified_body_preserving_splices": 6
+          },
+          "id": "ppocrv6-tiny-exp-20261013-001",
+          "isolated_kaomoji": {
+            "cer": 0.905876235049402,
+            "character_errors": 1742,
+            "characters": 1923,
+            "count": 255,
+            "exact": 4,
+            "grapheme_cer": 0.9061844863731656,
+            "grapheme_errors": 1729,
+            "grapheme_exact": 4,
+            "graphemes": 1908,
+            "ps_cer": 0.9074324324324324,
+            "ps_characters": 1480,
+            "ps_errors": 1343,
+            "symbol_cer": 0.9079919408999328,
+            "symbol_characters": 1489,
+            "symbol_errors": 1352
+          },
+          "negative": {
+            "baseline_graphic_nonempty": 63,
+            "baseline_nonempty_scenes": 12,
+            "card_list_negative_baseline_nonempty": 12,
+            "card_list_negative_final_nonempty": 12,
+            "card_list_negative_new_nonempty": 0,
+            "card_list_negative_scenes": 12,
+            "final_graphic_nonempty": 63,
+            "final_nonempty_scenes": 12,
+            "graphic_regions": 968,
+            "negative_scenes": 12,
+            "new_graphic_nonempty": 0,
+            "new_nonempty_scenes": 0
+          },
+          "research_quality_gates": {
+            "actual_routed_candidates": 136,
+            "app_acceptance": false,
+            "body_and_punctuation_new_errors": {
+              "baseline_correct_to_wrong": 0,
+              "body_literal_deleted": 1,
+              "erroneous_rewrites": 0,
+              "new_body_intersection_errors": 2
+            },
+            "effective_face_improvements": 3,
+            "face": {
+              "cer_reduction": 0.04264170566822678,
+              "exact_gain": 4,
+              "passed": true,
+              "ps_cer_reduction": 0.046621621621621645
+            },
+            "negative_new_nonempty": {
+              "new_graphic_nonempty": 0,
+              "new_nonempty_scenes": 0
+            },
+            "passed": false,
+            "production_enabled": false,
+            "promote": false,
+            "research_quality_passed": false
+          },
+          "routing_effectiveness": {
+            "actual_routed_candidates": 136,
+            "face_exact_except_outer_bracket_width": 9,
+            "face_exact_to_wrong": 0,
+            "face_wrong_to_exact": 3,
+            "isolated_face_wrong_to_exact": 4,
+            "split_materialized": 10,
+            "split_restored": 50,
+            "split_restored_unverifiable": 2
+          }
+        },
+        "resources": {
+          "peak_private_bytes": 552861696,
+          "scenes": 60,
+          "warm_p50_seconds": 3.1156332500031567,
+          "warm_p95_seconds": 3.8693804400027147
+        },
+        "scene_kinds": {
+          "card-list": 48,
+          "card-list-negative": 12
+        },
+        "scenes": 60,
+        "split": "dev"
+      }
+    ],
+    "heldout": []
+  },
+  "schema_version": "localocr.browser-rendering.anonymous-evaluation.v1",
+  "scope": "Browser real-font renderings of original CC0 record-card pages (Edge + Windows system fonts); not real screenshots; no accuracy claim beyond the listed sets; candidate and classifier stay disabled.",
+  "sources": [
+    {
+      "file": "artifacts/browser-rendering-20261015/evaluation/scene-browser-cards-dev-003/evaluation.json",
+      "role": "dev:候选定位轮配置",
+      "sha256": "8f57de740dae1befe8b1fc5dc43a2577172f21dc0bf26febce632d9c9ac53c72"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/evaluation/scene-browser-cards-dev-003/resources.json",
+      "role": "dev-resources:候选定位轮配置",
+      "sha256": "fd859b1a38cf3133e1ad1f85e11ad20a5d206b5db86d0e44f7f6358ef8671d77"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/evaluation/scene-browser-cards-dev-004/evaluation.json",
+      "role": "dev:当前冻结配置",
+      "sha256": "d0ccf648a74ec5f74f1da607797ce67cbc095595569945e627882890ba217fae"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/evaluation/scene-browser-cards-dev-004/resources.json",
+      "role": "dev-resources:当前冻结配置",
+      "sha256": "d046c6e6096fb88ac581278846cfe3abd6ab665a0abfcc042a3b8edf4c044883"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/scenes/browser-cards-v1/dataset.json",
+      "role": "dataset",
+      "sha256": "9576a24fbc9ee177828c500ae43e8519cc11d4d9e787773942f8c7b06a8dd5a7"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/scenes/browser-cards-v1/generation.json",
+      "role": "generation",
+      "sha256": "2ead4396b18b4766be73c97e70d61667e27d80877d89267369c30c930d74bfb0"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/gpu-budget.json",
+      "role": "gpu-budget",
+      "sha256": "d53c7819bf11442a4e9520e850fc602ed34a80ee1629a6edc923ab26b0996d35"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/validation/equivalence-probe.log",
+      "role": "equivalence-probe-log",
+      "sha256": "abbd64723f6fd94519fe3d4ec6294dd292d1826291e2ed52985981270557af94"
+    }
+  ]
+}

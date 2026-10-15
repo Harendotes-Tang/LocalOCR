@@ -1231,6 +1231,7 @@ def summarize(root,rows,predictions,config,model_ids):
     body={key:Counter() for key in model_ids}; faces={key:[] for key in model_ids}; base_faces=[]
     negatives={key:Counter() for key in model_ids}; crop_pairs={key:[] for key in model_ids}
     kind_counts=Counter(); details=[]; ious=[]; coverage_values=[]; effectiveness={key:Counter(actual_routed_candidates=0,face_wrong_to_exact=0,isolated_face_wrong_to_exact=0,face_exact_to_wrong=0) for key in model_ids}
+    breakdown_faces=[]
     for row,record in zip(rows,predictions):
         if record['id']!=row['id'] or record['image_sha256']!=row['sha256'] or record['pixel_sha256']!=row['pixel_sha256']:
             raise ValueError('Measured scene is not the actual inferred image')
@@ -1312,6 +1313,7 @@ def summarize(root,rows,predictions,config,model_ids):
                         if raw is not None: crop_pairs[identity].append({'label':truth['text'],'prediction':raw})
                     detail[identity]={'baseline':baseline_text,'prediction':final_text,'mixed_regions':final_mixed}
                 scene_detail['regions'].append(detail)
+                breakdown_faces.append(breakdown_face(row,truth,baseline_text,{identity:detail[identity]['prediction'] for identity in model_ids}))
             elif truth['kind']=='body':
                 localization['body_regions']+=1
                 localization['body_regions_with_candidate']+=int(any(mask_pixels(mask,item['bbox']) for item in routing))
@@ -1403,7 +1405,45 @@ def summarize(root,rows,predictions,config,model_ids):
             for key in ('baseline_correct_to_wrong','erroneous_rewrites','new_body_intersection_errors','body_literal_deleted'):result['models'][identity]['body'].setdefault(key,0)
             for key in ('new_nonempty_scenes','new_graphic_nonempty'):result['models'][identity]['negative'].setdefault(key,0)
             result['models'][identity]['research_quality_gates']=scene_gate(result,identity)
+    breakdowns=summarize_breakdowns(breakdown_faces,model_ids)
+    if breakdowns: result['breakdowns']=breakdowns
     return result,details
+
+
+# Optional per-face fields of browser real-font scenes; absent on every older dataset, so the
+# summary of an older report is unchanged. Exact means raw bytes; width-only is a diagnostic.
+BREAKDOWN_KEYS=(('by_bracket_width_class','bracket_width_class'),('by_delivery','delivery'),
+                ('by_device_scale_factor','device_scale_factor'),('contact_faces','contact'))
+
+
+def breakdown_face(row,truth,baseline_text,finals):
+    delivery=row.get('delivery') or {}
+    contact=truth.get('contact_pixels')
+    return {'bracket_width_class':truth.get('bracket_width_class'),'delivery':delivery.get('format'),
+            'device_scale_factor':None if row.get('device_scale_factor') is None else str(row['device_scale_factor']),
+            'contact':None if contact is None else ('touching' if contact>0 else 'separate'),
+            'label':truth['text'],'baseline':baseline_text,'finals':finals}
+
+
+def summarize_breakdowns(faces,model_ids):
+    result={}
+    for name,key in BREAKDOWN_KEYS:
+        groups={}
+        for face in faces:
+            if face[key] is None: continue
+            group=groups.setdefault(face[key],{'faces':0,'baseline_exact':0,'baseline_width_only':0,
+                                               'models':{identity:{'exact':0,'width_only':0} for identity in model_ids}})
+            group['faces']+=1
+            group['baseline_exact']+=int(face['baseline']==face['label'])
+            group['baseline_width_only']+=int(face['baseline']!=face['label'] and f.width_key(face['baseline'])==f.width_key(face['label']))
+            for identity in model_ids:
+                final=face['finals'][identity]
+                group['models'][identity]['exact']+=int(final==face['label'])
+                group['models'][identity]['width_only']+=int(final!=face['label'] and f.width_key(final)==f.width_key(face['label']))
+        if groups: result[name]=dict(sorted(groups.items()))
+    if result:
+        result['note']='Raw-byte exact counts per optional scene field; width_only (differs only in the outermost bracket width) is diagnostic and never a score.'
+    return result
 
 
 def evaluate(args):

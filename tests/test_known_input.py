@@ -89,3 +89,32 @@ def test_manifest_takes_stored_text_as_truth_and_counts_differences(built):
     (root / 'typed' / 'shot-001.txt').write_text('只有一行\n', encoding='utf-8')
     with pytest.raises(ValueError, match='exactly one nonempty line'):
         ki.build_manifest(root, 'unit UI', root / 'manifest-2.json')
+
+
+def test_retired_list_cannot_build_a_manifest_and_only_unused_lists_retire(tmp_path, monkeypatch):
+    if not FONTS.exists():
+        pytest.skip('Pinned local OFL fonts absent')
+    import dataclasses
+    from tools.PretrainedOcr import round_profile as rp
+    root = tmp_path / 'list'
+    ki.build(root, FONTS, seed=20261016)
+    round_root = tmp_path / 'unit-round'
+    round_root.mkdir()
+    profile = dataclasses.replace(rp.BROWSER_RENDERING, name='unit-round', root=round_root, previous_budget=tmp_path / 'old.json')
+    monkeypatch.setattr(rp, 'ROUNDS', (profile,))
+    assert ki.retired_lists() == {}
+    with pytest.raises(ValueError, match='registered round root'):
+        ki.retire(root, tmp_path / 'known-input-9-retirement.json', 'unit reason', 'unit-change')
+    with pytest.raises(ValueError, match='registered round root'):
+        ki.retire(root, round_root / 'retired.json', 'unit reason', 'unit-change')
+    record = ki.retire(root, round_root / 'known-input-9-retirement.json', 'unit reason', 'unit-change')
+    assert record['screens'] == 0 and record['typed_files'] == 0 and record['first_use_receipt'] is None
+    assert ki.retired_lists() == {record['input_list_sha256']: round_root / 'known-input-9-retirement.json'}
+    with pytest.raises(ValueError, match='retired'):
+        ki.build_manifest(root, 'unit UI', root / 'manifest.json')
+    used = tmp_path / 'used'
+    ki.build(used, FONTS, seed=20261017)
+    (used / 'typed' / 'shot-001.txt').write_text('一行\n', encoding='utf-8')
+    with pytest.raises(ValueError, match='unused'):
+        ki.retire(used, round_root / 'known-input-8-retirement.json', 'unit reason', 'unit-change')
+    assert '已作废' in (root / 'README-known-input.md').read_text(encoding='utf-8')

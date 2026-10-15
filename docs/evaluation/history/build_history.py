@@ -22,7 +22,7 @@ from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Patch
 
 PUBLIC_REL = Path("docs/evaluation/history")
-COUNTS_REL = Path("artifacts/real-rendering-20261015/validation/version-comparison-counts.json")
+COUNTS_REL = Path("artifacts/browser-rendering-20261015/validation/version-comparison-counts.json")
 SUMMARY_SCHEMA = "localocr.version-history.anonymous-evaluation.v1"
 RECEIPT_SCHEMA = "localocr.version-history.assets-build.v1"
 MODEL = "ppocrv6-tiny-exp-20261013-001"
@@ -36,6 +36,7 @@ DATASET_NAMES = {"atoms-mixed-v1": "原子混合 v1", "cards-v2": "记录卡片 
 SCENE_SETS = (
     ("cards-v2", "记录卡片 v2"), ("atoms-mixed-v1", "原子混合 v1"), ("cards-v3", "记录卡片 v3"),
     ("atoms-mixed-v2", "原子混合 v2"), ("cards-v4", "记录卡片 v4"), ("atoms-mixed-v3", "原子混合 v3"),
+    ("browser-cards-v1", "浏览器渲染卡片"),
 )
 
 
@@ -60,7 +61,7 @@ def same_data(counts: dict) -> list[dict]:
         if not versions:
             continue
         any_entry = next(iter(versions.values()))
-        entry = {"key": key, "label": f"{label} dev", "faces": any_entry["faces"], "kind": "synthetic-dev",
+        entry = {"key": key, "label": f"{label} dev", "faces": any_entry["faces"], "kind": "browser-dev" if key.startswith("browser") else "synthetic-dev",
                  "versions": {"baseline": {"exact": any_entry["baseline_exact"], "width_only": any_entry["baseline_exact_except_outer_bracket_width"]}}}
         for version, value in versions.items():
             if value["baseline_exact"] != any_entry["baseline_exact"] or value["faces"] != any_entry["faces"]:
@@ -88,6 +89,7 @@ def scene_firsts(docs: Path, load) -> list[dict]:
     grammar = load(docs / "kaomoji-grammar-20261013/summary.json", "round:kaomoji-grammar-20261013")
     candidates = load(docs / "region-candidates-20261013/summary.json", "round:region-candidates-20261013")
     rendering = load(docs / "real-rendering-20261015/summary.json", "round:real-rendering-20261015")
+    browser = load(docs / "browser-rendering-20261015/summary.json", "round:browser-rendering-20261015")
     models = {m["id"]: m for m in region["heldout"]["models"]}
     rows = [{"round": "10-12 区域链路", "dataset": "区域整图 280 面", "faces": models["production-baseline"]["face_regions"]["count"],
              "baseline": models["production-baseline"]["face_regions"]["exact"], "chain": models["ppocrv6-tiny-exp-20261011-001"]["face_regions"]["exact"]}]
@@ -102,6 +104,11 @@ def scene_firsts(docs: Path, load) -> list[dict]:
             rows.append({"round": name, "dataset": f"{DATASET_NAMES.get(label, label)} {model['count']} 面", "faces": model["count"],
                          "baseline": item["baseline"]["isolated_kaomoji"]["exact"], "chain": model["exact"],
                          "gate": (item["models"][MODEL].get("research_quality_gates") or {}).get("passed")})
+    for item in browser["scene"]["heldout"]:
+        model = item["model"]["isolated_kaomoji"]
+        rows.append({"round": "10-15 浏览器渲染（测量）", "dataset": f"浏览器渲染卡片 {model['count']} 面", "faces": model["count"],
+                     "baseline": item["baseline"]["isolated_kaomoji"]["exact"], "chain": model["exact"],
+                     "gate": (item["model"].get("research_quality_gates") or {}).get("passed")})
     return rows
 
 
@@ -149,7 +156,8 @@ def figure(panel_a, panel_b, panel_c, public: Path, preview: Path | None = None)
             if (value.get("width_only") or 0) >= 3:
                 ax.text(x, exact + extra + .6, f"+{value['width_only']}", ha="center", va="bottom", fontsize=6.5, color="#475569")
     ax.set_xticks(range(len(panel_a)))
-    ax.set_xticklabels([f"{row['label']}\n{row['faces']} 面" + ("\n（真实，非独立）" if row["kind"] == "real-screens" else "") for row in panel_a], fontsize=9)
+    notes = {"real-screens": "\n（真实，非独立）", "browser-dev": "\n（浏览器真实字体）"}
+    ax.set_xticklabels([f"{row['label']}\n{row['faces']} 面" + notes.get(row["kind"], "") for row in panel_a], fontsize=9)
     ax.set_ylabel("颜文字整串精确率（%）")
     ax.set_title("A · 同一数据上的版本对比（实心柱顶数字为整串正确数；斜线段为“仅外括号宽度不符”；空位表示该版本未在此数据上评测）", fontsize=10.5, loc="left")
     handles = [Patch(color=color, label=label) for _, label, color in VERSIONS] + [Patch(facecolor="white", edgecolor="#475569", hatch="///", label="仅外括号宽度不符")]
@@ -215,7 +223,7 @@ def main() -> None:
     panel_c = crop_firsts(docs, load)
     figures = [figure(panel_a, panel_b, panel_c, public, args.preview)]
     summary = {"schema_version": SUMMARY_SCHEMA, "generated_utc": datetime.now(timezone.utc).isoformat(), "model": MODEL,
-               "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15.",
+               "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15; the browser set is rendered by Edge with Windows system fonts, not real screenshots.",
                "normalization": "Raw Unicode exact match; the width-only count is a diagnostic of faces equal to the truth except for the outermost bracket width, never part of the exact score.",
                "versions": [{"key": key, "label": label} for key, label, _ in VERSIONS],
                "same_data": panel_a, "scene_first_tests": panel_b, "crop_first_tests": panel_c, "figures": figures, "sources": sources,

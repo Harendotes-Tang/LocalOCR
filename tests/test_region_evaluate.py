@@ -500,6 +500,37 @@ def test_unsupported_cut_face_parts_are_counted_but_never_scored(root):
     assert details[0]['regions']==[] or all(item['kind']!='unsupported' for item in details[0]['regions'])
 
 
+def _face_row(root, label, **fields):
+    image=Image.new('RGB',(40,20),'white');image.save(root/'face.png')
+    mask=np.zeros((20,40),dtype='uint8');mask[5:15,10:30]=255
+    Image.fromarray(mask).save(root/'face-mask.png')
+    region={'id':'f','kind':'kaomoji','text':label,'bbox':[10,5,30,15],'mask':'face-mask.png',
+            'mask_sha256':common.digest(root/'face-mask.png'),'pixel_count':200,**{k:v for k,v in fields.items() if k=='bracket_width_class' or k=='contact_pixels'}}
+    job={'id':'face','sha256':common.digest(root/'face.png'),'pixel_sha256':e.c.image_digest(image)}
+    row=dict(job,width=40,height=20,scene_kind='card-list',regions=[region],text=label,**{k:v for k,v in fields.items() if k in ('delivery','device_scale_factor')})
+    read=[{'bbox':[9,4,31,16],'text':'(・ω・)','score':.9}]
+    prediction={'baseline':read,'baseline_text':'(・ω・)','routing':{'candidates':[],'structural_components':0},
+                'models':{'unit':{'regions':read,'text':'(・ω・)','views':{}}}}
+    return row,dict(job,image_sha256=job['sha256'],prediction=prediction)
+
+
+def test_browser_scene_fields_add_breakdowns_and_older_rows_add_none(root):
+    row,record=_face_row(root,'（・ω・）',bracket_width_class='fullwidth',contact_pixels=3,
+                         delivery={'format':'webp','quality':80,'method':4},device_scale_factor=1.25)
+    summary,_=e.summarize(root,[row],[record],e.configuration(),['unit'])
+    expected={'faces':1,'baseline_exact':0,'baseline_width_only':1,'models':{'unit':{'exact':0,'width_only':1}}}
+    breakdowns=summary['breakdowns']
+    assert breakdowns['by_bracket_width_class']=={'fullwidth':expected}
+    assert breakdowns['by_delivery']=={'webp':expected} and breakdowns['by_device_scale_factor']=={'1.25':expected}
+    assert breakdowns['contact_faces']=={'touching':expected} and 'diagnostic' in breakdowns['note']
+    assert summary['models']['unit']['isolated_kaomoji']['count']==1
+    plain_row,plain_record=_face_row(root,'（・ω・）')
+    plain,_=e.summarize(root,[plain_row],[plain_record],e.configuration(),['unit'])
+    assert 'breakdowns' not in plain
+    plain.pop('breakdowns',None); summary.pop('breakdowns')
+    assert plain==summary
+
+
 def test_truth_loader_accepts_unsupported_parts_only_with_their_source_face(root):
     dataset,job=fixture_dataset(root/'data')
     rows=common.read(dataset/'dev.json')

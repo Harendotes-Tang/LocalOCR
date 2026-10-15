@@ -1,0 +1,55 @@
+{
+  "built_utc": "2026-10-15T16:05:48.256751+00:00",
+  "figures": [
+    {
+      "file": "docs/evaluation/browser-rendering-20261015/figures/bracket-width-class-exact.svg",
+      "sha256": "f6db1c822d23f594c759d128170ce0507de0a483513ad0ed7766abbeab979ce8"
+    }
+  ],
+  "schema_version": "localocr.browser-rendering.assets-build.v1",
+  "script_sha256": "6a3219eda4ca9489b0bf534e6bb4ca2b96d1c2a98783a5687f4a7d3090ae69f0",
+  "sources": [
+    {
+      "file": "artifacts/browser-rendering-20261015/evaluation/scene-browser-cards-dev-003/evaluation.json",
+      "role": "dev:候选定位轮配置",
+      "sha256": "8f57de740dae1befe8b1fc5dc43a2577172f21dc0bf26febce632d9c9ac53c72"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/evaluation/scene-browser-cards-dev-003/resources.json",
+      "role": "dev-resources:候选定位轮配置",
+      "sha256": "fd859b1a38cf3133e1ad1f85e11ad20a5d206b5db86d0e44f7f6358ef8671d77"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/evaluation/scene-browser-cards-dev-004/evaluation.json",
+      "role": "dev:当前冻结配置",
+      "sha256": "d0ccf648a74ec5f74f1da607797ce67cbc095595569945e627882890ba217fae"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/evaluation/scene-browser-cards-dev-004/resources.json",
+      "role": "dev-resources:当前冻结配置",
+      "sha256": "d046c6e6096fb88ac581278846cfe3abd6ab665a0abfcc042a3b8edf4c044883"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/scenes/browser-cards-v1/dataset.json",
+      "role": "dataset",
+      "sha256": "9576a24fbc9ee177828c500ae43e8519cc11d4d9e787773942f8c7b06a8dd5a7"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/scenes/browser-cards-v1/generation.json",
+      "role": "generation",
+      "sha256": "2ead4396b18b4766be73c97e70d61667e27d80877d89267369c30c930d74bfb0"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/gpu-budget.json",
+      "role": "gpu-budget",
+      "sha256": "d53c7819bf11442a4e9520e850fc602ed34a80ee1629a6edc923ab26b0996d35"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/validation/equivalence-probe.log",
+      "role": "equivalence-probe-log",
+      "sha256": "abbd64723f6fd94519fe3d4ec6294dd292d1826291e2ed52985981270557af94"
+    }
+  ],
+  "statement": "Built from explicit completed local reports; no images, pages, labels, row predictions or weights opened; no inference; no network.",
+  "summary_sha256": "a1a66dee6707cb1bb38eb6e0379d7dc9bbb409d01a95ef12a6b761ac6badcc2c"
+}

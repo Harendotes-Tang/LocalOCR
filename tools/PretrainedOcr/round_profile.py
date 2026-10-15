@@ -71,8 +71,16 @@ REAL_RENDERING = RoundProfile(
     previous_budget=ARTIFACTS / 'region-candidates-20261013/gpu-budget.json',
     previous_sha256='a650a5777d347fd15efce32e32a2c4e36515031345b8da35e4224c8eb9161e3d',
     previous_used_seconds=0.0, maximum_seconds=0.0, specialist_families=1)
-ROUNDS = (QUALITY, GRAMMAR, CANDIDATES, REAL_RENDERING)
-CURRENT = REAL_RENDERING
+# CPU-only measurement round on browser real-font renderings: bound to the closed zero-second
+# real-rendering ledger; no rule, configuration or model changes.
+BROWSER_RENDERING = RoundProfile(
+    name='browser-rendering-20261015', change='add-browser-rendering-evaluation',
+    root=ARTIFACTS / 'browser-rendering-20261015', maximum_bytes=GIB, owned_bytes=600 * 1024 ** 2,
+    previous_budget=ARTIFACTS / 'real-rendering-20261015/gpu-budget.json',
+    previous_sha256='29bfea13764ff5952e9627ef3c404fa51858996d179a4db38bdd97beb0db38ca',
+    previous_used_seconds=0.0, maximum_seconds=0.0, specialist_families=1)
+ROUNDS = (QUALITY, GRAMMAR, CANDIDATES, REAL_RENDERING, BROWSER_RENDERING)
+CURRENT = BROWSER_RENDERING
 
 
 def _resolved(path):
