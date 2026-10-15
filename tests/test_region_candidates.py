@@ -573,3 +573,70 @@ def test_thin_full_square_outline_arm_is_absorbed_but_dense_glyph_is_body():
     output=c.locate_candidates(np.asarray(dense),[])
     faces=[item for item in output['candidates'] if 'image-bracket-pair' in item['sources']]
     assert faces and faces[0]['bbox'][2]<132
+
+
+def glued_bracket_fixture(bridge=(232, 232, 232)):
+    """A face whose left bracket is glued to a cheek dot by a faint antialiasing-like bridge."""
+    image = Image.fromarray(face_fixture())
+    draw = ImageDraw.Draw(image)
+    draw.ellipse((36, 16, 41, 21), fill='black')          # cheek mark above-right of the left bracket
+    draw.line((27, 20, 37, 18), fill=bridge, width=2)     # faint bridge from the arc top: ink at threshold 8, not at 80
+    return np.asarray(image)
+
+
+def test_core_shape_threshold_finds_glued_brackets_without_changing_the_envelope():
+    image = glued_bracket_fixture()
+    base = c.locate_candidates(image, [])
+    assert base['shape_detection'] == {'threshold': 8, 'base_pairs': 0, 'core_pairs': 0, 'merged_bracket_candidates': 0}
+    assert all('image-bracket-pair' not in item['sources'] for item in base['candidates'])
+    config = dict(c.DEFAULT_CONFIG, shape_contrast_threshold=80)
+    core = c.locate_candidates(image, [], config)
+    pair = [item for item in core['candidates'] if 'image-bracket-pair' in item['sources']]
+    assert pair and pair[0]['evidence']['extra_shape_support'] and pair[0]['evidence']['pair_geometry']['interior_components'] >= 2
+    assert core['shape_detection']['threshold'] == 80 and core['shape_detection']['core_pairs'] >= 1
+    assert core['shape_detection']['base_pairs'] == 0 and core['shape_detection']['merged_bracket_candidates'] == 1
+    # The envelope and every base-mask fact are unchanged: only the stroke evidence came from the core mask.
+    matching = [item for item in base['candidates'] if item['bbox'] == pair[0]['bbox']]
+    assert matching and matching[0]['evidence']['pixel_count'] == pair[0]['evidence']['pixel_count']
+    assert matching[0]['evidence']['component_count'] == pair[0]['evidence']['component_count']
+    assert matching[0]['evidence']['edge_ink'] == pair[0]['evidence']['edge_ink']
+
+
+def test_shape_threshold_defaults_to_the_base_threshold_and_is_bounded():
+    image = glued_bracket_fixture()
+    legacy = {key: value for key, value in c.DEFAULT_CONFIG.items() if key not in c.OPTIONAL_CONFIG}
+    assert c.configuration(legacy)['shape_contrast_threshold'] == c.DEFAULT_CONFIG['contrast_threshold'] == 8
+    assert c.configuration(dict(legacy, contrast_threshold=12))['shape_contrast_threshold'] == 12
+    explicit = c.locate_candidates(image, [], dict(c.DEFAULT_CONFIG, shape_contrast_threshold=8))
+    assert explicit == c.locate_candidates(image, [], legacy) == c.locate_candidates(image, [])
+    for invalid in (0, 256, 8.0, '80', True, -1):
+        with pytest.raises(ValueError):
+            c.configuration(dict(c.DEFAULT_CONFIG, shape_contrast_threshold=invalid))
+    assert c.pixel_evidence(image, explicit['candidates'][0]['bbox'])['pixel_count'] == explicit['candidates'][0]['evidence']['pixel_count']
+
+
+def body_stroke_fixture(dense=True):
+    """A thin arc glued by a faint bridge to a dense square glyph; with a partner arc to its right."""
+    image = Image.new('RGB', (200, 80), 'white')
+    draw = ImageDraw.Draw(image)
+    draw.arc((40, 20, 54, 50), 90, 270, fill='black', width=2)           # left-facing curve stroke
+    if dense:
+        draw.rectangle((58, 22, 80, 48), fill='black')                     # dense body glyph beside it
+        draw.line((46, 21, 58, 22), fill=(232, 232, 232), width=2)        # faint bridge from the arc top: glued at 8, separate at 80
+    draw.ellipse((92, 31, 99, 38), outline='black', width=2)
+    draw.ellipse((112, 31, 119, 38), outline='black', width=2)
+    draw.line((100, 43, 110, 43), fill='black', width=2)
+    draw.arc((128, 20, 142, 50), 270, 90, fill='black', width=2)         # right-facing curve stroke
+    return np.asarray(image)
+
+
+def test_core_mask_strokes_inside_dense_body_cells_are_not_bracket_evidence():
+    config = dict(c.DEFAULT_CONFIG, shape_contrast_threshold=80)
+    glued = c.locate_candidates(body_stroke_fixture(dense=True), [], config)
+    assert glued['shape_detection']['core_pairs'] == 0 and glued['shape_detection']['merged_bracket_candidates'] == 0
+    assert all('image-bracket-pair' not in item['sources'] for item in glued['candidates'])
+    free = c.locate_candidates(body_stroke_fixture(dense=False), [], config)
+    assert free['shape_detection']['core_pairs'] >= 1 and any('image-bracket-pair' in item['sources'] for item in free['candidates'])
+    # The guard only concerns strokes that exist on the core mask: the base mask result is untouched.
+    base = c.locate_candidates(body_stroke_fixture(dense=True), [])
+    assert base['shape_detection'] == {'threshold': 8, 'base_pairs': 0, 'core_pairs': 0, 'merged_bracket_candidates': 0}

@@ -27,7 +27,12 @@ def test_registered_rounds_have_distinct_roots_and_external_predecessors():
     assert rp.CANDIDATES.previous_budget == rp.GRAMMAR.root / 'gpu-budget.json'
     assert rp.CANDIDATES.maximum_seconds == 0.0 and rp.CANDIDATES.maximum_bytes == rp.GIB
     assert rp.CANDIDATES.specialist_families == 1 and rp.CANDIDATES.change == 'improve-region-candidate-localization'
-    assert rp.CURRENT is rp.CANDIDATES and rp.by_name(rp.CANDIDATES.name) is rp.CANDIDATES
+    assert rp.REAL_RENDERING.previous_budget == rp.CANDIDATES.root / 'gpu-budget.json'
+    assert rp.REAL_RENDERING.maximum_seconds == 0.0 and rp.REAL_RENDERING.previous_used_seconds == 0.0
+    assert rp.REAL_RENDERING.maximum_bytes == rp.GIB and rp.REAL_RENDERING.specialist_families == 1
+    assert rp.REAL_RENDERING.change == 'improve-real-rendering-bracket-evidence'
+    assert rp.CURRENT is rp.REAL_RENDERING and rp.by_name(rp.REAL_RENDERING.name) is rp.REAL_RENDERING
+    assert rp.by_name(rp.CANDIDATES.name) is rp.CANDIDATES
     assert rp.by_name(rp.GRAMMAR.name) is rp.GRAMMAR
 
 
@@ -69,6 +74,18 @@ def test_candidates_predecessor_ledger_matches_actual_closed_history():
     state = read(ledger)
     assert state['active'] is None
     assert math.isclose(state['used_seconds'], rp.CANDIDATES.previous_used_seconds, abs_tol=1e-6)
+    assert not ledger.with_name(ledger.name + '.lock').exists()
+
+
+def test_real_rendering_predecessor_ledger_is_the_closed_zero_second_candidates_ledger():
+    ledger = Path(rp.REAL_RENDERING.previous_budget)
+    if not ledger.exists():
+        pytest.skip('Historical candidates-round ledger is absent on this host')
+    from tools.PretrainedOcr.common import digest, read
+    assert digest(ledger) == rp.REAL_RENDERING.previous_sha256
+    state = read(ledger)
+    assert state['active'] is None and state['runs'] == []
+    assert state['maximum_seconds'] == 0.0 and state['used_seconds'] == rp.REAL_RENDERING.previous_used_seconds == 0.0
     assert not ledger.with_name(ledger.name + '.lock').exists()
 
 

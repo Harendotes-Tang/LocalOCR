@@ -9,15 +9,26 @@ import math
 import unicodedata
 import numpy as np
 from tools.RegionKaomoji import candidates as c
+from tools.PretrainedOcr import kaomoji_grammar as kg
 
 SCHEMA = 'localocr.region-fusion.v1'
 DEFAULT_CONFIG = {'minimum_agreeing_views': 2, 'maximum_output_characters': 256,
                   'require_raw_view': True, 'allow_pixel_only_insertions': True,
-                  'require_extra_shape_support': True, 'protect_body_letters_numbers': True}
+                  'require_extra_shape_support': True, 'protect_body_letters_numbers': True,
+                  'outer_bracket_width': 'exact'}
+# Keys introduced after a configuration was frozen take their default when absent, so frozen files stay valid.
+OPTIONAL_CONFIG = {'outer_bracket_width': 'exact'}
+# ``exact``: views must agree byte for byte. ``baseline-else-raw`` / ``raw``: the outermost bracket pair's
+# width (half- or full-width members of one atom-table family) is projected out of the vote and then taken
+# from the first-pass baseline's reading of the same bracket position (else the raw view), or always from the
+# raw view. Every other byte still has to agree exactly; evaluation never normalizes width.
+WIDTH_MODES = ('exact', 'baseline-else-raw', 'raw')
 
 
 def configuration(config=None):
     value = copy.deepcopy(DEFAULT_CONFIG if config is None else config)
+    if isinstance(value, dict):
+        value = {**{key: default for key, default in OPTIONAL_CONFIG.items() if key not in value}, **value}
     if not isinstance(value, dict) or set(value) != set(DEFAULT_CONFIG):
         raise ValueError('Unknown or incomplete fusion configuration')
     for key, default in DEFAULT_CONFIG.items():
@@ -28,7 +39,68 @@ def configuration(config=None):
         raise ValueError('Fusion output/view ceiling outside range')
     if not value['require_raw_view'] or not value['require_extra_shape_support'] or not value['protect_body_letters_numbers']:
         raise ValueError('Research fusion protection cannot be disabled')
+    if value['outer_bracket_width'] not in WIDTH_MODES:
+        raise ValueError('Outer bracket width mode must be one of ' + ', '.join(WIDTH_MODES))
     return value
+
+
+def _width_families(atoms):
+    """Bracket characters whose NFKC form is another declared bracket character: {char: canonical}."""
+    chars = set(atoms.bracket_chars)
+    families = {}
+    for char in chars:
+        canonical = unicodedata.normalize('NFKC', char)
+        if canonical != char and canonical in chars:
+            families[char] = canonical
+    return families
+
+
+WIDTH_FAMILIES = _width_families(c.ATOMS)
+
+
+def _bracket_positions(text):
+    positions = [index for index, char in enumerate(text) if char in c.ATOMS.bracket_chars]
+    return positions if len(positions) == 2 else None
+
+
+def width_key(text):
+    """``text`` with its outermost bracket pair projected to the family's canonical width.
+
+    Only a complete expression (atom-table grammar) carrying exactly one declared bracket pair is
+    projected; anything else is returned unchanged so it keeps voting byte for byte.
+    """
+    if not isinstance(text, str) or kg.parse_face(text, c.ATOMS) is None:
+        return text
+    chars = list(text)
+    for index in _bracket_positions(text) or ():
+        chars[index] = WIDTH_FAMILIES.get(chars[index], chars[index])
+    return ''.join(chars)
+
+
+def _apply_width(projected, source):
+    """Copy ``source``'s bracket characters into ``projected``'s bracket positions when both belong to one family."""
+    targets, origins = _bracket_positions(projected), _bracket_positions(source) if isinstance(source, str) else None
+    if targets is None or origins is None:
+        return None
+    chars = list(projected)
+    for index, origin in zip(targets, origins):
+        char = source[origin]
+        if WIDTH_FAMILIES.get(char, char) != WIDTH_FAMILIES.get(chars[index], chars[index]):
+            return None
+        chars[index] = char
+    return ''.join(chars)
+
+
+def _choose_width(projected, original, raw_text, mode):
+    """Resolve the agreed projected face to actual bracket bytes; returns (text, bracket_width_source)."""
+    if kg.parse_face(projected, c.ATOMS) is None:
+        return projected, 'views'
+    if mode == 'baseline-else-raw' and original:
+        applied = _apply_width(projected, original)
+        if applied is not None:
+            return applied, 'baseline'
+    applied = _apply_width(projected, raw_text)
+    return (applied if applied is not None else projected), 'raw-view'
 
 
 def anchors(text):
@@ -136,6 +208,36 @@ def _agreement(image, bbox, records, config, key=None):
     if raw_value is None or counts[raw_value] < config['minimum_agreeing_views'] or counts[raw_value] < agreeing:
         return None, 'raw-view-outside-agreement'
     return raw_value, None
+
+
+def _vote(image, bbox, records, config, original, key=None):
+    """View agreement under the configured bracket-width mode; returns (value, reason, bracket_width_source).
+
+    In ``exact`` mode this is the byte-for-byte vote. Otherwise the outermost bracket pair's width is
+    projected out of every view's key (a whole-reading key projects its face part), the vote still needs
+    the configured number of agreeing views including the raw view, and the agreed value is resolved
+    back to actual bracket bytes from the baseline's reading of that position or from the raw view.
+    """
+    mode = config['outer_bracket_width']
+    if mode == 'exact':
+        value, reason = _agreement(image, bbox, records, config, key)
+        return value, reason, 'views' if reason is None else None
+    if key is None:
+        project = width_key
+    else:
+        def project(text):
+            parts = key(text)
+            return None if parts is None else (parts[0], width_key(parts[1]), parts[2], parts[3])
+    value, reason = _agreement(image, bbox, records, config, project)
+    if reason is not None:
+        return None, reason, None
+    raw_text = next(record['text'] for record in records if record['transform'] == 'raw')
+    if key is None:
+        text, source = _choose_width(value, original, raw_text, mode)
+        return text, None, source
+    raw_parts = key(raw_text)
+    face, source = _choose_width(value[1], original, raw_parts[1] if raw_parts else raw_text, mode)
+    return (value[0], face, value[2], value[3]), None, source
 
 
 def _recorded_score(record):
@@ -273,16 +375,22 @@ def fuse_candidates(image, baseline, candidates, views, config=None, candidate_c
         if audited is None or candidate != audited:
             raise ValueError('Candidate differs from automatic original-image localization')
         bbox=audited['bbox'];indices=audited['baseline_indices'];original=audited['baseline_text'];evidence=audited['evidence']
-        whole=None
+        whole=None;width_source=None
+        # The bracket-width reference is the baseline's reading of the same pixels: the owned region text, or
+        # for a pixel-separated face inside a broad body box the parent box's text (the face is spliced into it).
+        width_reference=original or (entries[audited['splice_baseline_index']]['text'] if audited['splice_baseline_index'] is not None else '')
         if audited['route_eligible']:
-            text,reason=_agreement(array,bbox,views.get(identity,[]),config)
+            text,reason,width_source=_vote(array,bbox,views.get(identity,[]),config,width_reference)
             # A candidate that owns exactly one mixed baseline region with measured bracket strokes may
             # agree on the face inside its whole reading while the surrounding bytes equal the baseline's.
-            mixed_reading=reason=='exact-unicode-view-disagreement' or (reason is None and not c.is_face_text(text))
+            # Under a width mode the padded views may agree with each other only after projection, so a raw-view
+            # mismatch is retried on the projected whole reading; the raw view must still hold the projected value.
+            mixed_reading=(reason=='exact-unicode-view-disagreement' or (reason is None and not c.is_face_text(text))
+                           or (config['outer_bracket_width']!='exact' and reason=='raw-view-outside-agreement'))
             if mixed_reading and audited['splice_baseline_index'] is None and len(indices)==1 and evidence.get('pair_geometry') is not None:
-                parts,whole_reason=_agreement(array,bbox,views.get(identity,[]),config,key=lambda value:_reading_middle(original,value))
+                parts,whole_reason,whole_source=_vote(array,bbox,views.get(identity,[]),config,width_reference,key=lambda value:_reading_middle(original,value))
                 if whole_reason is None:
-                    whole=parts;text=parts[1];reason=None
+                    whole=parts;text=parts[1];reason=None;width_source=whole_source
                 elif reason is None:
                     reason='specialist-output-not-confirmed-face-grammar'
         else:
@@ -348,7 +456,7 @@ def fuse_candidates(image, baseline, candidates, views, config=None, candidate_c
             reason='unchanged-baseline'
         pending.append({'identity':identity,'bbox':bbox,'accepted':reason is None,'reason':reason,'text':text,'spliced_text':spliced_text,
                         'splice':splice,'whole':whole,'mixed_index':mixed_index,'indices':indices,'claim_indices':claim_indices,
-                        'evidence':evidence,'original':original})
+                        'evidence':evidence,'original':original,'width_source':width_source})
     # Candidates competing for one baseline region: the containing (larger) accepted candidate wins, so a
     # bracket-pair envelope that stopped short of a far arm cannot consume the region before the box that
     # covers the arm. Decisions keep the candidate order; only consumption is resolved by area.
@@ -380,6 +488,7 @@ def fuse_candidates(image, baseline, candidates, views, config=None, candidate_c
         decisions.append({'candidate_id':identity,'bbox':item['bbox'],'accepted':item['accepted'],'reason':item['reason'] or 'exact-views-and-independent-pixels',
                   'original_text':entries[mixed_index]['text'] if mixed_index is not None else item['original'],'specialist_text':item['text'],'baseline_indices':item['claim_indices'],
                   'splice':item['splice'],'pixel_evidence':item['evidence'],'view_scores':[_recorded_score(record) for record in views.get(identity,[])],
+                  'bracket_width_source':item['width_source'] if item['accepted'] else None,
                   'score_semantics':'Uncalibrated scores are recorded; no cross-model score comparison.'})
     output=[]
     for entry in entries:

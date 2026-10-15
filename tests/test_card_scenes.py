@@ -207,3 +207,56 @@ def test_v1_dataset_rejects_unsupported_regions(dataset):
     (dataset / 'heldout-seal.json').unlink()
     with pytest.raises(ValueError, match='Unsupported regions are v2'):
         cards.validate(dataset)
+
+
+@pytest.fixture
+def dataset_v3(tmp_path, monkeypatch):
+    if not FONTS.exists():
+        pytest.skip('Pinned local OFL fonts absent')
+    profile = rp.RoundProfile(name='unit-cards-v3', change='unit', root=tmp_path / 'unit-cards-v3', maximum_bytes=2 * 1024 ** 3,
+                              owned_bytes=900 * 1024 ** 2, previous_budget=tmp_path / 'old.json', previous_sha256='0' * 64,
+                              previous_used_seconds=0.0, maximum_seconds=0.0, specialist_families=1)
+    monkeypatch.setattr(rp, 'ROUNDS', (profile,))
+    monkeypatch.setattr(qd, 'ARTIFACTS', tmp_path)
+    root = profile.root / 'scenes' / 'fixture-v3'
+    cards.generate(root, FONTS, (8, 8), seed=73, version=3)
+    return root
+
+
+def test_v3_tracking_is_declared_recorded_and_masks_stay_exact(dataset_v3):
+    binding = old.validate(dataset_v3)
+    assert binding == cards.validate(dataset_v3) == cards.read(dataset_v3 / 'freeze.json')
+    meta = cards.read(dataset_v3 / 'dataset.json')
+    assert meta['generator_id'] == cards.GENERATOR_ID_V3 and meta['tracking'] == {'values': [-1, -2], 'probability': .5}
+    assert cards.family('dev', 3) not in (cards.family('dev', 2), cards.family('dev')) and cards.family('dev', 3) != cards.family('heldout', 3)
+    rows = cards.read(dataset_v3 / 'dev.json') + cards.read(dataset_v3 / 'heldout.json')
+    assert all(row['recipe_family'] == cards.family(row['split'], 3) for row in rows)
+    tracked = [r for row in rows for r in row['regions'] if r['kind'] != 'graphic' and r['rendering'].get('tracking')]
+    loose = [r for row in rows for r in row['regions'] if r['kind'] != 'graphic' and not r['rendering'].get('tracking')]
+    assert tracked and loose and {r['rendering']['tracking'] for r in tracked} <= {-1, -2}
+    assert sum(row['layout']['tracked_segments'] for row in rows) == len(tracked)
+    assert meta['summary']['dev']['tracked_segments'] + meta['summary']['heldout']['tracked_segments'] == len(tracked)
+    assert any(r['kind'] == 'kaomoji' for r in tracked) and 'wrap-face-split' in meta['comment_plans']
+    for row in rows[:4]:
+        image = np.asarray(Image.open(dataset_v3 / row['image']).convert('RGB'))
+        background = np.asarray(Image.open(dataset_v3 / row['background']).convert('RGB'))
+        masks = [np.asarray(Image.open(dataset_v3 / r['mask'])) > 0 for r in row['regions']]
+        assert np.array_equal(np.any(masks, axis=0), np.any(image != background, axis=2))
+    with pytest.raises(ValueError):
+        cards.generate(dataset_v3.parent / 'bad', FONTS, (2, 2), seed=1, version=4)
+
+
+def test_positive_v2_scene_without_a_complete_face_is_retried_not_emitted(monkeypatch):
+    if not FONTS.exists():
+        pytest.skip('Pinned local OFL fonts absent')
+    import random
+    from tools.PretrainedOcr.data import MixedRenderer
+    from tools.PretrainedOcr.grammar_data import renderable_atoms
+    renderer = MixedRenderer(FONTS)
+    atoms = kg.default_atoms()
+    allowed, _ = renderable_atoms(renderer, atoms)
+    monkeypatch.setattr(cards, 'plan_comment', lambda rng, split, seen, atoms, allowed, negative, version=2: ('plain', [('body', '今天很顺利', '')]))
+    with pytest.raises(cards.Unsupported, match='without-face'):
+        cards.render_scene_v2(renderer, 'dev', random.Random(5), set(), atoms, allowed, negative=False, version=3)
+    canvas, background, text, regions, masks, stats = cards.render_scene_v2(renderer, 'dev', random.Random(5), set(), atoms, allowed, negative=True, version=3)
+    assert stats['scene_kind'] == 'card-list-negative' and not any(r['kind'] == 'kaomoji' for r in regions)

@@ -61,3 +61,24 @@ def test_default_render_is_unchanged_and_effects_extend_region():
     assert np.array_equal(np.asarray(again), np.asarray(once_more)) and not np.array_equal(np.asarray(again), np.asarray(other))
     background = np.asarray(decorated)[0, 0]
     assert abs(int(background[0]) - 40) <= 8
+
+
+def test_tracking_tightens_advances_but_never_changes_glyph_pixels():
+    r = renderer()
+    from tools.RegionKaomoji import candidates as c
+    loose, region, _, evidence, alpha = r.render('(≧▽≦) 正文', size=24, with_alpha=True)
+    tight, region2, _, evidence2, alpha2 = r.render('(≧▽≦) 正文', size=24, with_alpha=True, tracking=-2)
+    assert 'tracking' not in evidence and evidence2['tracking'] == -2
+    ink, ink2 = np.asarray(alpha) > 0, np.asarray(alpha2) > 0
+    # Glyph rasters are unchanged; the union may only lose pixels where tightened neighbours now overlap.
+    assert 0 <= int(ink.sum()) - int(ink2.sum()) <= int(ink.sum()) * .02 and region2[2] < region[2] and region2[3] == region[3]
+    assert len(c._components(ink2.astype(np.uint8), 2)) <= len(c._components(ink.astype(np.uint8), 2))
+    single, *_ , alpha_single = r.render('ω', size=24, with_alpha=True)
+    single2, *_ , alpha_single2 = r.render('ω', size=24, with_alpha=True, tracking=-3)
+    # A lone glyph keeps its raster exactly; only the trailing advance (canvas width) changes.
+    assert np.array_equal(np.asarray(alpha_single.crop(alpha_single.getbbox())), np.asarray(alpha_single2.crop(alpha_single2.getbbox())))
+    for bad in (-4, 1, 0.5, True, '−1'):
+        with pytest.raises(ValueError):
+            r.render('(≧▽≦)', size=24, tracking=bad)
+    again, *_ = r.render('(≧▽≦) 正文', size=24, tracking=0)
+    assert np.array_equal(np.asarray(again), np.asarray(loose))

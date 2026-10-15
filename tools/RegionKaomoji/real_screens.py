@@ -14,12 +14,77 @@ import time
 
 from PIL import Image
 
-from tools.PretrainedOcr import common, round_profile as rp
-from tools.RegionKaomoji import evaluate as e, candidates as c, classifier as cls
+from tools.PretrainedOcr import common, round_profile as rp, quality_evaluate as qe
+from tools.RegionKaomoji import evaluate as e, candidates as c, classifier as cls, fusion as f
 
 MANIFEST_SCHEMA = 'localocr.known-input-screens.v1'
 SCHEMA = 'localocr.known-input-evaluation.v1'
+FIRST_USE_SCHEMA = 'localocr.known-input-first-use.v1'
+PROBE_SIDECAR = 'known-input-development-use.json'
+PROBE_KIND = 'known-input-screens'
 KINDS = ('face', 'body')
+
+
+def probe_registration(manifest_sha256):
+    """The registered round whose known-input sidecar lists this manifest as a development probe, or None.
+
+    A probed set was inspected per face; it may still be run for counts and per-face outcomes, but
+    its report is never independent and it never claims a first use.
+    """
+    for profile in rp.ROUNDS:
+        sidecar = Path(profile.root) / PROBE_SIDECAR
+        if not sidecar.exists():
+            continue
+        value = common.read(sidecar)
+        if value.get('schema') != 'localocr.development-demotion.v1' or value.get('kind') != PROBE_KIND or value.get('original_rewritten') is not False:
+            continue
+        for record in value.get('old_datasets', []):
+            if record.get('sha256') == manifest_sha256:
+                return {'round': profile.name, 'sidecar': str(sidecar), 'sidecar_sha256': common.digest(sidecar)}
+    return None
+
+
+def first_use_path(round_root, manifest_sha256):
+    # Lives in the round's evaluation namespace like the heldout first-use receipts.
+    return Path(round_root) / ('evaluation-known-input-first-use-' + manifest_sha256 + '.json')
+
+
+def existing_first_use(manifest_sha256):
+    for profile in rp.ROUNDS:
+        path = first_use_path(profile.root, manifest_sha256)
+        if path.exists():
+            return path
+    return None
+
+
+def claim_first_use(manifest, output, config, config_file=None, dual=()):
+    """Write the independent first-use receipt for ``manifest`` before any screenshot is read.
+
+    The receipt binds the manifest bytes, the pipeline configuration, the research source closure and
+    any declared dual-freeze files. A second independent run on the same manifest is refused in every
+    registered round; failure after the claim leaves the manifest consumed.
+    """
+    profile = rp.profile_for(output)
+    if profile is None:
+        raise ValueError('Known-input evaluation output must belong to a registered research round')
+    sha = manifest['sha256']
+    if probe_registration(sha) is not None:
+        raise ValueError('This known-input manifest is registered as a development probe; run it with --probe')
+    prior = existing_first_use(sha)
+    if prior is not None:
+        raise ValueError('Known-input manifest already consumed by an independent first use: ' + str(prior))
+    inventory = qe.source_inventory()
+    receipt = {'schema_version': FIRST_USE_SCHEMA, 'claimed_utc': common.utc(), 'round': profile.name,
+               'manifest': {'file': manifest['file'], 'sha256': sha, 'screens': len(manifest['value']['screens'])},
+               'output': str(e.output_path(output)),
+               'config': {'file': str(e.safe_path(config_file)) if config_file else None,
+                          'sha256': common.digest(config_file) if config_file else None, 'object_sha256': e.hash_object(config)},
+               'source_inventory': {'files': len(inventory), 'sha256': e.hash_object(inventory)},
+               'dual_freezes': [{'file': str(e.safe_path(path)), 'sha256': common.digest(path)} for path in dual],
+               'rule': 'independent evaluation only; a failure after this claim leaves the manifest consumed'}
+    path = first_use_path(profile.root, sha)
+    e.write_new(path, receipt)
+    return {'file': str(path), 'sha256': common.digest(path)}
 
 
 def load_manifest(path):
@@ -66,15 +131,45 @@ def score_screen(screen, prediction, model_ids):
         targets = [text] if line['kind'] == 'face' else list(line.get('faces', []))
         record['baseline'] = {'exact_region': text in baseline_regions, 'contained': text in baseline_joined,
                               'faces_contained': [f in baseline_joined for f in targets]}
+        projected = f.width_key(text)
         for identity in model_ids:
             model = prediction['models'][identity]
             regions = [r['text'] for r in model['regions']]
             joined = model['text']
             record['models'][identity] = {'exact_region': text in regions, 'contained': text in joined,
-                                          'faces_contained': [f in joined for f in targets],
+                                          'faces_contained': [fc in joined for fc in targets],
                                           'body_lost': line['kind'] == 'body' and text in baseline_joined and text not in joined}
+            # Diagnostic only: a region equal to the typed face except for its outermost bracket width.
+            record['models'][identity]['exact_except_outer_bracket_width'] = bool(
+                line['kind'] == 'face' and text not in regions and any(f.width_key(r) == projected for r in regions))
         results.append(record)
     return results
+
+
+def diagnostics(scored, predictions, model_ids):
+    """Counts-only shape-detection and width diagnostics; never part of the scored metrics."""
+    totals = {'shape_base_pairs': 0, 'shape_core_pairs': 0, 'merged_bracket_candidates': 0, 'shape_threshold': None}
+    for prediction in predictions:
+        shape = prediction['routing'].get('shape_detection') or {}
+        totals['shape_base_pairs'] += int(shape.get('base_pairs', 0))
+        totals['shape_core_pairs'] += int(shape.get('core_pairs', 0))
+        totals['merged_bracket_candidates'] += int(shape.get('merged_bracket_candidates', 0))
+        totals['shape_threshold'] = shape.get('threshold', totals['shape_threshold'])
+    faces = [r for s in scored for r in s if r['kind'] == 'face' and not r['ambiguous']]
+    totals['models'] = {identity: {'face_exact_except_outer_bracket_width': sum(r['models'][identity].get('exact_except_outer_bracket_width', False) for r in faces),
+                                   'bracket_width_sources': dict(_width_sources(predictions, identity))}
+                        for identity in model_ids}
+    return totals
+
+
+def _width_sources(predictions, identity):
+    from collections import Counter
+    counts = Counter()
+    for prediction in predictions:
+        for decision in prediction['models'][identity].get('decisions', []):
+            if decision.get('accepted'):
+                counts[str(decision.get('bracket_width_source'))] += 1
+    return counts
 
 
 def aggregate(scored, model_ids):
@@ -110,13 +205,19 @@ def evaluate_manifest(args):
     if output.exists():
         raise ValueError('Evaluation output already exists')
     config = e.configuration(args.config, classifier=getattr(args, 'classifier', None))
+    probe = bool(getattr(args, 'probe', False))
+    registration = probe_registration(manifest['sha256'])
+    if probe and registration is None:
+        raise ValueError('Probe mode requires a registered known-input development-use sidecar for this manifest')
+    # Independent runs claim the manifest before any screenshot is read; probes never claim.
+    first_use = None if probe else claim_first_use(manifest, output, config, getattr(args, 'config', None), getattr(args, 'dual', None) or ())
     baseline = e.FullBaseline(e.safe_path(args.baseline_models))
     models = [e.Recognizer(e.safe_path(path)) for path in args.candidate]
     model_ids = [m.binding['id'] for m in models]
     classifier = cls.CropClassifier(config['classifier']['file']) if config.get('classifier') else None
     common.disk_guard(output)
     output.mkdir(parents=True)
-    scored, timings = [], []
+    scored, timings, predictions = [], [], []
     with (output / 'predictions-private.jsonl').open('x', encoding='utf-8', newline='\n') as stream:
         for screen in manifest['value']['screens']:
             path = e.confined(manifest['root'], screen['file'])
@@ -129,15 +230,21 @@ def evaluate_manifest(args):
             timings.append(elapsed)
             results = score_screen(screen, prediction, model_ids)
             scored.append(results)
+            predictions.append(prediction)
             stream.write(json.dumps({'file': screen['file'], 'sha256': common.digest(path), 'seconds': elapsed,
                                      'prediction': prediction, 'lines': results}, ensure_ascii=False, allow_nan=False) + '\n')
     summary = aggregate(scored, model_ids)
-    summary['split'] = {'parents': sum(json.loads(line)['prediction']['first_pass']['split_parents'] for line in (output / 'predictions-private.jsonl').read_text(encoding='utf-8').splitlines())}
+    summary['split'] = {'parents': sum(prediction['first_pass']['split_parents'] for prediction in predictions)}
+    summary['diagnostics'] = diagnostics(scored, predictions, model_ids)
     report = {'schema_version': SCHEMA, 'completed_utc': common.utc(), 'manifest': {'file': manifest['file'], 'sha256': manifest['sha256'],
-              'screens': len(manifest['value']['screens']), 'environment': manifest['value'].get('environment')},
+              'screens': len(manifest['value']['screens']), 'environment': manifest['value'].get('environment'),
+              'label_origin': manifest['value'].get('label_origin'), 'typed_differences': manifest['value'].get('typed_differences')},
               'baseline': baseline.binding, 'models': [m.binding for m in models], 'config_sha256': e.hash_object(config),
               'classifier': config.get('classifier'), 'summary': summary, 'timing': e.percentiles(timings),
-              'scope': 'Private real screenshots with typed-input labels; independent evaluation only; no training, selection or threshold use',
+              'independent': not probe, 'probe': registration if probe else None, 'first_use': first_use,
+              'scope': ('Private real screenshots with typed-input labels; development probe of a set already inspected per face; '
+                        'counts and per-face outcomes only, never an independent claim') if probe else
+                       'Private real screenshots with typed-input labels; independent evaluation only; no training, selection or threshold use',
               'promote': False, 'enabled': False}
     e.write_new(output / 'evaluation.json', report)
     return report
@@ -151,9 +258,11 @@ def main(argv=None):
     parser.add_argument('--config')
     parser.add_argument('--classifier')
     parser.add_argument('--output', required=True)
+    parser.add_argument('--probe', action='store_true', help='Run a manifest registered as a development probe (report is not independent)')
+    parser.add_argument('--dual', action='append', default=[], help='Dual-freeze file bound into the independent first-use receipt')
     args = parser.parse_args(argv)
     report = evaluate_manifest(args)
-    print(json.dumps({'schema_version': report['schema_version'], 'summary': report['summary']}, ensure_ascii=False))
+    print(json.dumps({'schema_version': report['schema_version'], 'independent': report['independent'], 'summary': report['summary']}, ensure_ascii=False))
 
 
 if __name__ == '__main__':

@@ -26,6 +26,10 @@ from .scenes import sha, th, read, pixels, bbox, BG
 from . import quality_scenes as qs
 
 GENERATOR_ID = 'localocr.grammar-scenes.20261013.v1'
+GENERATOR_ID_V2 = 'localocr.grammar-scenes.20261015.v2'
+GENERATOR_IDS = (GENERATOR_ID, GENERATOR_ID_V2)
+# v2 keeps every v1 layout and adds tight tracking (-1/-2 px glyph advance) on half of the text segments.
+TRACKING_V2 = {'values': (-1, -2), 'probability': .5}
 NEW_TYPES = ('cheek-face', 'arm-face', 'tail-face', 'corner-face', 'mixed-width-face', 'wide-gap-body',
              'adjacent-faces', 'outlined-face', 'shadow-body')
 TYPES = qs.TYPES + NEW_TYPES
@@ -50,8 +54,12 @@ FULLWIDTH = (('（', '）'), ('【', '】'), ('〈', '〉'))
 JOB_KEYS = qs.JOB_KEYS
 
 
-def family(split, kind):
-    return 'grammar-scene-grammar:' + th(RECIPES[split][kind])
+def family(split, kind, version=1):
+    return 'grammar-scene-grammar:' + th(RECIPES[split][kind] + ('|tracking-v2' if version == 2 else ''))
+
+
+def generator_id(version):
+    return GENERATOR_ID_V2 if version == 2 else GENERATOR_ID
 
 
 def _mixed_pairs(allowed):
@@ -155,7 +163,8 @@ def render_tile(renderer, segment, split, rng):
     if not effects and segment['kind'] in ('body', 'kaomoji') and rng.random() < effect['random_probability']:
         effects = {'outline': effect['outline'], 'outline_color': effect['outline_color']} if rng.random() < .5 else {'shadow': effect['shadow']}
     effects = validate_effects({**effects, 'background': BG})
-    image, region, fonts, evidence, alpha = renderer.render(segment['text'], size=segment['size'], effects=effects, with_alpha=True)
+    image, region, fonts, evidence, alpha = renderer.render(segment['text'], size=segment['size'], effects=effects, with_alpha=True,
+                                                            tracking=segment.get('tracking', 0))
     x, y, w, h = region
     pad = 3
     def advance(value):
@@ -173,8 +182,12 @@ def render_tile(renderer, segment, split, rng):
     return Image.fromarray(array), mask, fonts, dict(evidence, effects=evidence['effects'])
 
 
-def render_scene(renderer, split, kind, rng, index, seen, atoms, allowed):
+def render_scene(renderer, split, kind, rng, index, seen, atoms, allowed, version=1):
     lines = plan(split, kind, rng, seen, atoms, allowed)
+    if version == 2:
+        for line in lines:
+            for segment in line:
+                segment['tracking'] = rng.choice(TRACKING_V2['values']) if rng.random() < TRACKING_V2['probability'] else 0
     gap = 0 if kind == 'tight-body' else 6 if kind == 'adjacent-faces' else 18
     tiles = []
     for line in lines:
@@ -264,8 +277,9 @@ def render_scene(renderer, split, kind, rng, index, seen, atoms, allowed):
 def validate(root):
     root = Path(root).resolve()
     meta = read(root / 'dataset.json')
-    if meta.get('schema_version') != 'localocr.region-scenes.v1' or meta.get('synthetic_only') is not True or meta.get('generator_id') != GENERATOR_ID:
+    if meta.get('schema_version') != 'localocr.region-scenes.v1' or meta.get('synthetic_only') is not True or meta.get('generator_id') not in GENERATOR_IDS:
         raise ValueError('Scene schema/synthetic declaration')
+    version = 2 if meta['generator_id'] == GENERATOR_ID_V2 else 1
     atoms = kg.default_atoms()
     if meta.get('atoms_binding') != kg.binding(atoms):
         raise ValueError('Scene atoms binding differs from the canonical table')
@@ -281,7 +295,7 @@ def validate(root):
         if len(rows) != info['count']:
             raise ValueError('Scene count changed')
         for row in rows:
-            if row['split'] != split or row['source_split'] != split or row['recipe_family'] != family(split, row['scene_kind']):
+            if row['split'] != split or row['source_split'] != split or row['recipe_family'] != family(split, row['scene_kind'], version):
                 raise ValueError('Scene source/AST family differs')
             if row['provenance'] != {'source': 'original', 'license': 'CC0-1.0'} or th(row['text']) != row['text_sha256']:
                 raise ValueError('Label/provenance changed')
@@ -349,9 +363,11 @@ def validate(root):
     return binding
 
 
-def generate(output, fonts, counts=(200, 400), seed=20261013):
+def generate(output, fonts, counts=(200, 400), seed=20261013, version=1):
     if len(counts) != 2 or any(not isinstance(n, int) or isinstance(n, bool) or n <= 0 for n in counts):
         raise ValueError('Positive scene counts required')
+    if version not in (1, 2):
+        raise ValueError('Grammar scene generator version must be 1 or 2')
     root = qd.output_root(output)
     if rp.profile_for(root) is None:
         raise ValueError('Grammar scenes must be generated inside a registered research round')
@@ -375,7 +391,7 @@ def generate(output, fonts, counts=(200, 400), seed=20261013):
             kind = TYPES[index % len(TYPES)]
             for attempt in range(1000):
                 try:
-                    canvas, text, regions, masks = render_scene(renderer, split, kind, rng, index, seen, atoms, allowed)
+                    canvas, text, regions, masks = render_scene(renderer, split, kind, rng, index, seen, atoms, allowed, version)
                 except Unsupported as error:
                     exclusions[str(error)] += 1
                     continue
@@ -394,7 +410,7 @@ def generate(output, fonts, counts=(200, 400), seed=20261013):
                 mp = root / 'masks' / f'{identifier}-{ri}.png'
                 writer.image(mp, mask)
                 region.update(id=f'{identifier}-region-{ri}', mask=mp.relative_to(root).as_posix(), mask_sha256=sha(mp), pixel_count=int((np.asarray(mask) > 0).sum()))
-            rows.append({'id': identifier, 'split': split, 'source_split': split, 'scene_kind': kind, 'recipe_family': family(split, kind),
+            rows.append({'id': identifier, 'split': split, 'source_split': split, 'scene_kind': kind, 'recipe_family': family(split, kind, version),
                          'text': text, 'text_sha256': th(text), 'image': path.relative_to(root).as_posix(), 'sha256': sha(path), 'pixel_sha256': pixel,
                          'width': canvas.width, 'height': canvas.height, 'regions': regions, 'provenance': {'source': 'original', 'license': 'CC0-1.0'},
                          'baseline_omission': 'not measured; synthetic pressure only'})
@@ -407,8 +423,10 @@ def generate(output, fonts, counts=(200, 400), seed=20261013):
         jobs[split] = [{k: row[k] for k in JOB_KEYS} for row in rows]
         summary[split] = {'scene_types': dict(Counter(r['scene_kind'] for r in rows)),
                           'faces': sum(region['kind'] == 'kaomoji' for row in rows for region in row['regions']),
-                          'effects': dict(Counter(key for row in rows for region in row['regions'] for key in region['rendering'].get('effects', {}) if key in ('outline', 'shadow')))}
-    writer.json(root / 'dataset.json', {'schema_version': 'localocr.region-scenes.v1', 'generator_id': GENERATOR_ID, 'synthetic_only': True,
+                          'effects': dict(Counter(key for row in rows for region in row['regions'] for key in region['rendering'].get('effects', {}) if key in ('outline', 'shadow'))),
+                          **({'tracked_segments': sum(1 for row in rows for region in row['regions'] if region['kind'] != 'graphic' and region['rendering'].get('tracking'))} if version == 2 else {})}
+    writer.json(root / 'dataset.json', {'schema_version': 'localocr.region-scenes.v1', 'generator_id': generator_id(version), 'synthetic_only': True,
+                **({'tracking_v2': 'glyph advances tightened by -1 or -2 px on half of the text segments (layout parameter; glyph pixels and masks unchanged)', 'tracking': TRACKING_V2} if version == 2 else {}),
                 'private_inputs_consumed': False, 'license': 'CC0-1.0', 'seed': seed, 'splits': splits, 'recipes': RECIPES,
                 'scene_effects': SCENE_EFFECTS, 'atoms_binding': kg.binding(atoms), 'excluded_atoms': excluded_atoms,
                 'core_partition_buckets': {k: list(v) for k, v in gc.PARTITION_BUCKETS.items()},
@@ -440,8 +458,9 @@ def main():
     parser.add_argument('--fonts')
     parser.add_argument('--counts', nargs=2, type=int, default=(200, 400))
     parser.add_argument('--seed', type=int, default=20261013)
+    parser.add_argument('--version', type=int, choices=(1, 2), default=1, help='2 adds tight tracking on half of the text segments')
     args = parser.parse_args()
-    print(json.dumps(generate(args.dataset, args.fonts, tuple(args.counts), args.seed) if args.action == 'generate' else validate(args.dataset), indent=2))
+    print(json.dumps(generate(args.dataset, args.fonts, tuple(args.counts), args.seed, args.version) if args.action == 'generate' else validate(args.dataset), indent=2))
 
 
 if __name__ == '__main__':

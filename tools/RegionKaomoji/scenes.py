@@ -105,10 +105,10 @@ def validate(root):
  if meta.get('generator_id')=='localocr.quality-scenes.20261012.v1':
   from .quality_scenes import validate as quality_validate
   return quality_validate(root)
- if meta.get('generator_id')=='localocr.grammar-scenes.20261013.v1':
+ if meta.get('generator_id') in ('localocr.grammar-scenes.20261013.v1','localocr.grammar-scenes.20261015.v2'):
   from .grammar_scenes import validate as grammar_validate
   return grammar_validate(root)
- if meta.get('generator_id') in ('localocr.card-scenes.20261013.v1','localocr.card-scenes.20261013.v2'):
+ if meta.get('generator_id') in ('localocr.card-scenes.20261013.v1','localocr.card-scenes.20261013.v2','localocr.card-scenes.20261015.v3'):
   from .card_scenes import validate as card_validate
   return card_validate(root)
  texts={};micros={};families={};pixelsets={};counts={}

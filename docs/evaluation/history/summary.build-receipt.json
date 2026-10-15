@@ -1,0 +1,65 @@
+{
+  "built_utc": "2026-10-15T11:08:11.473167+00:00",
+  "figures": [
+    {
+      "file": "docs/evaluation/history/figures/version-comparison.svg",
+      "sha256": "a2d45275929029e23ca201eef0fa55fc6b2c186d953368c78fbe61791509fe9a"
+    }
+  ],
+  "schema_version": "localocr.version-history.assets-build.v1",
+  "script_sha256": "b63a62ef01ac18cad78bd6fc90eda9c979ab521ac288a10ecfe0ab2aa12086f2",
+  "sources": [
+    {
+      "file": "artifacts/real-rendering-20261015/validation/version-comparison-counts.json",
+      "role": "version-comparison-counts",
+      "sha256": "936511fc28ff4a9937a498aaa6c3e7e50d92557f8773b9abcde6aefc2dd729d7"
+    },
+    {
+      "file": "docs/evaluation/region-20261012/summary.json",
+      "role": "round:region-20261012",
+      "sha256": "bab930fa1b9b3ff33338a5a53b27d94b3ba76b2b035b2b5ddbb6ad420f2dfc09"
+    },
+    {
+      "file": "docs/evaluation/quality-optimization-20261012/summary.json",
+      "role": "round:quality-optimization-20261012",
+      "sha256": "629bc5b2d69c889a62f95e5fbb7da197b2110aa6c4778229bc0bc3f815dc3d05"
+    },
+    {
+      "file": "docs/evaluation/kaomoji-grammar-20261013/summary.json",
+      "role": "round:kaomoji-grammar-20261013",
+      "sha256": "f10ea05b9d63cd10e229f028f29418fa6da98c95e18f949e6c71326ecb41cf86"
+    },
+    {
+      "file": "docs/evaluation/region-candidates-20261013/summary.json",
+      "role": "round:region-candidates-20261013",
+      "sha256": "4fc88573c0d6825c4a52aee98dbda179928534dd20cbdae6516830fbb39d491d"
+    },
+    {
+      "file": "docs/evaluation/real-rendering-20261015/summary.json",
+      "role": "round:real-rendering-20261015",
+      "sha256": "814f9f41d3dd57822b2cf1d6947583fb9e928b1f0644c350c483dfb1b0f62474"
+    },
+    {
+      "file": "docs/evaluation/kaomoji-v1-v4-20261011/metrics.json",
+      "role": "round:kaomoji-v1-v4-20261011",
+      "sha256": "b90934708975aac2bbf71219bb455f24d6c4e71f8753f6d003a48edb042d146f"
+    },
+    {
+      "file": "docs/evaluation/pretrained-20261012/summary.json",
+      "role": "round:pretrained-20261012",
+      "sha256": "ed41fc6d9120a2839f5d89d02f3aa379993f755a96c6d301168cd16887cdefec"
+    },
+    {
+      "file": "docs/evaluation/quality-optimization-20261012/summary.json",
+      "role": "crop:quality-optimization-20261012",
+      "sha256": "629bc5b2d69c889a62f95e5fbb7da197b2110aa6c4778229bc0bc3f815dc3d05"
+    },
+    {
+      "file": "docs/evaluation/kaomoji-grammar-20261013/summary.json",
+      "role": "crop:kaomoji-grammar-20261013",
+      "sha256": "f10ea05b9d63cd10e229f028f29418fa6da98c95e18f949e6c71326ecb41cf86"
+    }
+  ],
+  "statement": "Built from tracked anonymous round summaries and a local counts-only recount; no images, labels, row predictions, private screenshots or weights opened; no inference; no network.",
+  "summary_sha256": "3ba1911b664bd79f5943c464f9cbe9d7dc3a12a766067b8e288d88a4d983a2fa"
+}

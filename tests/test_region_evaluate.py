@@ -542,3 +542,28 @@ def test_zero_second_round_ledger_is_a_valid_selection_budget_receipt(root,monke
     e.validate_budget({'schema_version':'localocr.gpu-budget.v1','maximum_seconds':7200,'used_seconds':5.0,'runs':[],'active':None})
     with pytest.raises(ValueError,match='budget'):
         e.validate_budget(dict(zero,used_seconds=1.0),ledger)
+
+
+def test_spliced_face_inside_a_body_box_takes_the_parent_bracket_width(root):
+    # Same geometry as the context-splice test; the face box is pixel-separated inside one broad baseline box.
+    image=Image.new('RGB',(360,80),'white');image.paste(geometry(),(100,0))
+    draw=ImageDraw.Draw(image);draw.rectangle((15,23,55,46),fill='black');draw.rectangle((245,23,289,46),fill='black')
+    baseline=[{'bbox':[10,10,291,61],'text':'LEFT  (Д_Д)  RIGHT','score':.4}]
+    config=e.configuration();config['fusion']['outer_bracket_width']='baseline-else-raw'
+    routing=e.c.locate_candidates(image,baseline,config['candidate'])
+    candidate=next(item for item in routing['candidates'] if item['route_eligible'] and item['splice_baseline_index'] is not None)
+    texts={e.c.image_digest(e.f.view_image(image,declaration['bbox'],'raw')):
+           'LEFT' if declaration['role']=='left' else 'RIGHT' for declaration in candidate['context_crops']}
+    class DeclaredContextBaseline:
+        def predict(self,source):return baseline,{'unit_fixture':True}
+        def predict_context(self,source):return texts[e.c.image_digest(source)],.2
+    class FullWidthFaceModel:
+        binding={'id':'unit-face'}
+        def predict(self,source):return '（ω_ω）',.9     # the specialist's full-width bias on real fonts
+    result=e.predict_scene(image,DeclaredContextBaseline(),[FullWidthFaceModel()],config)
+    model=result['models']['unit-face']
+    assert model['accepted_count']==1 and model['regions'][0]['text']=='LEFT  (ω_ω)  RIGHT'
+    decision=next(d for d in model['decisions'] if d['accepted'])
+    assert decision['bracket_width_source']=='baseline' and decision['specialist_text']=='(ω_ω)'
+    exact=e.configuration();exact_result=e.predict_scene(image,DeclaredContextBaseline(),[FullWidthFaceModel()],exact)
+    assert exact_result['models']['unit-face']['regions'][0]['text']=='LEFT  （ω_ω）  RIGHT'

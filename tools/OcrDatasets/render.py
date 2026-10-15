@@ -87,14 +87,18 @@ class Renderer:
             shaped.append((font_info, infos, positions))
         return shaped
 
-    def render(self, text, size=28, dark=False, scale=1.0, blur=0.0, jpeg=None, emoji=False, effects=None, with_alpha=False):
+    def render(self, text, size=28, dark=False, scale=1.0, blur=0.0, jpeg=None, emoji=False, effects=None, with_alpha=False, tracking=0):
         """Rasterize ``text``; ``effects`` optionally adds outline, shadow, texture and explicit colors.
 
-        Effects never move glyphs. The returned region and optional alpha cover
-        text ink together with outline and shadow ink so crops keep every
-        visible pixel; texture is background noise and is not ink.
+        Effects never move glyphs. ``tracking`` is a layout parameter, not an effect: an integer
+        pixel delta (-3..0) added to every glyph advance so neighbouring glyphs sit tighter, as UI
+        fonts with narrow side bearings do; glyph bitmaps, effects and ink masks are unchanged. The
+        returned region and optional alpha cover text ink together with outline and shadow ink so
+        crops keep every visible pixel; texture is background noise and is not ink.
         """
         effects = validate_effects(effects)
+        if isinstance(tracking, bool) or not isinstance(tracking, int) or not -3 <= tracking <= 0:
+            raise ValueError('Tracking must be an integer between -3 and 0 pixels')
         shaped = self.shape(text, emoji)
         width = max(16, int(sum(p.x_advance / f[5] * size for f, _, positions in shaped for p in positions)) + size * 4)
         canvas = Image.new('RGBA', (width, size * 5), (0, 0, 0, 0))
@@ -133,7 +137,7 @@ class Renderer:
                         raise Unsupported('clipping')
                     canvas.alpha_composite(glyph_image, (x, y))
                     glyph_count += 1
-                    pen_x += pos.x_advance / upem * size
+                    pen_x += pos.x_advance / upem * size + tracking
                     continue
                 face.load_glyph(glyph.codepoint, freetype.FT_LOAD_RENDER | (freetype.FT_LOAD_COLOR if color else 0))
                 bitmap = face.glyph.bitmap
@@ -162,7 +166,7 @@ class Renderer:
                         raise Unsupported('clipping')
                     canvas.alpha_composite(glyph_image, (x, y))
                     glyph_count += 1
-                pen_x += pos.x_advance / upem * size
+                pen_x += pos.x_advance / upem * size + tracking
         layer, alpha = compose_effects(canvas, effects)
         bounds = alpha.getbbox()
         if not bounds:
@@ -192,7 +196,7 @@ class Renderer:
         bbox = alpha.getbbox()
         evidence = {'glyphs': glyph_count, 'colored_glyphs': color_count, 'composed': emoji,
                     'bounds_basis': 'transformed-raster-alpha-with-effects' if effects else 'transformed-raster-alpha',
-                    'effects': describe_effects(effects)}
+                    'effects': describe_effects(effects), **({'tracking': tracking} if tracking else {})}
         result = (image, [bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]], sorted(set(used)), evidence)
         return result + (alpha,) if with_alpha else result
 

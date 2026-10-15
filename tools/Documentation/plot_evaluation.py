@@ -106,9 +106,9 @@ def heldout(data: dict, output: Path, preview: Path | None) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--data', type=Path, default=ROOT / 'docs/evaluation/metrics.json')
+    parser.add_argument('--data', type=Path, default=ROOT / 'docs/evaluation/kaomoji-v1-v4-20261011/metrics.json')
     parser.add_argument('--font', type=Path, required=True, help='Locally prepared pinned OFL CJK font')
-    parser.add_argument('--output', type=Path, default=ROOT / 'docs/evaluation')
+    parser.add_argument('--output', type=Path, default=ROOT / 'docs/evaluation/kaomoji-v1-v4-20261011')
     parser.add_argument('--preview', type=Path, help='Optional local raster preview directory')
     args = parser.parse_args()
     data = json.loads(args.data.read_text(encoding='utf-8'))

@@ -1,0 +1,369 @@
+{
+  "crop_first_tests": [
+    {
+      "baseline": 9,
+      "count": 398,
+      "dataset": "历史合成 398 张",
+      "round": "10-11 v4 专项",
+      "specialist": 163
+    },
+    {
+      "baseline": 12,
+      "count": 800,
+      "dataset": "通用合成 800 张",
+      "round": "10-12 通用微调",
+      "specialist": 0
+    },
+    {
+      "baseline": 159,
+      "count": 2400,
+      "dataset": "质量裁片 2400 张",
+      "round": "10-12 质量优化",
+      "specialist": 2288
+    },
+    {
+      "baseline": 8,
+      "count": 2400,
+      "dataset": "原子表裁片 2400 张",
+      "round": "10-13 语法路由",
+      "specialist": 1703
+    }
+  ],
+  "enabled": false,
+  "figures": [
+    {
+      "file": "docs/evaluation/history/figures/version-comparison.svg",
+      "sha256": "a2d45275929029e23ca201eef0fa55fc6b2c186d953368c78fbe61791509fe9a"
+    }
+  ],
+  "font": {
+    "id": "cjk",
+    "license": "OFL-1.1",
+    "sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b"
+  },
+  "generated_utc": "2026-10-15T11:08:11.473167+00:00",
+  "model": "ppocrv6-tiny-exp-20261013-001",
+  "normalization": "Raw Unicode exact match; the width-only count is a diagnostic of faces equal to the truth except for the outermost bracket width, never part of the exact score.",
+  "promote": false,
+  "same_data": [
+    {
+      "faces": 269,
+      "key": "cards-v2",
+      "kind": "synthetic-dev",
+      "label": "记录卡片 v2 dev",
+      "versions": {
+        "baseline": {
+          "exact": 0,
+          "width_only": 0
+        },
+        "candidates-20261013": {
+          "cer": 0.873058144695961,
+          "exact": 7,
+          "research_gate_passed": true,
+          "width_only": 0
+        },
+        "grammar-20261013": {
+          "cer": 0.8779405237461163,
+          "exact": 7,
+          "research_gate_passed": true,
+          "width_only": 0
+        },
+        "real-rendering-20261015": {
+          "cer": 0.8717265867731913,
+          "exact": 4,
+          "research_gate_passed": true,
+          "width_only": 5
+        }
+      }
+    },
+    {
+      "faces": 164,
+      "key": "atoms-mixed-v1",
+      "kind": "synthetic-dev",
+      "label": "原子混合 v1 dev",
+      "versions": {
+        "baseline": {
+          "exact": 0,
+          "width_only": 0
+        },
+        "candidates-20261013": {
+          "cer": 0.6518248175182482,
+          "exact": 35,
+          "research_gate_passed": true,
+          "width_only": 0
+        },
+        "grammar-20261013": {
+          "cer": 0.6204379562043796,
+          "exact": 41,
+          "research_gate_passed": true,
+          "width_only": 0
+        },
+        "real-rendering-20261015": {
+          "cer": 0.6635036496350365,
+          "exact": 19,
+          "research_gate_passed": true,
+          "width_only": 14
+        }
+      }
+    },
+    {
+      "faces": 266,
+      "key": "cards-v3",
+      "kind": "synthetic-dev",
+      "label": "记录卡片 v3 dev",
+      "versions": {
+        "baseline": {
+          "exact": 0,
+          "width_only": 0
+        },
+        "candidates-20261013": {
+          "cer": 0.8611357586512866,
+          "exact": 12,
+          "research_gate_passed": true,
+          "width_only": 1
+        },
+        "real-rendering-20261015": {
+          "cer": 0.8531499556344276,
+          "exact": 12,
+          "research_gate_passed": true,
+          "width_only": 2
+        }
+      }
+    },
+    {
+      "faces": 164,
+      "key": "atoms-mixed-v2",
+      "kind": "synthetic-dev",
+      "label": "原子混合 v2 dev",
+      "versions": {
+        "baseline": {
+          "exact": 1,
+          "width_only": 0
+        },
+        "candidates-20261013": {
+          "cer": 0.5835694050991501,
+          "exact": 46,
+          "research_gate_passed": true,
+          "width_only": 2
+        },
+        "real-rendering-20261015": {
+          "cer": 0.6196883852691218,
+          "exact": 26,
+          "research_gate_passed": true,
+          "width_only": 19
+        }
+      }
+    },
+    {
+      "faces": 252,
+      "key": "cards-v4",
+      "kind": "synthetic-dev",
+      "label": "记录卡片 v4 dev",
+      "versions": {
+        "baseline": {
+          "exact": 0,
+          "width_only": 0
+        },
+        "candidates-20261013": {
+          "cer": 0.8708156529938709,
+          "exact": 9,
+          "research_gate_passed": true,
+          "width_only": 0
+        },
+        "real-rendering-20261015": {
+          "cer": 0.8661008958038661,
+          "exact": 5,
+          "research_gate_passed": true,
+          "width_only": 5
+        }
+      }
+    },
+    {
+      "faces": 164,
+      "key": "atoms-mixed-v3",
+      "kind": "synthetic-dev",
+      "label": "原子混合 v3 dev",
+      "versions": {
+        "baseline": {
+          "exact": 0,
+          "width_only": 0
+        },
+        "candidates-20261013": {
+          "cer": 0.6666666666666666,
+          "exact": 26,
+          "research_gate_passed": true,
+          "width_only": 0
+        },
+        "real-rendering-20261015": {
+          "cer": 0.679970436067997,
+          "exact": 20,
+          "research_gate_passed": true,
+          "width_only": 8
+        }
+      }
+    },
+    {
+      "faces": 50,
+      "key": "known-input-001",
+      "kind": "real-screens",
+      "label": "已知输入真实截图",
+      "note": "14 real screenshots, 50 typed standalone faces; inspected per face on 2026-10-15, a development probe from then on",
+      "versions": {
+        "baseline": {
+          "exact": 2,
+          "width_only": null
+        },
+        "candidates-20261013": {
+          "body_lost": 0,
+          "embedded_contained": 6,
+          "embedded_faces": 35,
+          "exact": 4,
+          "width_only": 10
+        },
+        "real-rendering-20261015": {
+          "body_lost": 0,
+          "embedded_contained": 12,
+          "embedded_faces": 35,
+          "exact": 16,
+          "width_only": 8
+        }
+      }
+    }
+  ],
+  "scene_first_tests": [
+    {
+      "baseline": 8,
+      "chain": 8,
+      "dataset": "区域整图 280 面",
+      "faces": 280,
+      "round": "10-12 区域链路"
+    },
+    {
+      "baseline": 4,
+      "chain": 10,
+      "dataset": "质量整图 300 面",
+      "faces": 300,
+      "round": "10-12 质量优化"
+    },
+    {
+      "baseline": 1,
+      "chain": 76,
+      "dataset": "原子混合 v1 343 面",
+      "faces": 343,
+      "gate": true,
+      "round": "10-13 语法路由"
+    },
+    {
+      "baseline": 0,
+      "chain": 25,
+      "dataset": "记录卡片 v2 548 面",
+      "faces": 548,
+      "gate": true,
+      "round": "10-13 语法路由"
+    },
+    {
+      "baseline": 2,
+      "chain": 73,
+      "dataset": "原子混合 v2 343 面",
+      "faces": 343,
+      "gate": true,
+      "round": "10-13 候选定位"
+    },
+    {
+      "baseline": 1,
+      "chain": 20,
+      "dataset": "记录卡片 v3 507 面",
+      "faces": 507,
+      "gate": false,
+      "round": "10-13 候选定位"
+    },
+    {
+      "baseline": 0,
+      "chain": 35,
+      "dataset": "原子混合 v3 343 面",
+      "faces": 343,
+      "gate": true,
+      "round": "10-15 真实渲染"
+    },
+    {
+      "baseline": 0,
+      "chain": 9,
+      "dataset": "记录卡片 v4 549 面",
+      "faces": 549,
+      "gate": false,
+      "round": "10-15 真实渲染"
+    }
+  ],
+  "schema_version": "localocr.version-history.anonymous-evaluation.v1",
+  "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15.",
+  "sources": [
+    {
+      "file": "artifacts/real-rendering-20261015/validation/version-comparison-counts.json",
+      "role": "version-comparison-counts",
+      "sha256": "936511fc28ff4a9937a498aaa6c3e7e50d92557f8773b9abcde6aefc2dd729d7"
+    },
+    {
+      "file": "docs/evaluation/region-20261012/summary.json",
+      "role": "round:region-20261012",
+      "sha256": "bab930fa1b9b3ff33338a5a53b27d94b3ba76b2b035b2b5ddbb6ad420f2dfc09"
+    },
+    {
+      "file": "docs/evaluation/quality-optimization-20261012/summary.json",
+      "role": "round:quality-optimization-20261012",
+      "sha256": "629bc5b2d69c889a62f95e5fbb7da197b2110aa6c4778229bc0bc3f815dc3d05"
+    },
+    {
+      "file": "docs/evaluation/kaomoji-grammar-20261013/summary.json",
+      "role": "round:kaomoji-grammar-20261013",
+      "sha256": "f10ea05b9d63cd10e229f028f29418fa6da98c95e18f949e6c71326ecb41cf86"
+    },
+    {
+      "file": "docs/evaluation/region-candidates-20261013/summary.json",
+      "role": "round:region-candidates-20261013",
+      "sha256": "4fc88573c0d6825c4a52aee98dbda179928534dd20cbdae6516830fbb39d491d"
+    },
+    {
+      "file": "docs/evaluation/real-rendering-20261015/summary.json",
+      "role": "round:real-rendering-20261015",
+      "sha256": "814f9f41d3dd57822b2cf1d6947583fb9e928b1f0644c350c483dfb1b0f62474"
+    },
+    {
+      "file": "docs/evaluation/kaomoji-v1-v4-20261011/metrics.json",
+      "role": "round:kaomoji-v1-v4-20261011",
+      "sha256": "b90934708975aac2bbf71219bb455f24d6c4e71f8753f6d003a48edb042d146f"
+    },
+    {
+      "file": "docs/evaluation/pretrained-20261012/summary.json",
+      "role": "round:pretrained-20261012",
+      "sha256": "ed41fc6d9120a2839f5d89d02f3aa379993f755a96c6d301168cd16887cdefec"
+    },
+    {
+      "file": "docs/evaluation/quality-optimization-20261012/summary.json",
+      "role": "crop:quality-optimization-20261012",
+      "sha256": "629bc5b2d69c889a62f95e5fbb7da197b2110aa6c4778229bc0bc3f815dc3d05"
+    },
+    {
+      "file": "docs/evaluation/kaomoji-grammar-20261013/summary.json",
+      "role": "crop:kaomoji-grammar-20261013",
+      "sha256": "f10ea05b9d63cd10e229f028f29418fa6da98c95e18f949e6c71326ecb41cf86"
+    }
+  ],
+  "versions": [
+    {
+      "key": "baseline",
+      "label": "生产文字基线"
+    },
+    {
+      "key": "grammar-20261013",
+      "label": "语法路由轮 10-13"
+    },
+    {
+      "key": "candidates-20261013",
+      "label": "候选定位轮 10-13"
+    },
+    {
+      "key": "real-rendering-20261015",
+      "label": "真实渲染轮 10-15（当前）"
+    }
+  ]
+}

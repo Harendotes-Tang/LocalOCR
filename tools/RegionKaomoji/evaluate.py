@@ -1246,6 +1246,9 @@ def summarize(root,rows,predictions,config,model_ids):
         localization['split_parents']+=int(first_pass.get('split_parents',0))
         localization['split_children']+=int(first_pass.get('split_children',0))
         localization['structural_components']+=int(prediction['routing'].get('structural_components',0))
+        shape=prediction['routing'].get('shape_detection') or {}
+        localization['shape_base_pairs']+=int(shape.get('base_pairs',0)); localization['shape_core_pairs']+=int(shape.get('core_pairs',0))
+        localization['merged_bracket_candidates']+=int(shape.get('merged_bracket_candidates',0))
         for identity in model_ids:
             effectiveness[identity]['actual_routed_candidates']+=sum(bool(views) for views in prediction['models'][identity]['views'].values())
             split_stats=prediction['models'][identity].get('split',{})
@@ -1301,6 +1304,8 @@ def summarize(root,rows,predictions,config,model_ids):
                     effectiveness[identity]['isolated_face_wrong_to_exact']+=int(improved)
                     effectiveness[identity]['face_wrong_to_exact']+=int(improved and effective_face_change(prediction['models'][identity],prediction['baseline_text'],mask))
                     effectiveness[identity]['face_exact_to_wrong']+=int(baseline_text==truth['text'] and final_text!=truth['text'])
+                    # Diagnostic only: differs from the truth solely in the outermost bracket width. Never a score.
+                    effectiveness[identity]['face_exact_except_outer_bracket_width']+=int(final_text!=truth['text'] and f.width_key(final_text)==f.width_key(truth['text']))
                     if best and complete and not swallowing and not contamination:
                         views=prediction['models'][identity]['views'].get(best['candidate_id'],[])
                         raw=next((view['text'] for view in views if view['transform']=='raw'),None)

@@ -490,3 +490,62 @@ def test_containing_candidate_wins_the_baseline_region_regardless_of_order():
         assert by_id[large['candidate_id']]['accepted'] and output['regions'][0]['text']=='(ω_ω)ノ'
         assert by_id[small['candidate_id']]['reason'] in ('baseline-region-already-consumed','neighbor-body-overlap')
         assert output['accepted_count']==1
+
+
+def width_config(mode):
+    return dict(f.configuration(), outer_bracket_width=mode)
+
+
+def test_width_mode_is_optional_bounded_and_exact_by_default():
+    legacy = {key: value for key, value in f.DEFAULT_CONFIG.items() if key not in f.OPTIONAL_CONFIG}
+    assert f.configuration(legacy)['outer_bracket_width'] == 'exact' == f.configuration()['outer_bracket_width']
+    for invalid in ('baseline', 'EXACT', 1, None):
+        with pytest.raises(ValueError):
+            f.configuration(dict(f.DEFAULT_CONFIG, outer_bracket_width=invalid))
+    assert f.WIDTH_FAMILIES['（'] == '(' and f.WIDTH_FAMILIES['）'] == ')' and f.WIDTH_FAMILIES['［'] == '['
+    assert '(' not in f.WIDTH_FAMILIES and f.width_key('（ω_ω）') == '(ω_ω)' == f.width_key('(ω_ω)')
+    assert f.width_key('订单 (123)') == '订单 (123)' and f.width_key('（ω_ω') == '（ω_ω'
+
+
+def test_views_differing_only_in_outer_bracket_width_take_the_baseline_width():
+    texts = ['（ω_ω)', '（ω_ω）', '（ω_ω）']
+    exact = f.fuse_candidates(*three_view_request(texts))
+    assert exact['accepted_count'] == 0 and exact['decisions'][0]['reason'] == 'raw-view-outside-agreement'
+    assert exact['decisions'][0]['bracket_width_source'] is None
+    output = f.fuse_candidates(*three_view_request(texts), config=width_config('baseline-else-raw'))
+    assert output['accepted_count'] == 1 and output['regions'][0]['text'] == '(ω_ω)'
+    assert output['decisions'][0]['bracket_width_source'] == 'baseline'
+    # Agreeing full-width views still follow the baseline's half-width reading in this mode.
+    agreed = f.fuse_candidates(*three_view_request(['（ω_ω）'] * 3), config=width_config('baseline-else-raw'))
+    assert agreed['regions'][0]['text'] == '(ω_ω)' and agreed['decisions'][0]['bracket_width_source'] == 'baseline'
+    raw = f.fuse_candidates(*three_view_request(texts), config=width_config('raw'))
+    assert raw['accepted_count'] == 1 and raw['regions'][0]['text'] == '（ω_ω)' and raw['decisions'][0]['bracket_width_source'] == 'raw-view'
+
+
+def test_width_falls_back_to_the_raw_view_without_a_same_family_baseline_bracket():
+    image, baseline, candidates, views = three_view_request(['（ω_ω)', '（ω_ω）', '（ω_ω）'])
+    square = [{'bbox': baseline[0]['bbox'], 'text': '[Д_Д]', 'score': .0001}]
+    output = f.fuse_candidates(image, square, c.locate_candidates(image, square)['candidates'], views, config=width_config('baseline-else-raw'))
+    assert output['accepted_count'] == 1 and output['regions'][0]['text'] == '（ω_ω)' and output['decisions'][0]['bracket_width_source'] == 'raw-view'
+    inserted = f.fuse_candidates(image, [], c.locate_candidates(image, [])['candidates'], views, config=width_config('baseline-else-raw'))
+    assert inserted['accepted_count'] == 1 and inserted['regions'][0]['text'] == '（ω_ω)' and inserted['decisions'][0]['bracket_width_source'] == 'raw-view'
+
+
+def test_width_mode_never_relaxes_other_disagreements_and_exact_mode_is_unchanged():
+    for texts, reason in [(['(ω_ω)', '(ω _ω)', '(ω__ω)'], 'exact-unicode-view-disagreement'),
+                          (['(ω _ω)', '(ω_ω)', '(ω_ω)'], 'raw-view-outside-agreement'),
+                          (['（ω_ω)', '(ω _ω)', '(ω__ω)'], 'exact-unicode-view-disagreement')]:
+        output = f.fuse_candidates(*three_view_request(texts), config=width_config('baseline-else-raw'))
+        assert output['accepted_count'] == 0 and output['decisions'][0]['reason'] == reason, texts
+    plain = f.fuse_candidates(*three_view_request(['(ω_ω)', '(ω_ω)', '(ω _ω)']))
+    assert plain['accepted_count'] == 1 and plain['decisions'][0]['bracket_width_source'] == 'views'
+    same = f.fuse_candidates(*three_view_request(['(ω_ω)', '(ω_ω)', '(ω _ω)']), config=width_config('exact'))
+    assert same['regions'] == plain['regions'] and same['decisions'] == plain['decisions']
+
+
+def test_whole_reading_face_width_follows_the_baseline_bracket():
+    output = f.fuse_candidates(*whole_reading_request('AB(Д_Д)了', ['AB（ω_ω)了', 'AB（ω_ω）了', 'AB（ω_ω）了']), config=width_config('baseline-else-raw'))
+    assert output['accepted_count'] == 1 and output['regions'][0]['text'] == 'AB(ω_ω)了' and output['regions'][0]['regional_text'] == '(ω_ω)'
+    assert output['decisions'][0]['bracket_width_source'] == 'baseline'
+    rejected = f.fuse_candidates(*whole_reading_request('AB(Д_Д)了', ['AB（ω_ω)了', 'AB（ω_ω）了', 'AB（ω_ω）了']))
+    assert rejected['accepted_count'] == 0

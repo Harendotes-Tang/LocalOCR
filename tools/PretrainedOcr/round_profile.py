@@ -63,8 +63,16 @@ CANDIDATES = RoundProfile(
     previous_budget=ARTIFACTS / 'kaomoji-grammar-20261013/gpu-budget.json',
     previous_sha256='b2feaecb0b24dadfd697636899df545a457c89a2ab3da09d2ebb16f4ac67dde0',
     previous_used_seconds=3252.876000000001, maximum_seconds=0.0, specialist_families=1)
-ROUNDS = (QUALITY, GRAMMAR, CANDIDATES)
-CURRENT = CANDIDATES
+# CPU-only real-rendering evidence round: bound to the closed zero-second candidates ledger, so the
+# predecessor chain stays unbroken while no GPU lease can open.
+REAL_RENDERING = RoundProfile(
+    name='real-rendering-20261015', change='improve-real-rendering-bracket-evidence',
+    root=ARTIFACTS / 'real-rendering-20261015', maximum_bytes=GIB, owned_bytes=600 * 1024 ** 2,
+    previous_budget=ARTIFACTS / 'region-candidates-20261013/gpu-budget.json',
+    previous_sha256='a650a5777d347fd15efce32e32a2c4e36515031345b8da35e4224c8eb9161e3d',
+    previous_used_seconds=0.0, maximum_seconds=0.0, specialist_families=1)
+ROUNDS = (QUALITY, GRAMMAR, CANDIDATES, REAL_RENDERING)
+CURRENT = REAL_RENDERING
 
 
 def _resolved(path):

@@ -80,3 +80,37 @@ def test_core_partition_and_span_tampering_rejected(dataset):
     old.write(dataset / 'dataset.json', meta)
     with pytest.raises(ValueError, match='core partition'):
         scenes.validate(dataset)
+
+
+@pytest.fixture
+def dataset_v2(tmp_path, monkeypatch):
+    if not FONTS.exists():
+        pytest.skip('Pinned local OFL fonts absent')
+    profile = rp.RoundProfile(name='unit-grammar-v2', change='unit', root=tmp_path / 'unit-grammar-v2', maximum_bytes=2 * 1024 ** 3,
+                              owned_bytes=900 * 1024 ** 2, previous_budget=tmp_path / 'old.json', previous_sha256='0' * 64,
+                              previous_used_seconds=0.0, maximum_seconds=0.0, specialist_families=1)
+    monkeypatch.setattr(rp, 'ROUNDS', (profile,))
+    monkeypatch.setattr(qd, 'ARTIFACTS', tmp_path)
+    root = profile.root / 'scenes' / 'fixture-v2'
+    scenes.generate(root, FONTS, (len(scenes.TYPES), len(scenes.TYPES)), seed=62, version=2)
+    return root
+
+
+def test_v2_tracking_is_declared_recorded_and_masks_stay_exact(dataset_v2):
+    binding = old.validate(dataset_v2)
+    assert binding == scenes.validate(dataset_v2)
+    meta = scenes.read(dataset_v2 / 'dataset.json')
+    assert meta['generator_id'] == scenes.GENERATOR_ID_V2 and meta['tracking'] == {'values': [-1, -2], 'probability': .5}
+    for split in ('dev', 'heldout'):
+        rows = scenes.read(dataset_v2 / (split + '.json'))
+        assert all(row['recipe_family'] == scenes.family(split, row['scene_kind'], 2) != scenes.family(split, row['scene_kind']) for row in rows)
+        tracked = [region for row in rows for region in row['regions'] if region['kind'] != 'graphic' and region['rendering'].get('tracking')]
+        assert tracked and {region['rendering']['tracking'] for region in tracked} <= {-1, -2}
+        assert meta['summary'][split]['tracked_segments'] == len(tracked)
+        for row in rows:
+            masks = [np.asarray(scenes.Image.open(dataset_v2 / region['mask'])) > 0 for region in row['regions']]
+            image = np.asarray(scenes.Image.open(dataset_v2 / row['image']).convert('RGB'))
+            if row['scene_kind'] != 'blank':
+                assert np.array_equal(np.any(masks, axis=0), np.any(image != np.array(scenes.BG), axis=2))
+    with pytest.raises(ValueError):
+        scenes.generate(dataset_v2.parent / 'bad', FONTS, (2, 2), seed=1, version=3)

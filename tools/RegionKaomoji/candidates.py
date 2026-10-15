@@ -27,10 +27,12 @@ DEFAULT_CONFIG = {
     'line_overlap': 0.45, 'horizontal_gap_height': 0.58,
     'padding': 3, 'baseline_coverage': 0.80, 'baseline_ink_coverage': 0.98, 'merge_iou': 0.45,
     'minimum_context_blank_band': 2,
-    'background_window': 51, 'exterior_bridge_ratio': 0.45,
+    'background_window': 51, 'exterior_bridge_ratio': 0.45, 'shape_contrast_threshold': 8,
 }
 # Keys introduced after a configuration was frozen take their default when absent, so frozen files stay valid.
-OPTIONAL_CONFIG = {'background_window': 51, 'exterior_bridge_ratio': 0.45}
+# ``shape_contrast_threshold`` defaults to ``contrast_threshold`` (None marks "same as the base mask"): the
+# core-ink mask it selects feeds bracket shape detection and pair interior counting only, never envelopes.
+OPTIONAL_CONFIG = {'background_window': 51, 'exterior_bridge_ratio': 0.45, 'shape_contrast_threshold': None}
 # Bridging from a bracket pair absorbs exterior atoms (arms, tails) but must stop at body glyphs. On the
 # development scenes exterior atom cells are never "full-square" while most attached CJK body glyph cells
 # are; cells group components whose x-ranges lie within CELL_TOLERANCE pixels (radicals of one glyph).
@@ -170,6 +172,8 @@ def configuration(config=None):
     value = copy.deepcopy(DEFAULT_CONFIG if config is None else config)
     if isinstance(value, dict):
         value = {**{key: default for key, default in OPTIONAL_CONFIG.items() if key not in value}, **value}
+        if value.get('shape_contrast_threshold') is None:
+            value['shape_contrast_threshold'] = value.get('contrast_threshold')
     if not isinstance(value, dict) or set(value) != set(DEFAULT_CONFIG):
         raise ValueError('Unknown or incomplete candidate configuration')
     for key, default in DEFAULT_CONFIG.items():
@@ -189,6 +193,9 @@ def configuration(config=None):
         raise ValueError('Mixed-region blank band must contain at least two pixels')
     if value['minimum_height'] > value['maximum_height'] or value['contrast_threshold'] > 255:
         raise ValueError('Invalid candidate size/contrast limits')
+    shape = value['shape_contrast_threshold']
+    if not isinstance(shape, int) or not 1 <= shape <= 255:
+        raise ValueError('Shape contrast threshold must be an integer between 1 and 255')
     window = value['background_window']
     if not isinstance(window, int) or window % 2 == 0 or not 3 <= window <= 201:
         raise ValueError('Background window must be an odd integer between 3 and 201 pixels')
@@ -517,6 +524,27 @@ def _body_like(cell, height):
     return _full_square(cell, height) and density >= BODY_DENSITY
 
 
+def _outside_body_components(pairs, components, height, origin=(0, 0)):
+    """Drop core-mask bracket pairs whose stroke lies inside a dense full-square base-mask component.
+
+    Removing antialiasing halos also separates the strokes of dense CJK glyphs, and a thin curved
+    stroke inside one would otherwise pass for a bracket. The test is per base component (the glyph
+    the halo held together), not per glyph cell: a bracket glued to its cheek or eye forms a sparse
+    component and survives, while a dense body glyph (full-square at ``height``, density >= BODY_DENSITY)
+    rejects every stroke found inside it.
+    """
+    dense = []
+    for component in components:
+        if _body_like({'bbox': component['bbox'], 'components': [component]}, height):
+            box = component['bbox']
+            dense.append([box[0] + origin[0] - 1, box[1] + origin[1] - 1, box[2] + origin[0] + 1, box[3] + origin[1] + 1])
+    if not dense:
+        return pairs
+    def inside(stroke):
+        return any(stroke[0] >= box[0] and stroke[2] <= box[2] and stroke[1] >= box[1] and stroke[3] <= box[3] for box in dense)
+    return [pair for pair in pairs if not inside(pair['left_bbox']) and not inside(pair['right_bbox'])]
+
+
 def _line_scale(line):
     """Line height for scaling: the tallest component that is not an outlier against the 80th percentile."""
     heights = sorted(item['bbox'][3] - item['bbox'][1] for item in line['components'])
@@ -524,7 +552,7 @@ def _line_scale(line):
     return max(h for h in heights if h <= typical * 1.3)
 
 
-def _bracket_groups(mask, components, config):
+def _bracket_groups(mask, components, config, guard_body_cells=False):
     """Use actual paired strokes to bridge internal spaces, without label hints.
 
     Pairs are detected per chunk and, when the line height is in range, per line, so a taller icon or
@@ -544,7 +572,10 @@ def _bracket_groups(mask, components, config):
             left,top,right,bottom=unit['bbox'];unit_height=bottom-top
             if not config['minimum_height']<=unit_height<=config['maximum_height'] or right-left>config['maximum_bracket_scan_width']:
                 continue
-            for pair in _bracket_shapes(mask[top:bottom,left:right],(left,top)):
+            found=_bracket_shapes(mask[top:bottom,left:right],(left,top))
+            if guard_body_cells:
+                found=_outside_body_components(found,line_components,height)
+            for pair in found:
                 key=(tuple(pair['left_bbox']),tuple(pair['right_bbox']))
                 if key in seen:
                     continue
@@ -574,25 +605,57 @@ def _bracket_groups(mask, components, config):
     return groups
 
 
+def _masks(array, config):
+    """Base ink mask and the core-ink mask for shape detection (the same object when thresholds agree)."""
+    mask = foreground(array, config['contrast_threshold'], config['background_window'])
+    if config['shape_contrast_threshold'] == config['contrast_threshold']:
+        return mask, mask
+    return mask, foreground(array, config['shape_contrast_threshold'], config['background_window'])
+
+
+def _crop_evidence(array, bbox, config, mask, core):
+    """Pixel evidence for one crop plus the (base, core) bracket-pair counts used for diagnostics.
+
+    Envelope facts (pixel count, components, edge ink, support) come from the base mask; bracket
+    strokes and the pair interior count come from the core mask, so antialiasing halos that glue a
+    bracket to its neighbour cannot hide the stroke while never changing what the crop covers.
+    """
+    left, top, right, bottom = bbox
+    local = mask[top:bottom, left:right]
+    components = _components(local, config['minimum_component_area'])
+    occupied = np.argwhere(local)
+    edge_ink = bool(local[0].any() or local[-1].any() or local[:,0].any() or local[:,-1].any())
+    if core is mask:
+        shape_local, shape_components = local, components
+        pairs = _bracket_shapes(local, (left, top))
+        base_pairs = pairs
+    else:
+        shape_local = core[top:bottom, left:right]
+        shape_components = _components(shape_local, config['minimum_component_area'])
+        pairs = _bracket_shapes(shape_local, (left, top))
+        if pairs and components:
+            ink_height = max(item['bbox'][3] for item in components) - min(item['bbox'][1] for item in components)
+            pairs = _outside_body_components(pairs, components, ink_height, (left, top))
+        base_pairs = _bracket_shapes(local, (left, top))
+    shape_counts = {kind: sum(kind in pair['shape_kinds'] for pair in pairs)
+                    for kind in ('curve', 'small-curve', 'right-angle')}
+    evidence = {'pixel_count': int(local.sum()), 'component_count': len(components),
+                'edge_ink': edge_ink, 'paired_bracket_shapes': pairs, 'bracket_shape_counts': shape_counts,
+                'pixel_support': bool(len(occupied) >= 6 and len(components) >= 3),
+                'extra_shape_support': bool(pairs),
+                'pair_geometry': pair_geometry(pairs, shape_components, (left, top)),
+                'image_sha256': image_digest(array)}
+    return evidence, {'base_pairs': len(base_pairs), 'core_pairs': len(pairs)}
+
+
 def pixel_evidence(image, bbox, config=None):
     config = configuration(config)
     array = rgb_image(image, config['maximum_pixels'])
     left, top, right, bottom = bbox
     if not 0 <= left < right <= array.shape[1] or not 0 <= top < bottom <= array.shape[0]:
         raise ValueError('Candidate box outside image')
-    mask = foreground(array, config['contrast_threshold'], config['background_window'])[top:bottom, left:right]
-    components = _components(mask, config['minimum_component_area'])
-    occupied = np.argwhere(mask)
-    edge_ink = bool(mask[0].any() or mask[-1].any() or mask[:,0].any() or mask[:,-1].any())
-    pairs = _bracket_shapes(mask, (left, top))
-    shape_counts = {kind: sum(kind in pair['shape_kinds'] for pair in pairs)
-                    for kind in ('curve', 'small-curve', 'right-angle')}
-    return {'pixel_count': int(mask.sum()), 'component_count': len(components),
-            'edge_ink': edge_ink, 'paired_bracket_shapes': pairs, 'bracket_shape_counts': shape_counts,
-            'pixel_support': bool(len(occupied) >= 6 and len(components) >= 3),
-            'extra_shape_support': bool(pairs),
-            'pair_geometry': pair_geometry(pairs, components, (left, top)),
-            'image_sha256': image_digest(array)}
+    mask, core = _masks(array, config)
+    return _crop_evidence(array, bbox, config, mask, core)[0]
 
 
 def pair_geometry(pairs, components, origin):
@@ -777,13 +840,14 @@ def locate_candidates(image, baseline, config=None, classifier=None):
     array = rgb_image(image, config['maximum_pixels'])
     height, width = array.shape[:2]
     entries = baseline_regions(baseline, (width, height), config['maximum_baseline_regions'])
-    mask = foreground(array, config['contrast_threshold'], config['background_window'])
+    mask, core = _masks(array, config)
     components = _components(mask, config['minimum_component_area'])
     if len(components)>config['maximum_components']:
         raise ValueError('Original image exceeds component complexity ceiling')
     components, structural = _structural_split(components, config)
     proposed = []
     rejections = {}
+    shape_detection = {'threshold': config['shape_contrast_threshold'], 'base_pairs': 0, 'core_pairs': 0, 'merged_bracket_candidates': 0}
     def reject(reason):
         rejections[reason] = rejections.get(reason, 0) + 1
     for group in _line_groups(components, config):
@@ -793,7 +857,7 @@ def locate_candidates(image, baseline, config=None, classifier=None):
             reject('pixel-size-or-component-limit')
             continue
         proposed.append({'ink_bbox': box, 'sources': ['image-components']})
-    for group in _bracket_groups(mask,components,config):
+    for group in _bracket_groups(core,components,config,guard_body_cells=core is not mask):
         proposed.append({'ink_bbox':group['bbox'],'sources':['image-bracket-pair'],
                          'pair':{'box':list(group['bbox']),'cells':group['line_cells'],'scale':group['scale']}})
     for entry in entries:
@@ -841,7 +905,7 @@ def locate_candidates(image, baseline, config=None, classifier=None):
                 elif other[1] >= bottom: box[3] = min(box[3],other[1]-1)
         if box[0] >= box[2] or box[1] >= box[3] or area(box) > config['maximum_crop_pixels']:
             reject('invalid-or-oversized-crop'); continue
-        evidence = pixel_evidence(array, box, config)
+        evidence, pair_counts = _crop_evidence(array, box, config, mask, core)
         if classifier is not None:
             evidence['classifier'] = classifier.evidence(np.ascontiguousarray(array[box[1]:box[3], box[0]:box[2]]))
         evidence['independent_face_evidence'] = bool(evidence['extra_shape_support'] or evidence.get('classifier', {}).get('face_evidence', False))
@@ -856,6 +920,9 @@ def locate_candidates(image, baseline, config=None, classifier=None):
         if len(candidates) >= config['maximum_candidates'] or crop_pixels + area(box) > config['maximum_crop_pixels']:
             reject('total-crop-budget'); continue
         crop_pixels += area(box)
+        shape_detection['base_pairs'] += pair_counts['base_pairs']
+        shape_detection['core_pairs'] += pair_counts['core_pairs']
+        shape_detection['merged_bracket_candidates'] += int(pair_counts['core_pairs'] > 0 and pair_counts['base_pairs'] == 0)
         ordered = sorted(owned, key=lambda e:(e['bbox'][1],e['bbox'][0]))
         original=''.join(e['text'] for e in ordered)
         eligible,route_reason=_route_eligibility(original,evidence)
@@ -867,5 +934,5 @@ def locate_candidates(image, baseline, config=None, classifier=None):
                            'context_crops':context_crops,'evidence':evidence})
     return {'schema_version':SCHEMA,'image_size':[width,height],'image_sha256':image_digest(array),
             'config':config,'candidates':candidates,'rejections':rejections,'crop_pixels':crop_pixels,
-            'structural_components':len(structural),
+            'structural_components':len(structural),'shape_detection':shape_detection,
             'discovered_count':len(candidates),'route_eligible_count':sum(item['route_eligible'] for item in candidates)}
