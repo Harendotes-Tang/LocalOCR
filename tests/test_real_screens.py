@@ -132,3 +132,209 @@ def test_width_diagnostic_counts_only_faces_that_differ_in_outer_bracket_width(t
     diag = rs.diagnostics([scored], [prediction], ['tiny'])
     assert diag['shape_base_pairs'] == 1 and diag['shape_core_pairs'] == 3 and diag['merged_bracket_candidates'] == 2 and diag['shape_threshold'] == 80
     assert diag['models']['tiny'] == {'face_exact_except_outer_bracket_width': 1, 'bracket_width_sources': {'raw-view': 1}}
+
+
+# ---- bracket-pairs round: probe reports bind their per-screen predictions and proofs recompute them
+
+BINDING = {'models': [{'id': 'unit', 'candidate_sha256': 'a' * 64}], 'config_sha256': 'c' * 64,
+           'classifier': {'sha256': 'k' * 64}, 'baseline': {'manifest_sha256': 'b' * 64}}
+
+
+def _prediction(lose_body=False):
+    face_text = '(≧▽≦)'
+    regions = [{'text': face_text}, {'text': '今天 (´･ω･`) 好'}] if lose_body else \
+        [{'text': 'river 晴川'}, {'text': face_text}, {'text': '今天 (´･ω･`) 好'}]
+    return {'baseline': [{'text': 'river 晴川'}, {'text': '(=▽=)'}, {'text': '今天 (´･w･`) 好'}],
+            'baseline_text': 'river 晴川\n(=▽=)\n今天 (´･w･`) 好', 'first_pass': {'split_parents': 1},
+            'routing': {'shape_detection': {'threshold': 80, 'base_pairs': 1, 'core_pairs': 2, 'merged_bracket_candidates': 1}},
+            'models': {'unit': {'regions': regions, 'text': '\n'.join(r['text'] for r in regions),
+                                'decisions': [{'accepted': True, 'bracket_width_source': 'pixels'}]}}}
+
+
+def two_screen_manifest(tmp_path):
+    (tmp_path / 'screens').mkdir(exist_ok=True)
+    lines = [{'kind': 'body', 'text': 'river 晴川'}, {'kind': 'face', 'text': '(≧▽≦)'},
+             {'kind': 'body', 'text': '今天 (´･ω･`) 好', 'faces': ['(´･ω･`)']}]
+    for index, colour in ((1, 'white'), (2, 'gray')):
+        Image.new('RGB', (40, 20), colour).save(tmp_path / 'screens' / f'shot-00{index}.png')
+    value = {'schema': rs.MANIFEST_SCHEMA, 'usage': 'independent-evaluation-only', 'environment': 'unit',
+             'screens': [{'file': f'screens/shot-00{index}.png', 'lines': lines} for index in (1, 2)]}
+    path = tmp_path / 'manifest.json'
+    path.write_text(json.dumps(value, ensure_ascii=False), encoding='utf-8')
+    return path
+
+
+def register_probe(profile, loaded):
+    sidecar = profile.root / rs.PROBE_SIDECAR
+    sidecar.write_text(json.dumps({'schema': 'localocr.development-demotion.v1', 'kind': rs.PROBE_KIND, 'original_rewritten': False,
+                                   'new_round': 'unit', 'old_datasets': [{'file': 'manifest.json', 'sha256': loaded['sha256']}]}), encoding='utf-8')
+
+
+def probe_fixture(tmp_path, monkeypatch, with_sha=True, lose_body=False):
+    """A complete two-screen probe report written the way ``evaluate_manifest`` writes one (no model inference)."""
+    from tools.PretrainedOcr import common
+    profile = unit_round(tmp_path, monkeypatch)
+    loaded = rs.load_manifest(two_screen_manifest(tmp_path))
+    register_probe(profile, loaded)
+    output = profile.root / 'evaluation' / 'known-input-probe-unit'
+    output.mkdir(parents=True)
+    scored, predictions = [], []
+    with (output / 'predictions-private.jsonl').open('x', encoding='utf-8', newline='\n') as stream:
+        for screen in loaded['value']['screens']:
+            prediction = _prediction(lose_body)
+            lines = rs.score_screen(screen, prediction, ['unit'])
+            scored.append(lines)
+            predictions.append(prediction)
+            stream.write(json.dumps({'file': screen['file'], 'sha256': common.digest(loaded['root'] / screen['file']), 'seconds': .1,
+                                     'prediction': prediction, 'lines': lines}, ensure_ascii=False) + '\n')
+    report = {'schema_version': rs.SCHEMA, 'manifest': {'file': loaded['file'], 'sha256': loaded['sha256'], 'screens': 2},
+              **BINDING, 'summary': rs.summarize(scored, predictions, ['unit']), 'independent': False,
+              'probe': rs.probe_registration(loaded['sha256']), 'promote': False, 'enabled': False}
+    if with_sha:
+        report['predictions_private_sha256'] = common.digest(output / 'predictions-private.jsonl')
+    (output / 'evaluation.json').write_text(json.dumps(report, ensure_ascii=False), encoding='utf-8')
+    return output, loaded
+
+
+def _rewrite(path, change):
+    value = json.loads(path.read_text(encoding='utf-8'))
+    change(value)
+    path.write_text(json.dumps(value, ensure_ascii=False), encoding='utf-8')
+
+
+def _resign(output):
+    from tools.PretrainedOcr import common
+    _rewrite(output / 'evaluation.json', lambda value: value.update(
+        predictions_private_sha256=common.digest(output / 'predictions-private.jsonl')))
+
+
+def _rows(output):
+    return (output / 'predictions-private.jsonl').read_text(encoding='utf-8').split('\n')[:-1]
+
+
+def _write_rows(output, rows):
+    (output / 'predictions-private.jsonl').write_text(''.join(row + '\n' for row in rows), encoding='utf-8')
+
+
+def _selection(tmp_path):
+    value = {'selected_id': 'unit', 'pipeline_binding': {'models': [{'candidate_sha256': 'a' * 64}], 'config_sha256': 'c' * 64,
+                                                          'config': {'classifier': {'sha256': 'k' * 64}}, 'baseline': {'manifest_sha256': 'b' * 64},
+                                                          'dataset': {'dataset_sha256': 's' * 64}}}
+    path = tmp_path / 'selection.json'
+    path.write_text(json.dumps(value), encoding='utf-8')
+    return path
+
+
+def test_recompute_probe_reproduces_the_reported_summary(tmp_path, monkeypatch):
+    output, _ = probe_fixture(tmp_path, monkeypatch)
+    report = json.loads((output / 'evaluation.json').read_text(encoding='utf-8'))
+    assert rs.recompute_probe(output / 'evaluation.json') == report['summary']
+    assert report['summary']['body_lines'] == 4 and report['summary']['split'] == {'parents': 2}
+
+
+def test_recompute_probe_refuses_a_report_without_the_predictions_sha(tmp_path, monkeypatch):
+    output, _ = probe_fixture(tmp_path, monkeypatch, with_sha=False)
+    with pytest.raises(ValueError, match='predictions'):
+        rs.recompute_probe(output / 'evaluation.json')
+
+
+def test_recompute_probe_refuses_a_summary_claiming_no_lost_body_lines(tmp_path, monkeypatch):
+    output, _ = probe_fixture(tmp_path, monkeypatch, lose_body=True)
+    report = json.loads((output / 'evaluation.json').read_text(encoding='utf-8'))
+    assert report['summary']['models']['unit']['body_lost'] == 2
+    _rewrite(output / 'evaluation.json', lambda value: value['summary']['models']['unit'].update(
+        body_lost=0, gates={'no_body_lost': True}))
+    with pytest.raises(ValueError, match='summary'):
+        rs.recompute_probe(output / 'evaluation.json')
+
+
+def test_recompute_probe_refuses_changed_predictions(tmp_path, monkeypatch):
+    output, _ = probe_fixture(tmp_path, monkeypatch)
+    rows = _rows(output)
+    row = json.loads(rows[0])
+    row['prediction']['models']['unit']['regions'][1]['text'] = '(=▽=)'
+    _write_rows(output, [json.dumps(row, ensure_ascii=False), rows[1]])
+    with pytest.raises(ValueError, match='predictions'):
+        rs.recompute_probe(output / 'evaluation.json')
+    _resign(output)  # a consistent re-signature still fails: the recorded lines no longer score from the prediction
+    with pytest.raises(ValueError, match='score'):
+        rs.recompute_probe(output / 'evaluation.json')
+
+
+def test_recompute_probe_refuses_a_changed_screenshot(tmp_path, monkeypatch):
+    output, loaded = probe_fixture(tmp_path, monkeypatch)
+    Image.new('RGB', (40, 20), 'black').save(loaded['root'] / 'screens' / 'shot-002.png')
+    with pytest.raises(ValueError, match='screenshot'):
+        rs.recompute_probe(output / 'evaluation.json')
+
+
+def test_recompute_probe_refuses_a_changed_manifest(tmp_path, monkeypatch):
+    output, loaded = probe_fixture(tmp_path, monkeypatch)
+    _rewrite(Path(loaded['file']), lambda value: value.update(environment='changed'))
+    with pytest.raises(ValueError, match='manifest'):
+        rs.recompute_probe(output / 'evaluation.json')
+
+
+def test_recompute_probe_refuses_a_changed_development_registration(tmp_path, monkeypatch):
+    output, _ = probe_fixture(tmp_path, monkeypatch)
+    _rewrite(output / 'evaluation.json', lambda value: value['probe'].update(sidecar_sha256='0' * 64))
+    with pytest.raises(ValueError, match='registration'):
+        rs.recompute_probe(output / 'evaluation.json')
+
+
+@pytest.mark.parametrize('change', ['reorder', 'truncate', 'extra'])
+def test_recompute_probe_refuses_reordered_missing_or_extra_screens(tmp_path, monkeypatch, change):
+    output, _ = probe_fixture(tmp_path, monkeypatch)
+    rows = _rows(output)
+    _write_rows(output, {'reorder': rows[::-1], 'truncate': rows[:1], 'extra': rows + rows[:1]}[change])
+    _resign(output)
+    with pytest.raises(ValueError, match='order'):
+        rs.recompute_probe(output / 'evaluation.json')
+
+
+def test_rows_keep_unicode_line_separators_inside_strings(tmp_path):
+    path = tmp_path / 'rows.jsonl'
+    path.write_text(json.dumps({'text': 'a b c\u0085d'}, ensure_ascii=False) + '\n', encoding='utf-8')
+    assert rs.read_rows(path) == [{'text': 'a b c\u0085d'}]
+
+
+def test_regression_proof_recomputes_a_complete_probe_report(tmp_path, monkeypatch):
+    from tools.PretrainedOcr import quality_evaluate as q
+    output, _ = probe_fixture(tmp_path, monkeypatch)
+    proof = q.regression_proof(output / 'evaluation.json', _selection(tmp_path))
+    report = json.loads((output / 'evaluation.json').read_text(encoding='utf-8'))
+    assert proof['kind'] == 'known-input-probe' and proof['passed'] is True
+    assert proof['body_lines'] == 4 and proof['body_lost'] == 0
+    assert proof['predictions_private_sha256'] == report['predictions_private_sha256']
+
+
+def test_regression_proof_fails_on_recomputed_lost_body_lines(tmp_path, monkeypatch):
+    from tools.PretrainedOcr import quality_evaluate as q
+    output, _ = probe_fixture(tmp_path, monkeypatch, lose_body=True)
+    selection = _selection(tmp_path)
+    proof = q.regression_proof(output / 'evaluation.json', selection)
+    assert proof['passed'] is False and proof['body_lost'] == 2
+    _rewrite(output / 'evaluation.json', lambda value: value['summary']['models']['unit'].update(
+        body_lost=0, gates={'no_body_lost': True}))
+    with pytest.raises(ValueError, match='summary'):
+        q.regression_proof(output / 'evaluation.json', selection)
+
+
+def test_evaluate_manifest_binds_the_predictions_sha_and_recomputes(tmp_path, monkeypatch):
+    import argparse
+    profile = unit_round(tmp_path, monkeypatch)
+    path = two_screen_manifest(tmp_path)
+    register_probe(profile, rs.load_manifest(path))
+
+    class Stub:
+        def __init__(self, source):
+            self.binding = {'id': 'unit', 'candidate_sha256': 'a' * 64, 'manifest_sha256': 'b' * 64}
+    monkeypatch.setattr(rs.e, 'FullBaseline', Stub)
+    monkeypatch.setattr(rs.e, 'Recognizer', Stub)
+    monkeypatch.setattr(rs.e, 'predict_scene', lambda image, baseline, models, config, classifier=None: _prediction())
+    args = argparse.Namespace(manifest=str(path), output=str(profile.root / 'evaluation' / 'known-input-probe-unit'), config=None,
+                              classifier=None, baseline_models=str(tmp_path), candidate=[str(tmp_path / 'candidate.json')], probe=True, dual=[])
+    report = rs.evaluate_manifest(args)
+    from tools.PretrainedOcr import common
+    assert report['predictions_private_sha256'] == common.digest(Path(args.output) / 'predictions-private.jsonl')
+    assert rs.recompute_probe(Path(args.output) / 'evaluation.json') == report['summary']

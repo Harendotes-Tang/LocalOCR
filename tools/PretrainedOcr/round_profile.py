@@ -87,8 +87,16 @@ BROWSER_FONT = RoundProfile(
     previous_budget=ARTIFACTS / 'browser-rendering-20261015/gpu-budget.json',
     previous_sha256='d53c7819bf11442a4e9520e850fc602ed34a80ee1629a6edc923ab26b0996d35',
     previous_used_seconds=0.0, maximum_seconds=7200.0, specialist_families=1)
-ROUNDS = (QUALITY, GRAMMAR, CANDIDATES, REAL_RENDERING, BROWSER_RENDERING, BROWSER_FONT)
-CURRENT = BROWSER_FONT
+# CPU-only bracket-pairing round: a zero-second ledger bound to the closed browser-font training ledger;
+# no training, the frozen specialist and classifier are reused.
+BRACKET_PAIRS = RoundProfile(
+    name='bracket-pairs-20261016', change='improve-bracket-pair-localization',
+    root=ARTIFACTS / 'bracket-pairs-20261016', maximum_bytes=GIB, owned_bytes=600 * 1024 ** 2,
+    previous_budget=ARTIFACTS / 'browser-font-20261016/gpu-budget.json',
+    previous_sha256='4b73ac8e2454e261412a6ae8a09aa53993d927ffbfd6d0036c30da8ea71df9b7',
+    previous_used_seconds=2376.438000000001, maximum_seconds=0.0, specialist_families=1)
+ROUNDS = (QUALITY, GRAMMAR, CANDIDATES, REAL_RENDERING, BROWSER_RENDERING, BROWSER_FONT, BRACKET_PAIRS)
+CURRENT = BRACKET_PAIRS
 
 
 def _resolved(path):

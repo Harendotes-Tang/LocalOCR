@@ -1563,9 +1563,9 @@ def evaluate(args):
 
 # Rounds whose selections must read the outer bracket width from pixels (baseline-else-raw and raw only
 # reproduce historical frozen configurations).
-EXACT_WIDTH_ROUNDS=('browser-font-20261016',)
+EXACT_WIDTH_ROUNDS=('browser-font-20261016','bracket-pairs-20261016')
 # Rounds whose reports add tail-ambiguity counts; adopted before any of their heldout reads.
-TAIL_AMBIGUITY_ROUNDS=('browser-font-20261016',)
+TAIL_AMBIGUITY_ROUNDS=('browser-font-20261016','bracket-pairs-20261016')
 
 
 def tail_counting(output):

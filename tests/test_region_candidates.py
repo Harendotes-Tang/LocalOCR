@@ -737,3 +737,331 @@ def test_low_mark_guard_strips_line_end_marks_and_never_an_exterior_atom(size, s
                     assert stripped(core + atom if side == 'right' else atom + core) == set(), (core, side, atom)
                 except Unsupported:
                     continue
+
+
+# ---- bracket-pairs round: pair_selection and dense_guard (absent means the previous behaviour)
+
+# Fixed by the BE-2 rendering measurement (artifacts/bracket-pairs-20261016/validation/be2-receipt.json):
+# the upper bound of single dense CJK glyph width/height ratios under Noto and Edge YaHei, rounded up to 0.05.
+MEASURED_MAXIMUM_WIDTH_RATIO = 1.8
+BE2_RECEIPT = __import__('pathlib').Path(__file__).resolve().parents[1] / 'artifacts/bracket-pairs-20261016/validation/be2-receipt.json'
+SELECT_BOTH = {'family_match': True, 'innermost_partner': True}
+FAMILY_ONLY = {'family_match': True, 'innermost_partner': False}
+
+
+def _interior(draw, x):
+    draw.ellipse((x, 31, x + 7, 38), outline='black', width=2)
+    draw.ellipse((x + 20, 31, x + 27, 38), outline='black', width=2)
+    draw.line((x + 8, 43, x + 18, 43), fill='black', width=2)
+
+
+def cross_family_fixture():
+    """A curved left stroke (a body fullwidth bracket) and a right-angle right stroke (a face bracket)."""
+    image = Image.new('RGB', (200, 80), 'white')
+    draw = ImageDraw.Draw(image)
+    draw.arc((40, 20, 54, 50), 90, 270, fill='black', width=2)
+    _interior(draw, 66)
+    draw.line((132, 20, 132, 50), fill='black', width=2)
+    draw.line((124, 20, 132, 20), fill='black', width=2)
+    draw.line((124, 50, 132, 50), fill='black', width=2)
+    return np.asarray(image)
+
+
+def shared_right_fixture():
+    """Body left bracket, a dense body glyph, then a face whose right bracket both left strokes pair with."""
+    image = Image.new('RGB', (260, 80), 'white')
+    draw = ImageDraw.Draw(image)
+    draw.arc((10, 20, 24, 50), 90, 270, fill='black', width=2)
+    draw.rectangle((34, 26, 50, 44), fill='black')
+    draw.arc((100, 20, 114, 50), 90, 270, fill='black', width=2)
+    _interior(draw, 122)
+    draw.arc((160, 20, 174, 50), 270, 90, fill='black', width=2)
+    return np.asarray(image)
+
+
+def adjacent_faces_fixture():
+    image = Image.new('RGB', (300, 80), 'white')
+    draw = ImageDraw.Draw(image)
+    for x in (10, 110):
+        draw.arc((x, 20, x + 14, 50), 90, 270, fill='black', width=2)
+        _interior(draw, x + 20)
+        draw.arc((x + 60, 20, x + 74, 50), 270, 90, fill='black', width=2)
+    return np.asarray(image)
+
+
+def glued_dense_fixture(wide):
+    """A left arc glued by a faint bridge (visible at threshold 8, not at 80) to dense ink.
+
+    ``wide``: two dense glyph-sized blocks glued together (a halo-merged multi-glyph blob about twice as wide as
+    it is tall); otherwise one narrow dense block, so the merged base component is no wider than it is tall.
+    """
+    image = Image.new('RGB', (240, 80), 'white')
+    draw = ImageDraw.Draw(image)
+    draw.arc((40, 20, 54, 50), 90, 270, fill='black', width=2)
+    if wide:
+        draw.rectangle((58, 22, 78, 48), fill='black')
+        draw.rectangle((82, 22, 102, 48), fill='black')
+        draw.line((46, 21, 58, 22), fill=(232, 232, 232), width=2)
+        draw.line((78, 35, 82, 35), fill=(232, 232, 232), width=2)
+        end = 102
+    else:
+        draw.rectangle((52, 22, 62, 48), fill='black')
+        draw.line((46, 21, 52, 22), fill=(232, 232, 232), width=2)
+        end = 62
+    _interior(draw, end + 10)
+    draw.arc((end + 44, 20, end + 58, 50), 270, 90, fill='black', width=2)
+    return np.asarray(image)
+
+
+def _pairs(array, threshold=8):
+    return c._bracket_shapes(c.foreground(array, threshold, 51), (0, 0))
+
+
+def _keys(pairs):
+    return [(tuple(p['left_bbox']), tuple(p['right_bbox'])) for p in pairs]
+
+
+def _pair(left, right, kind='curve'):
+    return {'left_bbox': list(left), 'right_bbox': list(right), 'shape_kinds': [kind],
+            'left_shape': {'kind': kind, 'measurements': {}}, 'right_shape': {'kind': kind, 'measurements': {}}}
+
+
+def _groups(image, config):
+    mask = c.foreground(image, 8, 51)
+    return c._bracket_groups(mask, c._components(mask, 2), c.configuration(config))
+
+
+def test_pair_selection_and_dense_guard_validate_and_are_never_inserted():
+    assert set(c.configuration()) == set(c.DEFAULT_CONFIG)
+    assert {'pair_selection', 'dense_guard'} <= set(c.STRUCTURED_OPTIONAL)
+    good = dict(c.DEFAULT_CONFIG, pair_selection=FAMILY_ONLY, dense_guard={'maximum_width_ratio': 1.5})
+    normalized = c.configuration(good)
+    assert normalized['pair_selection'] == FAMILY_ONLY and normalized['dense_guard'] == {'maximum_width_ratio': 1.5}
+    assert c.configuration(dict(c.DEFAULT_CONFIG, pair_selection={'family_match': False, 'innermost_partner': True}))
+    for ratio in (1.0, 3.0):
+        assert c.configuration(dict(c.DEFAULT_CONFIG, dense_guard={'maximum_width_ratio': ratio}))
+    for bad in ({'pair_selection': {'family_match': True}},
+                {'pair_selection': {'family_match': False, 'innermost_partner': False}},
+                {'pair_selection': {'family_match': 1, 'innermost_partner': True}},
+                {'pair_selection': {'family_match': True, 'innermost_partner': True, 'extra': True}},
+                {'pair_selection': [True, True]}, {'pair_selection': True},
+                {'dense_guard': {'maximum_width_ratio': 0.99}}, {'dense_guard': {'maximum_width_ratio': 3.01}},
+                {'dense_guard': {'maximum_width_ratio': 2}}, {'dense_guard': {'maximum_width_ratio': True}},
+                {'dense_guard': {'maximum_width_ratio': float('nan')}}, {'dense_guard': {}},
+                {'dense_guard': {'maximum_width_ratio': 1.5, 'extra': 1.0}}, {'dense_guard': 1.5}):
+        with pytest.raises(ValueError):
+            c.configuration(dict(c.DEFAULT_CONFIG, **bad))
+    for key in ('pair_selection', 'dense_guard'):
+        with pytest.raises(ValueError, match='instead of setting it to null'):
+            c.configuration({**c.DEFAULT_CONFIG, key: None})
+
+
+def test_frozen_configuration_normalizes_and_hashes_as_before():
+    import hashlib
+    import json
+    from pathlib import Path
+    frozen = Path(__file__).resolve().parents[1] / 'artifacts/browser-font-20261016/routing/config-tier1-t080-exact-b045.json'
+    if not frozen.exists():
+        pytest.skip('Frozen browser-font configuration is absent on this host')
+    candidate = json.loads(frozen.read_text(encoding='utf-8'))['candidate']
+    normalized = c.configuration(copy.deepcopy(candidate))
+    assert 'pair_selection' not in normalized and 'dense_guard' not in normalized
+    assert set(normalized) - set(c.DEFAULT_CONFIG) == set(candidate) - set(c.DEFAULT_CONFIG)
+    def digest(value):
+        return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+    source = Path(__file__).resolve().parents[1] / 'artifacts/bracket-pairs-20261016/source-before-round/tools__RegionKaomoji__candidates.py'
+    if source.exists():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('candidates_before_round', source)
+        before = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(before)
+        assert digest(normalized) == digest(before.configuration(copy.deepcopy(candidate)))
+
+
+def test_family_match_rejects_a_curve_left_with_a_right_angle_right():
+    image = cross_family_fixture()
+    pairs = _pairs(image)
+    assert [(p['left_shape']['kind'], p['right_shape']['kind']) for p in pairs] == [('curve', 'right-angle')]
+    assert c._select_pairs(pairs, FAMILY_ONLY, 'family') == []
+    assert c._select_pairs(pairs, {'family_match': False, 'innermost_partner': True}, 'family') == pairs
+    plain = c.locate_candidates(image, [])
+    assert any('image-bracket-pair' in item['sources'] for item in plain['candidates'])
+    selected = c.locate_candidates(image, [], dict(c.DEFAULT_CONFIG, pair_selection=SELECT_BOTH))
+    assert all('image-bracket-pair' not in item['sources'] for item in selected['candidates'])
+    assert all(item['evidence']['paired_bracket_shapes'] == [] and item['evidence']['pair_geometry'] is None
+               for item in selected['candidates'])
+    assert selected['shape_detection']['base_pairs'] == selected['shape_detection']['core_pairs'] == 0
+
+
+def test_family_match_keeps_same_family_pairs():
+    assert c.PAIR_FAMILY == {'curve': 'curve', 'small-curve': 'curve', 'right-angle': 'square'}
+    for image in (face_fixture(), angular_face_fixture()):
+        pairs = _pairs(image)
+        assert pairs and c._select_pairs(pairs, FAMILY_ONLY, 'family') == pairs
+        plain = c.locate_candidates(image, [])
+        assert plain['candidates'] == c.locate_candidates(image, [], dict(c.DEFAULT_CONFIG, pair_selection=FAMILY_ONLY))['candidates']
+
+
+@pytest.mark.skipif(not FONTS.exists(), reason='Pinned local OFL fonts absent')
+def test_family_match_on_declared_pairs_removes_exactly_the_cross_family_detections():
+    # Projection of the atom table: every declared pair is rendered around a simple interior at 12-32 px.
+    # Cross-family detections are a known cost recorded per size (Noto and Edge YaHei at three device scales)
+    # in validation/be2-receipt.json by validation/be2_measure.py, never a test failure; this test pins that
+    # every detected kind maps to a family and the rule removes exactly the cross-family detections.
+    from tools.OcrDatasets.render import Unsupported
+    from tools.PretrainedOcr.data import MixedRenderer
+    renderer = MixedRenderer(FONTS)
+    checked = same_family = 0
+    for left, right in c.ATOMS.brackets:
+        for size in range(12, 33):
+            try:
+                image = np.asarray(renderer.render(left + '^_^' + right, size=size)[0].convert('RGB'))
+            except Unsupported:
+                continue
+            pairs = _pairs(image)
+            kept = c._select_pairs(pairs, FAMILY_ONLY, 'family')
+            same = [p for p in pairs if c.PAIR_FAMILY[p['left_shape']['kind']] == c.PAIR_FAMILY[p['right_shape']['kind']]]
+            assert kept == same
+            checked += 1
+            same_family += bool(same)
+    assert checked >= 17 * 21 and same_family >= checked // 2
+
+
+def test_innermost_partner_keeps_the_face_pair_beside_a_body_bracket():
+    image = shared_right_fixture()
+    pairs = _pairs(image)
+    assert len(pairs) == 2 and pairs[0]['right_bbox'] == pairs[1]['right_bbox']
+    kept = c._select_pairs(pairs, SELECT_BOTH, 'innermost')
+    assert _keys(kept) == [max(_keys(pairs), key=lambda key: key[0][0])]
+    assert [group['strokes'][0][0] for group in _groups(image, dict(c.DEFAULT_CONFIG, pair_selection=SELECT_BOTH))] == [kept[0]['left_bbox'][0]]
+    assert sorted(group['strokes'][0][0] for group in _groups(image, c.DEFAULT_CONFIG)) == sorted(p['left_bbox'][0] for p in pairs)
+    evidence = c.pixel_evidence(image, [0, 0, 260, 80], dict(c.DEFAULT_CONFIG, pair_selection=SELECT_BOTH))
+    assert _keys(evidence['paired_bracket_shapes']) == _keys(kept)
+
+
+def test_innermost_partner_drops_the_pair_spanning_two_adjacent_faces():
+    image = adjacent_faces_fixture()
+    pairs = _pairs(image)
+    assert len(pairs) == 3
+    kept = c._select_pairs(pairs, SELECT_BOTH, 'innermost')
+    spans = sorted((p['left_bbox'][0], p['right_bbox'][2]) for p in kept)
+    assert len(kept) == 2 and spans[0][1] <= spans[1][0]
+    evidence = c.pixel_evidence(image, [0, 0, 300, 80], dict(c.DEFAULT_CONFIG, pair_selection=SELECT_BOTH))
+    assert len(evidence['paired_bracket_shapes']) == 2 and evidence['pair_geometry']['disjoint_pairs'] == 2
+    widest = evidence['pair_geometry']
+    assert widest['right_bbox'][2] - widest['left_bbox'][0] < 100
+    plain = c.pixel_evidence(image, [0, 0, 300, 80])
+    assert len(plain['paired_bracket_shapes']) == 3
+
+
+def test_innermost_partner_treats_a_one_pixel_rounding_difference_as_the_same_stroke():
+    wide = _pair((10, 5, 14, 30), (60, 5, 64, 30))
+    tight = _pair((11, 5, 15, 31), (40, 5, 44, 30))        # left stroke from the small-text path: one pixel off
+    assert c._select_pairs([wide, tight], SELECT_BOTH, 'innermost') == [tight]
+    apart = _pair((12, 5, 16, 30), (40, 5, 44, 30))          # two pixels off: a different stroke
+    assert c._select_pairs([wide, apart], SELECT_BOTH, 'innermost') == [wide, apart]
+    twin = _pair((11, 6, 15, 31), (61, 4, 65, 31))           # both strokes within a pixel: neither is nearer
+    assert c._select_pairs([wide, twin], SELECT_BOTH, 'innermost') == [wide, twin]
+    mirrored = _pair((30, 5, 34, 30), (61, 5, 65, 31))       # shares the right stroke, left stroke further right
+    assert c._select_pairs([wide, mirrored], SELECT_BOTH, 'innermost') == [mirrored]
+
+
+def test_innermost_partner_without_shared_strokes_equals_family_match_only():
+    image = adjacent_faces_fixture()
+    disjoint = [p for p in _pairs(image) if p['right_bbox'][2] - p['left_bbox'][0] < 100]
+    assert len(disjoint) == 2
+    assert c._select_pairs(disjoint, SELECT_BOTH, 'innermost') == disjoint
+    both = dict(c.DEFAULT_CONFIG, pair_selection=SELECT_BOTH)
+    for image in (face_fixture(), angular_face_fixture()):
+        family_only = c.locate_candidates(image, [], dict(c.DEFAULT_CONFIG, pair_selection=FAMILY_ONLY))
+        assert family_only['candidates'] == c.locate_candidates(image, [], both)['candidates']
+
+
+def test_innermost_partner_is_decided_once_on_the_original_set():
+    a = _pair((10, 5, 14, 30), (100, 5, 104, 30))
+    b = _pair((50, 5, 54, 30), (100, 5, 104, 30))
+    d = _pair((50, 5, 54, 30), (80, 5, 84, 30))
+    # a loses to b (shared right, left further right); b loses to d (shared left, right further left).
+    assert c._select_pairs([a, b, d], SELECT_BOTH, 'innermost') == [d]
+    # Without d, b survives: the decision for b is made on the set it is in, once.
+    assert c._select_pairs([a, b], SELECT_BOTH, 'innermost') == [b]
+
+
+def test_dense_guard_lets_a_halo_glued_wide_blob_stop_vetoing_brackets():
+    ratio = MEASURED_MAXIMUM_WIDTH_RATIO
+    image = glued_dense_fixture(wide=True)
+    base = [item['bbox'] for item in c._components(c.foreground(image, 8, 51), 2) if item['bbox'][0] == 40]
+    assert base and base[0][2] - base[0][0] > ratio * (base[0][3] - base[0][1])
+    guarded = dict(c.DEFAULT_CONFIG, shape_contrast_threshold=80)
+    before = c.locate_candidates(image, [], guarded)
+    assert before['shape_detection']['core_pairs'] == 0
+    assert all('image-bracket-pair' not in item['sources'] for item in before['candidates'])
+    after = c.locate_candidates(image, [], dict(guarded, dense_guard={'maximum_width_ratio': ratio}))
+    assert after['shape_detection']['core_pairs'] >= 1
+    assert any('image-bracket-pair' in item['sources'] for item in after['candidates'])
+
+
+def test_dense_guard_keeps_vetoing_a_stroke_inside_one_dense_glyph():
+    image = glued_dense_fixture(wide=False)
+    base = [item['bbox'] for item in c._components(c.foreground(image, 8, 51), 2) if item['bbox'][0] == 40]
+    assert base and base[0][2] - base[0][0] <= base[0][3] - base[0][1]
+    guarded = dict(c.DEFAULT_CONFIG, shape_contrast_threshold=80)
+    for config in (guarded, dict(guarded, dense_guard={'maximum_width_ratio': MEASURED_MAXIMUM_WIDTH_RATIO}),
+                   dict(guarded, dense_guard={'maximum_width_ratio': 1.0})):
+        result = c.locate_candidates(image, [], config)
+        assert result['shape_detection']['core_pairs'] == 0
+        assert all('image-bracket-pair' not in item['sources'] for item in result['candidates'])
+
+
+def test_dense_guard_ratio_reaches_every_guard_call_site():
+    components = [{'bbox': [0, 0, 60, 30], 'pixels': 1500}, {'bbox': [100, 0, 125, 30], 'pixels': 700}]
+    wide_stroke = _pair((2, 2, 8, 28), (150, 2, 156, 28))
+    narrow_stroke = _pair((102, 2, 108, 28), (150, 2, 156, 28))
+    both = [wide_stroke, narrow_stroke]
+    assert c._outside_body_components(both, components, 30) == []
+    assert c._outside_body_components(both, components, 30, (0, 0), None) == []
+    assert c._outside_body_components(both, components, 30, (0, 0), 1.5) == [wide_stroke]
+    image = glued_dense_fixture(wide=True)
+    ratio = {'maximum_width_ratio': MEASURED_MAXIMUM_WIDTH_RATIO}
+    core80 = dict(c.DEFAULT_CONFIG, shape_contrast_threshold=80)
+    # Candidate evidence (core-mask path) and the small-text path honour the ratio as the grouping path does.
+    assert c.pixel_evidence(image, [30, 10, 200, 60], core80)['paired_bracket_shapes'] == []
+    assert c.pixel_evidence(image, [30, 10, 200, 60], dict(core80, dense_guard=ratio))['paired_bracket_shapes']
+    small = dict(core80, small_text_shape={'below_height': 64, 'upsample': 2})
+    assert c.pixel_evidence(image, [30, 10, 200, 60], small)['paired_bracket_shapes'] == []
+    assert c.pixel_evidence(image, [30, 10, 200, 60], dict(small, dense_guard=ratio))['paired_bracket_shapes']
+
+
+def test_dense_guard_ratio_is_fixed_by_the_rendering_measurement():
+    assert MEASURED_MAXIMUM_WIDTH_RATIO is not None, 'BE-2 measurement has not fixed the ratio yet'
+    assert 1.0 <= MEASURED_MAXIMUM_WIDTH_RATIO <= 3.0
+    import math
+    assert math.isclose(MEASURED_MAXIMUM_WIDTH_RATIO * 20, round(MEASURED_MAXIMUM_WIDTH_RATIO * 20))
+    if BE2_RECEIPT.exists():
+        import json
+        receipt = json.loads(BE2_RECEIPT.read_text(encoding='utf-8'))
+        assert receipt['dense_guard']['maximum_width_ratio'] == MEASURED_MAXIMUM_WIDTH_RATIO
+
+
+def test_both_keys_absent_reproduce_the_source_before_the_round():
+    import importlib.util
+    from pathlib import Path
+    source = Path(__file__).resolve().parents[1] / 'artifacts/bracket-pairs-20261016/source-before-round/tools__RegionKaomoji__candidates.py'
+    if not source.exists():
+        pytest.skip('Round source snapshot is absent on this host')
+    spec = importlib.util.spec_from_file_location('candidates_before_round', source)
+    before = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(before)
+    fixtures = (face_fixture(), angular_face_fixture(), cross_family_fixture(), shared_right_fixture(),
+                adjacent_faces_fixture(), glued_dense_fixture(True), glued_dense_fixture(False),
+                body_stroke_fixture(True), body_stroke_fixture(False), glued_bracket_fixture())
+    configs = (c.DEFAULT_CONFIG, dict(c.DEFAULT_CONFIG, shape_contrast_threshold=80),
+               dict(c.DEFAULT_CONFIG, shape_contrast_threshold=80, small_text_shape={'below_height': 64, 'upsample': 2}),
+               dict(c.DEFAULT_CONFIG, shape_contrast_threshold=80, low_mark_guard={'maximum_height_ratio': .45, 'minimum_top_ratio': .5}))
+    for image in fixtures:
+        for config in configs:
+            assert c.locate_candidates(image, [], copy.deepcopy(config)) == before.locate_candidates(image, [], copy.deepcopy(config))
+            box = [0, 0, image.shape[1], image.shape[0]]
+            assert c.pixel_evidence(image, box, copy.deepcopy(config)) == before.pixel_evidence(image, box, copy.deepcopy(config))
+    pairs = _pairs(shared_right_fixture())
+    assert c._select_pairs(pairs, None, 'family') is pairs and c._select_pairs(pairs, None, 'innermost') is pairs

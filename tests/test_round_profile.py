@@ -41,7 +41,14 @@ def test_registered_rounds_have_distinct_roots_and_external_predecessors():
     assert rp.BROWSER_FONT.maximum_seconds == 7200.0 and rp.BROWSER_FONT.previous_used_seconds == 0.0
     assert rp.BROWSER_FONT.maximum_bytes == 2 * rp.GIB and rp.BROWSER_FONT.owned_bytes == 1200 * 1024 ** 2
     assert rp.BROWSER_FONT.specialist_families == 1 and rp.BROWSER_FONT.change == 'improve-browser-font-kaomoji-recognition'
-    assert rp.CURRENT is rp.BROWSER_FONT and rp.by_name(rp.BROWSER_FONT.name) is rp.BROWSER_FONT
+    assert rp.by_name(rp.BROWSER_FONT.name) is rp.BROWSER_FONT
+    assert rp.BRACKET_PAIRS.previous_budget == rp.BROWSER_FONT.root / 'gpu-budget.json'
+    assert rp.BRACKET_PAIRS.maximum_seconds == 0.0 and rp.BRACKET_PAIRS.previous_used_seconds == 2376.438000000001
+    assert rp.BRACKET_PAIRS.maximum_bytes == rp.GIB and rp.BRACKET_PAIRS.owned_bytes == 600 * 1024 ** 2
+    assert rp.BRACKET_PAIRS.specialist_families == 1 and rp.BRACKET_PAIRS.change == 'improve-bracket-pair-localization'
+    assert rp.BRACKET_PAIRS.root == rp.ARTIFACTS / 'bracket-pairs-20261016'
+    assert rp.CURRENT is rp.BRACKET_PAIRS and rp.by_name(rp.BRACKET_PAIRS.name) is rp.BRACKET_PAIRS
+    assert rp.ROUNDS[-1] is rp.BRACKET_PAIRS
     assert rp.by_name(rp.CANDIDATES.name) is rp.CANDIDATES
     assert rp.by_name(rp.GRAMMAR.name) is rp.GRAMMAR
 
@@ -128,6 +135,29 @@ def test_browser_font_root_is_not_matched_by_a_sibling_prefix(tmp_path):
     assert rp.profile_for(root / 'data' / 'x.json') is rp.BROWSER_FONT
     assert rp.profile_for(root.with_name(root.name + '-extra') / 'x.json') is None
     assert rp.profile_for(rp.BROWSER_RENDERING.root / 'x.json') is rp.BROWSER_RENDERING
+
+
+def test_bracket_pairs_predecessor_ledger_is_the_closed_browser_font_training_ledger():
+    ledger = Path(rp.BRACKET_PAIRS.previous_budget)
+    if not ledger.exists():
+        pytest.skip('Historical browser-font ledger is absent on this host')
+    from tools.PretrainedOcr.common import digest, read
+    assert digest(ledger) == rp.BRACKET_PAIRS.previous_sha256
+    state = read(ledger)
+    assert state['active'] is None and state['maximum_seconds'] == 7200.0
+    # The predecessor's recorded usage is bound exactly, not rounded.
+    assert state['used_seconds'] == rp.BRACKET_PAIRS.previous_used_seconds
+    assert math.isclose(sum(run['elapsed_seconds'] for run in state['runs']), state['used_seconds'], abs_tol=1e-6)
+    assert not ledger.with_name(ledger.name + '.lock').exists()
+
+
+def test_bracket_pairs_root_is_not_matched_by_a_sibling_prefix():
+    root = Path(rp.BRACKET_PAIRS.root)
+    assert rp.profile_for(root / 'validation' / 'x.json') is rp.BRACKET_PAIRS
+    assert rp.profile_for(root.with_name(root.name + '-extra') / 'x.json') is None
+    assert rp.profile_for(root.with_name('bracket-pairs-2026101') / 'x.json') is None
+    assert rp.profile_for(rp.BROWSER_FONT.root / 'x.json') is rp.BROWSER_FONT
+    assert rp.specialist_families(root / 'evaluation') == 1
 
 
 def test_predecessor_inside_round_root_is_rejected(tmp_path):

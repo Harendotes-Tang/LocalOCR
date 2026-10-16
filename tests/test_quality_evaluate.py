@@ -368,8 +368,11 @@ def _probe_report(tmp_path, lost=0, lines=12, manifest='m'*64, name='probe.json'
  path=tmp_path/name;path.write_text(json.dumps(value),encoding='utf-8');return path
 
 def _stored_summary(monkeypatch):
- # Unit fixtures carry no worker outputs; the recomputation itself is exercised on the real reports.
+ # Unit fixtures carry no worker outputs; the recomputation itself is exercised on the real reports
+ # (scenes) and on complete probe fixtures in tests/test_real_screens.py (known-input probes).
  monkeypatch.setattr(q,'_scene_regression_summary',lambda path,value:value['summary'])
+ from tools.RegionKaomoji import real_screens as rs
+ monkeypatch.setattr(rs,'recompute_probe',lambda path:json.loads(Path(path).read_text(encoding='utf-8'))['summary'])
 
 def test_regression_proofs_bind_the_selection_and_enforce_zero_new_errors(tmp_path,monkeypatch):
  monkeypatch.setattr(q,'ROUND',tmp_path);_stored_summary(monkeypatch)
@@ -408,3 +411,35 @@ def test_a_round_requiring_regressions_refuses_a_dual_freeze_without_them(tmp_pa
                  [*complete,_scene_report(tmp_path,'extra.json')]):
   with pytest.raises(ValueError,match='pinned regression reports'):
    q.regression_proofs(reports,selection,tmp_path/'dual.json')
+
+
+def test_bracket_pairs_round_pins_the_same_three_regressions(tmp_path,monkeypatch):
+ from tools.PretrainedOcr import round_profile as rp
+ assert q.REQUIRED_REGRESSIONS['bracket-pairs-20261016']==q.REQUIRED_REGRESSIONS['browser-font-20261016']
+ monkeypatch.setattr(q,'ROUND',tmp_path);_stored_summary(monkeypatch)
+ selection=_selection(tmp_path);pins=q.REQUIRED_REGRESSIONS['bracket-pairs-20261016']
+ output=rp.BRACKET_PAIRS.root/'evaluation'/'dual-freeze-unit.json'
+ complete=[_scene_report(tmp_path,'cards.json',dataset=pins['scene-dev'][0]),_scene_report(tmp_path,'mixed.json',dataset=pins['scene-dev'][1]),
+           _probe_report(tmp_path,manifest=pins['known-input-probe'][0])]
+ assert len(q.regression_proofs(complete,selection,output))==3
+ for reports in (complete[:2],complete[1:],[*complete,_scene_report(tmp_path,'extra.json',dataset=pins['scene-dev'][0])]):
+  with pytest.raises(ValueError,match='pinned regression reports'):
+   q.regression_proofs(reports,selection,output)
+
+def test_probe_proofs_use_the_recomputed_summary_not_the_reported_one(tmp_path,monkeypatch):
+ from tools.RegionKaomoji import real_screens as rs
+ monkeypatch.setattr(q,'ROUND',tmp_path)
+ selection=_selection(tmp_path);report=_probe_report(tmp_path)
+ recomputed=json.loads(report.read_text(encoding='utf-8'))['summary']
+ recomputed['models']['unit']=dict(recomputed['models']['unit'],body_lost=1,gates={'no_body_lost':False})
+ calls=[]
+ monkeypatch.setattr(rs,'recompute_probe',lambda path:calls.append(Path(path))or recomputed)
+ with pytest.raises(ValueError,match='hard condition'):
+  q.regression_proofs([report],selection,tmp_path/'dual.json')
+ assert calls==[report.resolve()]
+
+def test_a_probe_report_without_the_predictions_sha_is_not_a_proof(tmp_path,monkeypatch):
+ monkeypatch.setattr(q,'ROUND',tmp_path)
+ selection=_selection(tmp_path)
+ with pytest.raises(ValueError,match='predictions'):
+  q.regression_proofs([_probe_report(tmp_path)],selection,tmp_path/'dual.json')

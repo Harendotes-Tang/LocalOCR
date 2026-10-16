@@ -92,7 +92,7 @@ def tiny(tmp_path_factory):
     base = tmp_path_factory.mktemp('crop-round')
     if not base.resolve().is_relative_to((REPO / 'artifacts').resolve()):
         pytest.skip('Generation must run with --basetemp under artifacts/')
-    profile = dataclasses.replace(rp.BROWSER_FONT, name='unit-crops', root=base / 'unit-round', previous_budget=base / 'old.json')
+    profile = dataclasses.replace(rp.CURRENT, name='unit-crops', root=base / 'unit-round', previous_budget=base / 'old.json')
     # pathlib reads go through io.open, plain open() through builtins.open: watch both.
     opened, real_open, real_io_open = [], builtins.open, io.open
     def watching(real):

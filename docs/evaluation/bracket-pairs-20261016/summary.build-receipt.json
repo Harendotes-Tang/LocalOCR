@@ -1,0 +1,193 @@
+{
+  "built_utc": "2026-10-16T19:05:50.203891+00:00",
+  "figures": [
+    {
+      "file": "docs/evaluation/bracket-pairs-20261016/figures/browser-cards-dev-breakdowns.svg",
+      "sha256": "c9ec9cff952a4cf41104d2374b74d6bae03f15ef7c23174ce16500eced929935"
+    },
+    {
+      "file": "docs/evaluation/bracket-pairs-20261016/figures/browser-cards-dev-stages.svg",
+      "sha256": "1324236c59be17dd76612db574174cd7d45760a6612fbaca94c3b730d9f9aa62"
+    },
+    {
+      "file": "docs/evaluation/bracket-pairs-20261016/figures/heldout-first-use.svg",
+      "sha256": "07fd1bb7c26c6526503b3958278c74629896cb4eac64fa5d7b69047cc1b56ab4"
+    }
+  ],
+  "schema_version": "localocr.bracket-pairs.assets-build.v1",
+  "script_sha256": "7fc3011260a7f61247c4c9b4c8508bef54498c8cd5e65c45743901b0afce2f94",
+  "sources": [
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-browser-cards-dev-005/evaluation.json",
+      "role": "scene-dev:上一轮最终配置（browser-font dev-005）",
+      "sha256": "dbb546aab42a23af8dd0ec9316f60bc805a082fc4d9b7bdceb926703cb54d837"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-browser-cards-dev-005/resources.json",
+      "role": "scene-resources:上一轮最终配置（browser-font dev-005）",
+      "sha256": "b025cc8ea3f8bdad6096e150edbc2b97d1a505f69587bd1ab998f5f6653e291e"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/evaluation/scene-browser-cards-dev-001/evaluation.json",
+      "role": "scene-dev:第 1 档 +pair_selection",
+      "sha256": "9b04e8f203060a5b430ab1fe1e0d33980f9249581c3deb69f1261c1b4a47abb0"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/evaluation/scene-browser-cards-dev-001/resources.json",
+      "role": "scene-resources:第 1 档 +pair_selection",
+      "sha256": "43851e6605f3ba3181ab56d8109eb1364662781e8958c8602695b5a3d5134144"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/evaluation/scene-browser-cards-dev-002/evaluation.json",
+      "role": "scene-dev:第 2 档 +dense_guard 1.8（冻结）",
+      "sha256": "3b8177df80b8b37f0611329504dc54c7673a434c752fbbeb97bc3ed24b5d7e41"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/evaluation/scene-browser-cards-dev-002/resources.json",
+      "role": "scene-resources:第 2 档 +dense_guard 1.8（冻结）",
+      "sha256": "9ec9adee8e1c01b92f10a1098a95498516c086d20f6061814be3e57de15aef3d"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/evaluation/scene-browser-cards-dev-003/evaluation.json",
+      "role": "scene-dev:第 3 档 +small_text_shape 22/2",
+      "sha256": "5a99e3964b4d6d50c105b51b483acc61233872598e26540714856d9bccc56ea8"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/evaluation/scene-browser-cards-dev-003/resources.json",
+      "role": "scene-resources:第 3 档 +small_text_shape 22/2",
+      "sha256": "abe87674b4b4a763509da276fb1cb682f64819f35bafc3941791a23bfb438dbc"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/evaluation/scene-cards-v4-dev-002/evaluation.json",
+      "role": "scene-dev:cards-v4 dev",
+      "sha256": "c197de8b3fcb8660e4e1f195797dd5bf879143c3288d33af2cb6ff4249b589ac"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/evaluation/scene-cards-v4-dev-002/resources.json",
+      "role": "scene-resources:cards-v4 dev",
+      "sha256": "c7979060a8973bc4a4ec658a5fb9ea05ea6ecc91ffdfcbf0b4a80d49645a8ed6"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/evaluation/scene-mixed-v3-dev-002/evaluation.json",
+      "role": "scene-dev:atoms-mixed-v3 dev",
+      "sha256": "8619686275d25950effaf49d7dc2a56a544d9881cc61815fed3cbf2b4482ee04"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/evaluation/scene-mixed-v3-dev-002/resources.json",
+      "role": "scene-resources:atoms-mixed-v3 dev",
+      "sha256": "35ffd52f3932349eace19cf7bf476fb5cfa4b73dde181b11866dc703fab579ac"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/evaluation/known-input-probe-002/evaluation.json",
+      "role": "probe:known-input-001",
+      "sha256": "d9dc7374ed3030421aba14c1c53d1b2667fefb9b15537c3d15d4e4e5be1dfd7f"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-cards-v4-dev-001/evaluation.json",
+      "role": "scene-dev:cards-v4 dev（上一轮）",
+      "sha256": "cc18ba2eb027392dc3018d326d747fe830b4530b1b6ea211c18d6c7a48010a7f"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-cards-v4-dev-001/resources.json",
+      "role": "scene-resources:cards-v4 dev（上一轮）",
+      "sha256": "db2a73c6dfae068387746903f5cae612491c7835408791b7f5aaf78e9597e34a"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-mixed-v3-dev-001/evaluation.json",
+      "role": "scene-dev:atoms-mixed-v3 dev（上一轮）",
+      "sha256": "712f3a7ad8a4de123b0070750b44143ef8dafc7e302b34d48ef4be96bbd2e845"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-mixed-v3-dev-001/resources.json",
+      "role": "scene-resources:atoms-mixed-v3 dev（上一轮）",
+      "sha256": "3ff58750ac7db817852c81b96327ab70ed3931b53e8f844d41e9d1dfd33f4783"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/known-input-probe-001/evaluation.json",
+      "role": "probe:known-input-001-previous",
+      "sha256": "cce8e8d00ea78ab8226737426ed8b48b62de93937ffb80c2adc33daf2445bad2"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/evaluation/crop-dev-001/evaluation.json",
+      "role": "crop-dev:browser-crops-v1",
+      "sha256": "85ef5ae2a4e0d0528cee225c8254e57ee5bb7fe7eabbcc4facc8310ada4a8872"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/evaluation/crop-heldout-001/evaluation.json",
+      "role": "crop-heldout:browser-crops-v1",
+      "sha256": "c37c3d29260af390a8729965e475d2e89e95ff1bba3cf02a1786c938bc8a74a4"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/evaluation/scene-browser-cards-heldout-001/evaluation.json",
+      "role": "scene-heldout:browser-cards-v1 保留集（首测）",
+      "sha256": "f9c9dae4b6659940ff7bee7400d2da043b3529d9b77657367503e9b67836e5b8"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/evaluation/scene-browser-cards-heldout-001/resources.json",
+      "role": "scene-resources:browser-cards-v1 保留集（首测）",
+      "sha256": "e3d3fa927b7270478cbfbbba3ab1f3215eb8ff9633edac785e7f3c03f5d49532"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/gpu-budget.json",
+      "role": "gpu-budget",
+      "sha256": "f1cd5c3aeeb69e994dc8e8e874375f48168bea4b884ba9ecb8aaa1880973334a"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/validation/be2-receipt.json",
+      "role": "be2-receipt",
+      "sha256": "401f186b077319719fc58da1a8e014efc2d56869bbf7318319d236764dc5e363"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/validation/be4-receipt.json",
+      "role": "be4-receipt",
+      "sha256": "749155f3b63e9145858327e5fd97750c87b47980e1ae98e2a13558f98f984c58"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/validation/be5-receipt.json",
+      "role": "be5-receipt",
+      "sha256": "1e93c5bf6c9c7129822cba42fe8c5c443d57d1eaa603e45b187c84872187b69d"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/validation/int1-receipt.json",
+      "role": "int1-receipt",
+      "sha256": "102176299f7ddbb9093c838eca2ee5931e6c3296146644f9b5c697279324b53a"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/validation/int2-receipt.json",
+      "role": "int2-receipt",
+      "sha256": "bbf1607728eece4919feb953cdc7d2432ebee8fecd8065af842f670de1d4d834"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/validation/int3-receipt.json",
+      "role": "int3-receipt",
+      "sha256": "cbd44ec0732e5dbf64f78d7ecf9163e17ce4c5666423c1b8ecb3d153d1d920dc"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/validation/width-siblings.json",
+      "role": "width-siblings",
+      "sha256": "06d1a9774ba9a1c6c10881d41cd52a176bbc821d90b31b864287137c6b75ffb2"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/validation/pair-diagnostics-bf-dev-005.json",
+      "role": "pair-diagnostics:bf-dev-005",
+      "sha256": "01791e3245c90327f153aa650296066ffdda887f6fffb864dee8e523fe0a70af"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/validation/pair-diagnostics-dev-001.json",
+      "role": "pair-diagnostics:dev-001",
+      "sha256": "59d4a591db889d7ab16f5e17fb715231e1f22cd9f5e646bd7577cf33d42e7296"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/validation/pair-diagnostics-dev-002.json",
+      "role": "pair-diagnostics:dev-002",
+      "sha256": "cc923187154679a6a7ee2a40b3b6fcd6c044b3271b9eaf5582106f410617aeff"
+    },
+    {
+      "file": "artifacts/bracket-pairs-20261016/validation/pair-diagnostics-dev-003.json",
+      "role": "pair-diagnostics:dev-003",
+      "sha256": "0429d196187191ad0053935f152d5f5da6ab4fd4c360c7f175d4e903ced8c449"
+    }
+  ],
+  "statement": "Built from explicit completed local reports and receipts; no images, pages, labels, row predictions, private screenshots or weights opened; no inference; no network.",
+  "summary_sha256": "aa717c6caed39f310b59259c3722ecd6d2b7b11ead95b09a23330e6d0726f155"
+}

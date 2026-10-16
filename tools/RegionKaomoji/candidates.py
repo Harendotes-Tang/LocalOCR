@@ -39,7 +39,15 @@ OPTIONAL_CONFIG = {'background_window': 51, 'exterior_bridge_ratio': 0.45, 'shap
 # upsampled ``upsample`` times (shape evidence only). ``low_mark_guard``: an exterior cell no taller than
 # ``maximum_height_ratio`` of the bracket height whose top lies below ``minimum_top_ratio`` of it (a low
 # mark such as a line-end comma or full stop) is never bridged into a face candidate.
-STRUCTURED_OPTIONAL = ('small_text_shape', 'low_mark_guard')
+# Bracket-pairs round: ``pair_selection`` keeps only pairs whose two strokes share a shape family
+# (``family_match``) and, when pairs share a stroke, the pair with the nearest partner (``innermost_partner``).
+# ``dense_guard``: only a dense base component no wider than ``maximum_width_ratio`` times its own height (one
+# glyph) vetoes core-mask bracket strokes inside it; a halo-glued multi-glyph blob no longer does.
+STRUCTURED_OPTIONAL = ('small_text_shape', 'low_mark_guard', 'pair_selection', 'dense_guard')
+# Projection of the atom table: every declared bracket pair mirrors glyphs of one shape family.
+PAIR_FAMILY = {'curve': 'curve', 'small-curve': 'curve', 'right-angle': 'square'}
+# Strokes found on the upsampled small-text path map back with up to one pixel of rounding per edge.
+STROKE_TOLERANCE = 1
 # Bridging from a bracket pair absorbs exterior atoms (arms, tails) but must stop at body glyphs. On the
 # development scenes exterior atom cells are never "full-square" while most attached CJK body glyph cells
 # are; cells group components whose x-ranges lie within CELL_TOLERANCE pixels (radicals of one glyph).
@@ -225,6 +233,56 @@ def _structured_options(value):
     if guard is not None and (not isinstance(guard, dict) or set(guard) != {'maximum_height_ratio', 'minimum_top_ratio'}
                               or any(not isinstance(guard[k], float) or not 0 < guard[k] < 1 for k in guard)):
         raise ValueError('low_mark_guard needs float maximum_height_ratio and minimum_top_ratio in (0,1)')
+    selection = value.get('pair_selection')
+    if selection is not None and (not isinstance(selection, dict) or set(selection) != {'family_match', 'innermost_partner'}
+                                  or any(type(selection[k]) is not bool for k in selection) or not any(selection.values())):
+        raise ValueError('pair_selection needs boolean family_match and innermost_partner, at least one true')
+    dense = value.get('dense_guard')
+    if dense is not None and (not isinstance(dense, dict) or set(dense) != {'maximum_width_ratio'}
+                              or not isinstance(dense['maximum_width_ratio'], float)
+                              or not 1.0 <= dense['maximum_width_ratio'] <= 3.0):
+        raise ValueError('dense_guard needs a float maximum_width_ratio between 1.0 and 3.0')
+
+
+def _dense_ratio(config):
+    dense = config.get('dense_guard')
+    return None if dense is None else dense['maximum_width_ratio']
+
+
+def _same_stroke(a, b):
+    return all(abs(x - y) <= STROKE_TOLERANCE for x, y in zip(a, b))
+
+
+def _select_pairs(pairs, options, stage):
+    """Filter detected bracket pairs by ``pair_selection``; without options the same list is returned.
+
+    ``family``: drop pairs whose strokes are of different shape families. ``innermost``: among pairs sharing a
+    stroke (every box edge within STROKE_TOLERANCE), drop a pair when another one sharing its left stroke has
+    a right stroke further left, or sharing its right stroke has a left stroke further right. Strokes are
+    compared by their left edge; the decision is made once on the given set, without iterating.
+    """
+    if options is None:
+        return pairs
+    if stage == 'family':
+        if not options['family_match']:
+            return pairs
+        return [pair for pair in pairs if PAIR_FAMILY[pair['left_shape']['kind']] == PAIR_FAMILY[pair['right_shape']['kind']]]
+    if stage != 'innermost':
+        raise ValueError('Unknown pair selection stage')
+    if not options['innermost_partner']:
+        return pairs
+    def dominated(pair):
+        for other in pairs:
+            if other is pair:
+                continue
+            if (_same_stroke(other['left_bbox'], pair['left_bbox']) and not _same_stroke(other['right_bbox'], pair['right_bbox'])
+                    and other['right_bbox'][0] < pair['right_bbox'][0]):
+                return True
+            if (_same_stroke(other['right_bbox'], pair['right_bbox']) and not _same_stroke(other['left_bbox'], pair['left_bbox'])
+                    and other['left_bbox'][0] > pair['left_bbox'][0]):
+                return True
+        return False
+    return [pair for pair in pairs if not dominated(pair)]
 
 
 def rgb_image(image, maximum_pixels=50_000_000):
@@ -637,19 +695,22 @@ def _body_like(cell, height):
     return _full_square(cell, height) and density >= BODY_DENSITY
 
 
-def _outside_body_components(pairs, components, height, origin=(0, 0)):
+def _outside_body_components(pairs, components, height, origin=(0, 0), maximum_width_ratio=None):
     """Drop core-mask bracket pairs whose stroke lies inside a dense full-square base-mask component.
 
     Removing antialiasing halos also separates the strokes of dense CJK glyphs, and a thin curved
     stroke inside one would otherwise pass for a bracket. The test is per base component (the glyph
     the halo held together), not per glyph cell: a bracket glued to its cheek or eye forms a sparse
     component and survives, while a dense body glyph (full-square at ``height``, density >= BODY_DENSITY)
-    rejects every stroke found inside it.
+    rejects every stroke found inside it. With ``maximum_width_ratio`` (``dense_guard``) a dense component also
+    has to be no wider than that ratio times its own height: one glyph, not a halo-glued run of several.
     """
     dense = []
     for component in components:
+        box = component['bbox']
+        if maximum_width_ratio is not None and box[2] - box[0] > maximum_width_ratio * (box[3] - box[1]):
+            continue
         if _body_like({'bbox': component['bbox'], 'components': [component]}, height):
-            box = component['bbox']
             dense.append([box[0] + origin[0] - 1, box[1] + origin[1] - 1, box[2] + origin[0] + 1, box[3] + origin[1] + 1])
     if not dense:
         return pairs
@@ -673,14 +734,17 @@ def _bracket_groups(mask, components, config, guard_body_cells=False, contrast=N
     A group is the run of glyph cells around the pair: every cell inside the pair span, then cells
     outward on each side while the gap stays within the bridge ratio of the line height, the cell is not
     taller than the line and is not a full-square glyph (a body character on the development scenes).
+    With ``pair_selection`` the pairs of every unit of one physical line are collected first (in detection
+    order, duplicates removed) and filtered together; without it the same pairs are grouped in the same order.
     """
     groups=[]
     ratio=config['exterior_bridge_ratio']
+    selection=config.get('pair_selection');dense_ratio=_dense_ratio(config)
     for line in _physical_lines(components,config):
         line_components=line['components']
         cells,_=_glyph_cells(line_components)
         height=_line_scale(line)
-        seen=set()
+        seen=set();collected=[]
         for unit in (*_line_chunks(line,config),line):
             left,top,right,bottom=unit['bbox'];unit_height=bottom-top
             if not config['minimum_height']<=unit_height<=config['maximum_height'] or right-left>config['maximum_bracket_scan_width']:
@@ -689,41 +753,44 @@ def _bracket_groups(mask, components, config, guard_body_cells=False, contrast=N
                 found=_small_shapes(contrast,unit['bbox'],config)[0]
             else:
                 found=_bracket_shapes(mask[top:bottom,left:right],(left,top))
+            found=_select_pairs(found,selection,'family')
             if guard_body_cells or (contrast is not None and _small_unit(config,unit_height)):
-                found=_outside_body_components(found,line_components,height)
+                found=_outside_body_components(found,line_components,height,maximum_width_ratio=dense_ratio)
             for pair in found:
                 key=(tuple(pair['left_bbox']),tuple(pair['right_bbox']))
                 if key in seen:
                     continue
                 seen.add(key)
-                a,b=pair['left_bbox'],pair['right_bbox']
-                inside=[i for i,cell in enumerate(cells) if cell['bbox'][0]<b[2] and cell['bbox'][2]>a[0]]
-                if not inside:
-                    continue
-                low,high=min(inside),max(inside)
-                guard=config.get('low_mark_guard')
-                bracket=_bracket_extent(line_components,(a,b)) if guard is not None else None
-                for step in (-1,1):
-                    index=(low if step<0 else high)+step
-                    extent=cells[low]['bbox'][0] if step<0 else cells[high]['bbox'][2]
-                    while 0<=index<len(cells):
-                        cell=cells[index];box=cell['bbox']
-                        gap=extent-box[2] if step<0 else box[0]-extent
-                        if gap>height*ratio or box[3]-box[1]>height*1.25 or _body_like(cell,height):
-                            break
-                        if guard is not None and _low_mark(box,bracket,guard):
-                            break
-                        extent=box[0] if step<0 else box[2]
-                        if step<0: low=index
-                        else: high=index
-                        index+=step
-                selected=[item for cell in cells[low:high+1] for item in cell['components']]
-                if guard is not None:
-                    selected=_strip_low_marks(selected,(a,b),guard)[0]
-                box=[min(item['bbox'][0] for item in selected),min(item['bbox'][1] for item in selected),max(item['bbox'][2] for item in selected),max(item['bbox'][3] for item in selected)]
-                if box[2]-box[0]<=config['maximum_width']:
-                    groups.append({'bbox':box,'components':selected,'pair_span':[a[0],b[2]],'scale':height,
-                                   'line_cells':cells,'strokes':[list(a),list(b)]})
+                collected.append(pair)
+        for pair in _select_pairs(collected,selection,'innermost'):
+            a,b=pair['left_bbox'],pair['right_bbox']
+            inside=[i for i,cell in enumerate(cells) if cell['bbox'][0]<b[2] and cell['bbox'][2]>a[0]]
+            if not inside:
+                continue
+            low,high=min(inside),max(inside)
+            guard=config.get('low_mark_guard')
+            bracket=_bracket_extent(line_components,(a,b)) if guard is not None else None
+            for step in (-1,1):
+                index=(low if step<0 else high)+step
+                extent=cells[low]['bbox'][0] if step<0 else cells[high]['bbox'][2]
+                while 0<=index<len(cells):
+                    cell=cells[index];box=cell['bbox']
+                    gap=extent-box[2] if step<0 else box[0]-extent
+                    if gap>height*ratio or box[3]-box[1]>height*1.25 or _body_like(cell,height):
+                        break
+                    if guard is not None and _low_mark(box,bracket,guard):
+                        break
+                    extent=box[0] if step<0 else box[2]
+                    if step<0: low=index
+                    else: high=index
+                    index+=step
+            selected=[item for cell in cells[low:high+1] for item in cell['components']]
+            if guard is not None:
+                selected=_strip_low_marks(selected,(a,b),guard)[0]
+            box=[min(item['bbox'][0] for item in selected),min(item['bbox'][1] for item in selected),max(item['bbox'][2] for item in selected),max(item['bbox'][3] for item in selected)]
+            if box[2]-box[0]<=config['maximum_width']:
+                groups.append({'bbox':box,'components':selected,'pair_span':[a[0],b[2]],'scale':height,
+                               'line_cells':cells,'strokes':[list(a),list(b)]})
     return groups
 
 
@@ -741,8 +808,13 @@ def _crop_evidence(array, bbox, config, mask, core, contrast=None):
     Envelope facts (pixel count, components, edge ink, support) come from the base mask; bracket
     strokes and the pair interior count come from the core mask, so antialiasing halos that glue a
     bracket to its neighbour cannot hide the stroke while never changing what the crop covers.
+    ``pair_selection`` filters the crop pairs (family, then the dense-glyph guard, then innermost partner);
+    the base-mask diagnostic count passes the same family and innermost filters so both counts compare.
     """
     left, top, right, bottom = bbox
+    selection, dense_ratio = config.get('pair_selection'), _dense_ratio(config)
+    def family_innermost(found):
+        return _select_pairs(_select_pairs(found, selection, 'family'), selection, 'innermost')
     local = mask[top:bottom, left:right]
     components = _components(local, config['minimum_component_area'])
     occupied = np.argwhere(local)
@@ -750,21 +822,24 @@ def _crop_evidence(array, bbox, config, mask, core, contrast=None):
     ink_height = (max(item['bbox'][3] for item in components) - min(item['bbox'][1] for item in components)) if components else 0
     if contrast is not None and components and _small_unit(config, ink_height):
         pairs, shape_components = _small_shapes(contrast, bbox, config)
+        pairs = _select_pairs(pairs, selection, 'family')
         if pairs:
-            pairs = _outside_body_components(pairs, components, ink_height, (left, top))
-        base_pairs = _bracket_shapes(local, (left, top))
+            pairs = _outside_body_components(pairs, components, ink_height, (left, top), dense_ratio)
+        pairs = _select_pairs(pairs, selection, 'innermost')
+        base_pairs = family_innermost(_bracket_shapes(local, (left, top)))
     elif core is mask:
         shape_local, shape_components = local, components
-        pairs = _bracket_shapes(local, (left, top))
+        pairs = family_innermost(_bracket_shapes(local, (left, top)))
         base_pairs = pairs
     else:
         shape_local = core[top:bottom, left:right]
         shape_components = _components(shape_local, config['minimum_component_area'])
-        pairs = _bracket_shapes(shape_local, (left, top))
+        pairs = _select_pairs(_bracket_shapes(shape_local, (left, top)), selection, 'family')
         if pairs and components:
             ink_height = max(item['bbox'][3] for item in components) - min(item['bbox'][1] for item in components)
-            pairs = _outside_body_components(pairs, components, ink_height, (left, top))
-        base_pairs = _bracket_shapes(local, (left, top))
+            pairs = _outside_body_components(pairs, components, ink_height, (left, top), dense_ratio)
+        pairs = _select_pairs(pairs, selection, 'innermost')
+        base_pairs = family_innermost(_bracket_shapes(local, (left, top)))
     shape_counts = {kind: sum(kind in pair['shape_kinds'] for pair in pairs)
                     for kind in ('curve', 'small-curve', 'right-angle')}
     evidence = {'pixel_count': int(local.sum()), 'component_count': len(components),

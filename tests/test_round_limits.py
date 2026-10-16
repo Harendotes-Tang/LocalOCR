@@ -275,3 +275,25 @@ def test_tampered_predecessor_ledger_blocks_the_new_round(tmp_path):
                 'runs': [{'elapsed_seconds': 1.0}], 'active': None})
     with pytest.raises(ValueError, match='changed'):
         BoundGPUBudget(limits, 7200.0).initialize()
+
+
+def test_zero_second_round_bound_to_a_closed_training_ledger_refuses_every_lease(tmp_path):
+    """A CPU-only round may follow a closed GPU training ledger: the binding records its usage, no lease opens."""
+    old = tmp_path / 'trained.json'
+    write(old, {'schema_version': 'localocr.gpu-budget.v1', 'maximum_seconds': 7200.0, 'used_seconds': 2376.438000000001,
+                'runs': [{'label': 'train', 'elapsed_seconds': 2376.438000000001}], 'active': None})
+    limits = RoundLimits(tmp_path / 'round', old, digest(old))
+    budget = BoundGPUBudget(limits, 0.0)
+    state = budget.initialize()
+    assert state['maximum_seconds'] == 0.0 and state['used_seconds'] == 0.0 and state['runs'] == []
+    assert state['round_binding']['previous_used_seconds'] == 2376.438000000001
+    with pytest.raises(RuntimeError, match='exhausted'):
+        with budget.run('never', 10):
+            pass
+    assert read(budget.path)['used_seconds'] == 0.0 and not budget.lock.exists()
+    tampered = read(old)
+    tampered['used_seconds'] = 0.0
+    tampered['runs'] = []
+    write(old, tampered)
+    with pytest.raises(ValueError, match='changed'):
+        budget.initialize()

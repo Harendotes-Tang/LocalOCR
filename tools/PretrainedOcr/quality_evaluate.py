@@ -207,10 +207,11 @@ def recompute_development(crop_selection,scene_selection,crop_dataset,scene_data
 
 # Rounds whose dual freeze must carry regression proofs, pinned by identity: scene development datasets by
 # freeze dataset_sha256 and known-input probe manifests by sha256. Each pinned item needs exactly one proof.
-REQUIRED_REGRESSIONS={'browser-font-20261016':{
+FIXED_REGRESSIONS={
     'scene-dev':('81862891f4989f3b3d1bb87f46b2b1d22422e00c01b58c8cceafb2efd7a2cb5a',   # cards-v4
                  'ee53228e1ed1610a33b7dd2cdb4512f79c11f681aa317de342fb4f0b2bcda70c'),  # atoms-mixed-v3
-    'known-input-probe':('9cc6f325259e69d4ce140cd3266ba80919ceb043346397993b299bafcad8d804',)}}  # known-input-001
+    'known-input-probe':('9cc6f325259e69d4ce140cd3266ba80919ceb043346397993b299bafcad8d804',)}  # known-input-001
+REQUIRED_REGRESSIONS={'browser-font-20261016':FIXED_REGRESSIONS,'bracket-pairs-20261016':FIXED_REGRESSIONS}
 
 def _same_binding(models,config_sha256,classifier,baseline,selection):
     pb=selection['pipeline_binding']
@@ -240,8 +241,13 @@ def regression_proof(path,scene_selection):
     if value.get('schema_version')=='localocr.known-input-evaluation.v1':
         if value.get('independent') is not False:raise ValueError('Known-input regression must be a development probe')
         if not _same_binding(value['models'],value['config_sha256'],value.get('classifier'),value['baseline'],selection):raise ValueError('Regression report binds a different model or configuration')
-        model=value['summary']['models'][identity];lost=count(model,'body_lost');lines=count(value['summary'],'body_lines')
-        return {'report':reference(p),'kind':'known-input-probe','manifest_sha256':value['manifest']['sha256'],'body_lines':lines,'body_lost':lost,
+        # The probe summary is recomputed from the bound per-screen predictions and screenshots, never trusted.
+        # real_screens imports this module at top level, so it is imported here.
+        from tools.RegionKaomoji import real_screens
+        summary=real_screens.recompute_probe(p)
+        model=summary['models'][identity];lost=count(model,'body_lost');lines=count(summary,'body_lines')
+        return {'report':reference(p),'kind':'known-input-probe','manifest_sha256':value['manifest']['sha256'],
+                'predictions_private_sha256':value.get('predictions_private_sha256'),'body_lines':lines,'body_lost':lost,
                 'passed':lines>0 and lost==0 and model['gates']['no_body_lost'] is True}
     binding=value.get('pipeline_binding') or {}
     if value.get('split')!='dev' or not _same_binding(binding.get('models',[]),binding.get('config_sha256'),binding.get('config',{}).get('classifier'),binding.get('baseline',{}),selection):

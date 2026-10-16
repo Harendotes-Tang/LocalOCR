@@ -22,17 +22,19 @@ from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Patch
 
 PUBLIC_REL = Path("docs/evaluation/history")
-COUNTS_REL = Path("artifacts/browser-font-20261016/validation/version-comparison-counts.json")
+COUNTS_REL = Path("artifacts/bracket-pairs-20261016/validation/version-comparison-counts.json")
 SUMMARY_SCHEMA = "localocr.version-history.anonymous-evaluation.v1"
 RECEIPT_SCHEMA = "localocr.version-history.assets-build.v1"
 MODEL = "ppocrv6-tiny-exp-20261013-001"
-MODELS = {"browser-font-20261016": "ppocrv6-tiny-exp-20261016-001"}  # versions with another specialist; MODEL otherwise
+MODELS = {"browser-font-20261016": "ppocrv6-tiny-exp-20261016-001",  # versions with another specialist; MODEL otherwise
+          "bracket-pairs-20261016": "ppocrv6-tiny-exp-20261016-001"}
 VERSIONS = (
     ("baseline", "生产文字基线", "#64748b"),
     ("grammar-20261013", "语法路由轮 10-13", "#93b3cb"),
     ("candidates-20261013", "候选定位轮 10-13", "#155e9b"),
     ("real-rendering-20261015", "真实渲染轮 10-15（冻结）", "#b45309"),
     ("browser-font-20261016", "浏览器字体轮 10-16（开发未过）", "#15803d"),
+    ("bracket-pairs-20261016", "括号配对轮 10-16（冻结）", "#7c3aed"),
 )
 DATASET_NAMES = {"atoms-mixed-v1": "原子混合 v1", "cards-v2": "记录卡片 v2", "atoms-mixed-v2": "原子混合 v2", "cards-v3": "记录卡片 v3"}
 SCENE_SETS = (
@@ -113,6 +115,12 @@ def scene_firsts(docs: Path, load) -> list[dict]:
         rows.append({"round": "10-15 浏览器渲染（测量）", "dataset": f"浏览器渲染卡片 {model['count']} 面", "faces": model["count"],
                      "baseline": item["baseline"]["isolated_kaomoji"]["exact"], "chain": model["exact"],
                      "gate": (item["model"].get("research_quality_gates") or {}).get("passed")})
+    pairs = load(docs / "bracket-pairs-20261016/summary.json", "round:bracket-pairs-20261016")
+    item = pairs["heldouts"]["browser_cards_v1"]
+    model = item["model"]["isolated_kaomoji"]
+    rows.append({"round": "10-16 括号配对", "dataset": f"浏览器渲染卡片 {model['count']} 面", "faces": model["count"],
+                 "baseline": item["baseline"]["isolated_kaomoji"]["exact"], "chain": model["exact"],
+                 "gate": (item["model"].get("research_quality_gates") or {}).get("passed")})
     return rows
 
 
@@ -133,6 +141,11 @@ def crop_firsts(docs: Path, load) -> list[dict]:
     heldout = grammar["crop"]["heldout"]["models"]
     rows.append({"round": "10-13 语法路由", "dataset": "原子表裁片 2400 张", "count": heldout["production-baseline"]["by_kind"]["face"]["count"],
                  "baseline": heldout["production-baseline"]["by_kind"]["face"]["exact"], "specialist": heldout[MODEL]["by_kind"]["face"]["exact"]})
+    # The browser-font specialist's crop heldout was sealed in its own round and first used by the bracket-pairs round.
+    browser = load(docs / "bracket-pairs-20261016/summary.json", "crop:bracket-pairs-20261016")["heldouts"]["browser_crops_v1"]["models"]
+    specialist = MODELS["bracket-pairs-20261016"]
+    rows.append({"round": "10-16 浏览器字体专项", "dataset": "浏览器裁片 2400 张", "count": browser["production-baseline"]["by_kind"]["face"]["count"],
+                 "baseline": browser["production-baseline"]["by_kind"]["face"]["exact"], "specialist": browser[specialist]["by_kind"]["face"]["exact"]})
     return rows
 
 
@@ -227,7 +240,7 @@ def main() -> None:
     panel_c = crop_firsts(docs, load)
     figures = [figure(panel_a, panel_b, panel_c, public, args.preview)]
     summary = {"schema_version": SUMMARY_SCHEMA, "generated_utc": datetime.now(timezone.utc).isoformat(), "model": MODEL, "models": MODELS,
-               "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15; the browser set is rendered by Edge with Windows system fonts, not real screenshots. The browser-font version (2026-10-16) is a measured development configuration whose dual freeze was refused; its tail-resolved count is listed beside the strict count.",
+               "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15; the browser set is rendered by Edge with Windows system fonts, not real screenshots. The browser-font version (2026-10-16) is a measured development configuration whose dual freeze was refused; the bracket-pairs version (2026-10-16) is frozen (dual freeze written, both browser heldouts first used once); tail-resolved counts are listed beside the strict count.",
                "normalization": "Raw Unicode exact match; the width-only count is a diagnostic of faces equal to the truth except for the outermost bracket width, never part of the exact score.",
                "versions": [{"key": key, "label": label} for key, label, _ in VERSIONS],
                "same_data": panel_a, "scene_first_tests": panel_b, "crop_first_tests": panel_c, "figures": figures, "sources": sources,

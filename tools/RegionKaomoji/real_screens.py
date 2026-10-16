@@ -197,6 +197,19 @@ def aggregate(scored, model_ids):
     return summary
 
 
+def summarize(scored, predictions, model_ids):
+    """The report summary: scored counts plus split and diagnostics (shared by evaluation and recomputation)."""
+    summary = aggregate(scored, model_ids)
+    summary['split'] = {'parents': sum(prediction['first_pass']['split_parents'] for prediction in predictions)}
+    summary['diagnostics'] = diagnostics(scored, predictions, model_ids)
+    return summary
+
+
+def read_rows(path):
+    """JSON lines split on newline only: U+2028/U+2029/U+0085 inside unescaped strings stay in their row."""
+    return [json.loads(line) for line in Path(path).read_text(encoding='utf-8').split('\n') if line.strip()]
+
+
 def evaluate_manifest(args):
     manifest = load_manifest(args.manifest)
     output = e.output_path(args.output)
@@ -233,14 +246,13 @@ def evaluate_manifest(args):
             predictions.append(prediction)
             stream.write(json.dumps({'file': screen['file'], 'sha256': common.digest(path), 'seconds': elapsed,
                                      'prediction': prediction, 'lines': results}, ensure_ascii=False, allow_nan=False) + '\n')
-    summary = aggregate(scored, model_ids)
-    summary['split'] = {'parents': sum(prediction['first_pass']['split_parents'] for prediction in predictions)}
-    summary['diagnostics'] = diagnostics(scored, predictions, model_ids)
+    summary = summarize(scored, predictions, model_ids)
     report = {'schema_version': SCHEMA, 'completed_utc': common.utc(), 'manifest': {'file': manifest['file'], 'sha256': manifest['sha256'],
               'screens': len(manifest['value']['screens']), 'environment': manifest['value'].get('environment'),
               'label_origin': manifest['value'].get('label_origin'), 'typed_differences': manifest['value'].get('typed_differences')},
               'baseline': baseline.binding, 'models': [m.binding for m in models], 'config_sha256': e.hash_object(config),
               'classifier': config.get('classifier'), 'summary': summary, 'timing': e.percentiles(timings),
+              'predictions_private_sha256': common.digest(output / 'predictions-private.jsonl'),
               'independent': not probe, 'probe': registration if probe else None, 'first_use': first_use,
               'scope': ('Private real screenshots with typed-input labels; development probe of a set already inspected per face; '
                         'counts and per-face outcomes only, never an independent claim') if probe else
@@ -248,6 +260,53 @@ def evaluate_manifest(args):
               'promote': False, 'enabled': False}
     e.write_new(output / 'evaluation.json', report)
     return report
+
+
+def recompute_probe(report_path):
+    """Recompute a development-probe report's summary from its bound per-screen predictions; refuse any mismatch.
+
+    The report must name the SHA of its ``predictions-private.jsonl`` (older reports cannot), the manifest and
+    development registration must still be the recorded bytes, every screenshot must be the recorded file in
+    manifest order, every screen must re-score to its recorded lines and the recomputed summary (with split
+    and diagnostics) must equal the reported one. Read-only; returns the recomputed summary.
+    """
+    path = e.safe_path(report_path)
+    report = common.read(path)
+    if report.get('schema_version') != SCHEMA or report.get('independent') is not False:
+        raise ValueError('Probe recomputation needs a known-input development-probe report')
+    rows_path = path.parent / 'predictions-private.jsonl'
+    recorded = report.get('predictions_private_sha256')
+    if not isinstance(recorded, str) or len(recorded) != 64:
+        raise ValueError('Probe report does not bind its per-screen predictions SHA; it cannot be a regression proof')
+    if not rows_path.is_file() or common.digest(rows_path) != recorded:
+        raise ValueError('Per-screen predictions differ from the SHA bound in the probe report')
+    manifest_file = e.safe_path(report['manifest']['file'])
+    if not manifest_file.is_file() or common.digest(manifest_file) != report['manifest']['sha256']:
+        raise ValueError('Known-input manifest bytes differ from the probe report')
+    manifest = load_manifest(manifest_file)
+    if manifest['sha256'] != report['manifest']['sha256']:
+        raise ValueError('Known-input manifest bytes differ from the probe report')
+    registration = probe_registration(manifest['sha256'])
+    if registration is None or registration != report.get('probe'):
+        raise ValueError('Known-input development registration differs from the probe report')
+    model_ids = [model['id'] for model in report['models']]
+    rows = read_rows(rows_path)
+    screens = manifest['value']['screens']
+    if [row.get('file') for row in rows] != [screen['file'] for screen in screens]:
+        raise ValueError('Per-screen predictions do not follow the manifest screenshot order')
+    scored, predictions = [], []
+    for screen, row in zip(screens, rows):
+        if common.digest(e.confined(manifest['root'], screen['file'])) != row.get('sha256'):
+            raise ValueError('A probe screenshot differs from the recorded file')
+        lines = score_screen(screen, row['prediction'], model_ids)
+        if lines != row.get('lines'):
+            raise ValueError('Recorded per-screen lines do not score from the recorded prediction')
+        scored.append(lines)
+        predictions.append(row['prediction'])
+    summary = summarize(scored, predictions, model_ids)
+    if summary != report.get('summary'):
+        raise ValueError('Recomputed probe summary differs from the reported summary')
+    return summary
 
 
 def main(argv=None):

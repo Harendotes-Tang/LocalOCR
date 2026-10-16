@@ -27,13 +27,20 @@
       "dataset": "原子表裁片 2400 张",
       "round": "10-13 语法路由",
       "specialist": 1703
+    },
+    {
+      "baseline": 29,
+      "count": 2400,
+      "dataset": "浏览器裁片 2400 张",
+      "round": "10-16 浏览器字体专项",
+      "specialist": 2159
     }
   ],
   "enabled": false,
   "figures": [
     {
       "file": "docs/evaluation/history/figures/version-comparison.svg",
-      "sha256": "7ae9c3dedfc46d3e7020ce9ae292d7ad14d911d54ffaf7aafc276123272b5443"
+      "sha256": "a9ad2797e33e48ae63fb1b76616c190282a6296291e8a83f56bda85097ff00a5"
     }
   ],
   "font": {
@@ -41,9 +48,10 @@
     "license": "OFL-1.1",
     "sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b"
   },
-  "generated_utc": "2026-10-16T08:52:05.900182+00:00",
+  "generated_utc": "2026-10-16T19:06:29.307479+00:00",
   "model": "ppocrv6-tiny-exp-20261013-001",
   "models": {
+    "bracket-pairs-20261016": "ppocrv6-tiny-exp-20261016-001",
     "browser-font-20261016": "ppocrv6-tiny-exp-20261016-001"
   },
   "normalization": "Raw Unicode exact match; the width-only count is a diagnostic of faces equal to the truth except for the outermost bracket width, never part of the exact score.",
@@ -167,6 +175,13 @@
           "exact": 0,
           "width_only": 0
         },
+        "bracket-pairs-20261016": {
+          "cer": 0.8778877887788779,
+          "exact": 5,
+          "research_gate_passed": true,
+          "tail_resolved_exact": 5,
+          "width_only": 2
+        },
         "browser-font-20261016": {
           "cer": 0.8778877887788779,
           "exact": 5,
@@ -196,6 +211,13 @@
       "versions": {
         "baseline": {
           "exact": 0,
+          "width_only": 0
+        },
+        "bracket-pairs-20261016": {
+          "cer": 0.6644493717664449,
+          "exact": 28,
+          "research_gate_passed": true,
+          "tail_resolved_exact": 28,
           "width_only": 0
         },
         "browser-font-20261016": {
@@ -229,6 +251,13 @@
           "exact": 0,
           "width_only": 1
         },
+        "bracket-pairs-20261016": {
+          "cer": 0.8242329693187728,
+          "exact": 32,
+          "research_gate_passed": true,
+          "tail_resolved_exact": 33,
+          "width_only": 2
+        },
         "browser-font-20261016": {
           "cer": 0.8523140925637025,
           "exact": 24,
@@ -260,6 +289,13 @@
         "baseline": {
           "exact": 2,
           "width_only": null
+        },
+        "bracket-pairs-20261016": {
+          "body_lost": 0,
+          "embedded_contained": 10,
+          "embedded_faces": 35,
+          "exact": 13,
+          "width_only": 4
         },
         "browser-font-20261016": {
           "body_lost": 0,
@@ -347,15 +383,23 @@
       "faces": 549,
       "gate": false,
       "round": "10-15 真实渲染"
+    },
+    {
+      "baseline": 0,
+      "chain": 75,
+      "dataset": "浏览器渲染卡片 481 面",
+      "faces": 481,
+      "gate": true,
+      "round": "10-16 括号配对"
     }
   ],
   "schema_version": "localocr.version-history.anonymous-evaluation.v1",
-  "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15; the browser set is rendered by Edge with Windows system fonts, not real screenshots. The browser-font version (2026-10-16) is a measured development configuration whose dual freeze was refused; its tail-resolved count is listed beside the strict count.",
+  "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15; the browser set is rendered by Edge with Windows system fonts, not real screenshots. The browser-font version (2026-10-16) is a measured development configuration whose dual freeze was refused; the bracket-pairs version (2026-10-16) is frozen (dual freeze written, both browser heldouts first used once); tail-resolved counts are listed beside the strict count.",
   "sources": [
     {
-      "file": "artifacts/browser-font-20261016/validation/version-comparison-counts.json",
+      "file": "artifacts/bracket-pairs-20261016/validation/version-comparison-counts.json",
       "role": "version-comparison-counts",
-      "sha256": "b8294ca68d3a49260287d55cc08be3288844d4ed8cc1f30f847dacedc1609446"
+      "sha256": "f9be8c6269be6fad2540348b73b35fda2e9ccec4b8ee2a717478889483461161"
     },
     {
       "file": "docs/evaluation/region-20261012/summary.json",
@@ -388,6 +432,11 @@
       "sha256": "a1a66dee6707cb1bb38eb6e0379d7dc9bbb409d01a95ef12a6b761ac6badcc2c"
     },
     {
+      "file": "docs/evaluation/bracket-pairs-20261016/summary.json",
+      "role": "round:bracket-pairs-20261016",
+      "sha256": "aa717c6caed39f310b59259c3722ecd6d2b7b11ead95b09a23330e6d0726f155"
+    },
+    {
       "file": "docs/evaluation/kaomoji-v1-v4-20261011/metrics.json",
       "role": "round:kaomoji-v1-v4-20261011",
       "sha256": "b90934708975aac2bbf71219bb455f24d6c4e71f8753f6d003a48edb042d146f"
@@ -406,6 +455,11 @@
       "file": "docs/evaluation/kaomoji-grammar-20261013/summary.json",
       "role": "crop:kaomoji-grammar-20261013",
       "sha256": "f10ea05b9d63cd10e229f028f29418fa6da98c95e18f949e6c71326ecb41cf86"
+    },
+    {
+      "file": "docs/evaluation/bracket-pairs-20261016/summary.json",
+      "role": "crop:bracket-pairs-20261016",
+      "sha256": "aa717c6caed39f310b59259c3722ecd6d2b7b11ead95b09a23330e6d0726f155"
     }
   ],
   "versions": [
@@ -428,6 +482,10 @@
     {
       "key": "browser-font-20261016",
       "label": "浏览器字体轮 10-16（开发未过）"
+    },
+    {
+      "key": "bracket-pairs-20261016",
+      "label": "括号配对轮 10-16（冻结）"
     }
   ]
 }
