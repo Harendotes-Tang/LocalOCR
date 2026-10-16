@@ -681,6 +681,9 @@ def probe(prepared, dataset, output, seconds=120, batch_size=8, minimum_width=No
     if warm_start and not warm_start_receipt_sha256:
         raise ValueError('Warm probe requires the externally frozen parent training receipt SHA')
     parent = _training_checkpoint(warm_start, prepared, warm_start_receipt_sha256) if warm_start else None
+    initialization = read(Path(prepared).resolve() / 'initialization.json')
+    if initialization.get('continuation') is not None:
+        _continuation_parent(initialization, prepared, ROUND / 'paddle')
     source_audit()
     binding = dataset_binding(dataset)
     rows = read_split(dataset, 'train')
@@ -843,6 +846,7 @@ def train(prepared, dataset, output, seconds=2580, batch_size=16, learning_rate=
     coverage = quality_selection.original_class_coverage(train_rows, read(prepared / 'original-vocabulary.json')['tokens']) if selection_policy == 'face-pareto' else None
     if initialization['dataset'] != binding:
         raise ValueError('Prepared dataset binding differs')
+    parent = _continuation_parent(initialization, prepared, ROUND / 'paddle') if initialization.get('continuation') is not None else None
     start = _training_checkpoint(warm_start, prepared, warm_start_receipt_sha256) if warm_start else None
     output.mkdir(parents=True)
     write(output / 'source-audit.json', audit)
@@ -855,6 +859,7 @@ def train(prepared, dataset, output, seconds=2580, batch_size=16, learning_rate=
         selected_exposure = None
         import paddle
         paddle.seed(seed)
+        continuation_weights = _continuation_weights(prepared, parent) if parent is not None else None
         model, characters, info = _load_prepared(prepared, checkpoint=warm_start, device='gpu:0', owned=owned)
         if info['dataset'] != binding:
             raise ValueError('Prepared dataset binding differs')
@@ -959,6 +964,7 @@ def train(prepared, dataset, output, seconds=2580, batch_size=16, learning_rate=
             'selection_policy': selection_policy, 'original_class_coverage': coverage,
             'quality_selection_sha256': digest(Path(quality_selection.__file__)) if specialist else None,
             'budget': str(Path(BUDGET if budget is None else budget).resolve()), 'eval_every_seconds': eval_every_seconds,
+            'continuation_weights': continuation_weights,
             'remaining_seconds': deadline.remaining(), 'created_utc': utc(), 'adapter_sha256': digest(__file__)})
         return {'steps': steps, 'best_dev': best, 'new_candidate_selected': selected_changed}
     result = _gpu_execution('paddle-tiny-finetune', seconds, output / 'training.json', body, budget=budget)
@@ -1000,18 +1006,21 @@ def _closure_file(reference, owner, root):
     return target
 
 
-def _training_checkpoint(checkpoint, prepared, expected_receipt_sha256=None, _seen=None):
+def _training_checkpoint(checkpoint, prepared, expected_receipt_sha256=None, _seen=None, root=None):
     """Validate the externally anchored selected checkpoint's complete ancestry.
 
     A caller-provided receipt SHA is mandatory for a warm start. It is never
     computed from the sibling receipt's claims; hashes bind observed local
-    evidence, rather than authenticating an unknown publisher.
+    evidence, rather than authenticating an unknown publisher. ``root`` is the
+    owned evidence root (default: the current research root's ``paddle``); a
+    continuation preparation re-verifies its snapshotted cross-round parent.
     """
-    _reject_reparse(checkpoint, ROUND / 'paddle')
-    _reject_reparse(Path(prepared) / 'initialization.json', ROUND / 'paddle')
+    owned = ROUND / 'paddle' if root is None else Path(root)
+    _reject_reparse(checkpoint, owned)
+    _reject_reparse(Path(prepared) / 'initialization.json', owned)
     checkpoint, prepared = Path(checkpoint).resolve(), Path(prepared).resolve()
     receipt = checkpoint.parent / 'training.json'
-    _reject_reparse(receipt, ROUND / 'paddle')
+    _reject_reparse(receipt, owned)
     seen = set() if _seen is None else _seen
     if receipt in seen or len(seen) >= 8:
         raise ValueError('Training parent chain is cyclic or too deep')
@@ -1019,45 +1028,48 @@ def _training_checkpoint(checkpoint, prepared, expected_receipt_sha256=None, _se
     if expected_receipt_sha256 is not None and digest(receipt) != expected_receipt_sha256:
         raise ValueError('Externally anchored training receipt bytes differ')
     training, initialization = read(receipt), read(prepared / 'initialization.json')
+    if initialization.get('continuation') is not None and expected_receipt_sha256 is None:
+        raise ValueError('A continuation-trained checkpoint requires an external frozen receipt SHA anchor')
     if training.get('schema_version') != 'localocr.paddle.training.v1' or training.get('selected_weights_changed') is not True:
         raise ValueError('Finetuned checkpoint lacks a selected changed training receipt')
     if training.get('actual_weights_changed') is not True or training.get('steps', 0) <= 0:
         raise ValueError('Finetuned receipt lacks real successful updates')
     selected = training.get('best_checkpoint')
-    selected_path = _closure_file(selected, receipt.parent, ROUND / 'paddle')
+    selected_path = _closure_file(selected, receipt.parent, owned)
     if checkpoint != selected_path:
         raise ValueError('Checkpoint is not the frozen selected best')
-    prepared_manifest = _closure_file(training.get('preparation'), receipt.parent, ROUND / 'paddle')
+    prepared_manifest = _closure_file(training.get('preparation'), receipt.parent, owned)
     if prepared_manifest != prepared / 'initialization.json':
         raise ValueError('Training preparation identity differs')
     if initialization.get('source_commit') != COMMIT or initialization.get('source_checkpoint_sha256') != CHECKPOINT_SHA:
         raise ValueError('Initialization is outside the fixed official source/checkpoint')
-    init_path = _closure_file(initialization.get('checkpoint'), prepared, ROUND / 'paddle')
+    init_path = _closure_file(initialization.get('checkpoint'), prepared, owned)
     if training.get('initialized_checkpoint') != initialization['checkpoint']:
         raise ValueError('Training initialization weights differ')
     if training.get('dataset') != initialization['dataset'] or dataset_binding(initialization['dataset_root']) != initialization['dataset']:
         raise ValueError('Training checkpoint dataset differs')
-    _reject_reparse(prepared / 'vocabulary.json', ROUND / 'paddle')
-    _reject_reparse(prepared / 'dictionary.txt', ROUND / 'paddle')
+    _reject_reparse(prepared / 'vocabulary.json', owned)
+    _reject_reparse(prepared / 'dictionary.txt', owned)
     if digest(prepared / 'vocabulary.json') != initialization['vocabulary_sha256'] or digest(prepared / 'dictionary.txt') != initialization['dictionary_sha256']:
         raise ValueError('Training checkpoint vocabulary differs')
-    _reject_reparse(receipt.parent / 'best-dev.json', ROUND / 'paddle')
+    continuation = _continuation_parent(initialization, prepared, owned) if initialization.get('continuation') is not None else None
+    _reject_reparse(receipt.parent / 'best-dev.json', owned)
     best_record = read(receipt.parent / 'best-dev.json')
     exposure = training.get('selected_training_exposure', {})
     if exposure.get('step', 0) <= 0 or exposure.get('step') != best_record.get('step') or best_record.get('dev') != training.get('best_dev'):
         raise ValueError('Selected checkpoint lacks effective development selection')
-    audit_path = _closure_file(training.get('source_audit'), receipt.parent, ROUND / 'paddle')
+    audit_path = _closure_file(training.get('source_audit'), receipt.parent, owned)
     audit, fresh = read(audit_path), source_audit()
     for key in ('commit', 'archive_sha256', 'checkpoint_sha256', 'source_inventory'):
         if audit.get(key) != fresh.get(key):
             raise ValueError('Training source audit differs from fixed official inventory')
     snapshot = receipt.parent.with_name(receipt.parent.name + '-source')
-    _reject_reparse(snapshot / 'paddle_adapter.py', ROUND / 'paddle')
-    _reject_reparse(snapshot / 'common.py', ROUND / 'paddle')
+    _reject_reparse(snapshot / 'paddle_adapter.py', owned)
+    _reject_reparse(snapshot / 'common.py', owned)
     if digest(snapshot / 'paddle_adapter.py') != training.get('adapter_sha256') or digest(snapshot / 'common.py') != training.get('common_sha256'):
         raise ValueError('Training code differs from preserved source snapshot')
     if training.get('selection_policy') == 'face-pareto':
-        _reject_reparse(snapshot / 'quality_selection.py', ROUND / 'paddle')
+        _reject_reparse(snapshot / 'quality_selection.py', owned)
         if digest(snapshot / 'quality_selection.py') != training.get('quality_selection_sha256') or digest(Path(quality_selection.__file__)) != training.get('quality_selection_sha256'):
             raise ValueError('Specialist selection code differs from the preserved snapshot')
         if not quality_selection.face_better(training['best_dev']['quality'], training['initial_dev']['quality']):
@@ -1068,11 +1080,11 @@ def _training_checkpoint(checkpoint, prepared, expected_receipt_sha256=None, _se
             raise ValueError('Warm selected receipt requires an external frozen SHA anchor')
         start = training.get('start_checkpoint', {})
         parent = start.get('training_receipt')
-        parent_receipt = _closure_file(parent, receipt.parent, ROUND / 'paddle')
-        parent_checkpoint = _closure_file(start, receipt.parent, ROUND / 'paddle')
+        parent_receipt = _closure_file(parent, receipt.parent, owned)
+        parent_checkpoint = _closure_file(start, receipt.parent, owned)
         if parent_receipt != parent_checkpoint.parent / 'training.json':
             raise ValueError('Parent checkpoint and receipt identity differ')
-        verified = _training_checkpoint(parent_checkpoint, prepared, parent['sha256'], seen)
+        verified = _training_checkpoint(parent_checkpoint, prepared, parent['sha256'], seen, root=owned)
         ancestry = [verified, *verified.get('parents', [])]
         # A new research identity requires a strict development improvement.
         parent_metric = read(parent_receipt)['best_dev']
@@ -1081,7 +1093,7 @@ def _training_checkpoint(checkpoint, prepared, expected_receipt_sha256=None, _se
             raise ValueError('Warm selection did not improve its parent development baseline')
     elif training.get('start_checkpoint') != initialization['checkpoint']:
         raise ValueError('First training did not start from the bound expanded initialization')
-    return {'file': str(checkpoint), 'sha256': digest(checkpoint),
+    result = {'file': str(checkpoint), 'sha256': digest(checkpoint),
             'training_receipt': {'file': str(receipt), 'sha256': digest(receipt)},
             'initialization': {'file': str(prepared_manifest), 'sha256': digest(prepared_manifest)},
             'initialized_weights': {'file': str(init_path), 'sha256': digest(init_path)},
@@ -1093,21 +1105,25 @@ def _training_checkpoint(checkpoint, prepared, expected_receipt_sha256=None, _se
                                 'common': {'file': str(snapshot / 'common.py'), 'sha256': digest(snapshot / 'common.py')},
                                 'quality_selection': {'file': str(snapshot / 'quality_selection.py'), 'sha256': digest(snapshot / 'quality_selection.py')} if training.get('selection_policy') == 'face-pareto' else None},
             'parents': ancestry}
+    if continuation is not None:
+        result['continuation'] = continuation
+    return result
 
 
-def _snapshot_closure(value, output):
+def _snapshot_closure(value, output, root=None, folder='provenance'):
     """Copy every already-validated effective parent dependency into this candidate."""
+    root = ROUND / 'paddle' if root is None else Path(root)
     if isinstance(value, list):
-        return [_snapshot_closure(item, output) for item in value]
+        return [_snapshot_closure(item, output, root, folder) for item in value]
     if not isinstance(value, dict):
         return value
-    copied = {key: _snapshot_closure(item, output) for key, item in value.items()}
+    copied = {key: _snapshot_closure(item, output, root, folder) for key, item in value.items()}
     if 'file' in value and 'sha256' in value:
-        _reject_reparse(value['file'], ROUND / 'paddle')
+        _reject_reparse(value['file'], root)
         source = Path(value['file']).resolve()
         if digest(source) != value['sha256']:
             raise ValueError('Validated provenance changed before snapshot')
-        directory = output / 'provenance'
+        directory = output / folder
         directory.mkdir(exist_ok=True)
         target = directory / (value['sha256'] + '-' + source.name)
         disk_guard(target)
@@ -1117,6 +1133,170 @@ def _snapshot_closure(value, output):
             raise ValueError('Owned provenance snapshot bytes differ')
         copied['file'] = target.relative_to(output).as_posix()
     return copied
+
+
+def _absolute_closure(value, owner, root):
+    """Verify every file reference of a snapshotted closure inside ``owner``; return it with absolute paths."""
+    if isinstance(value, list):
+        return [_absolute_closure(item, owner, root) for item in value]
+    if not isinstance(value, dict):
+        return value
+    result = {key: _absolute_closure(item, owner, root) for key, item in value.items()}
+    if 'file' in value and 'sha256' in value:
+        target = _closure_file(value, owner, root)
+        if not target.is_relative_to(Path(owner).resolve()):
+            raise ValueError('Continuation parent evidence lies outside its preparation snapshot')
+        result['file'] = str(target)
+    return result
+
+
+def _continuation_parent(initialization, prepared, owned):
+    """Re-verify the snapshotted cross-round parent of a continuation preparation.
+
+    Hashes bind locally frozen evidence; they do not authenticate a publisher.
+    """
+    record = initialization.get('continuation')
+    if not isinstance(record, dict) or record.get('schema_version') != 'localocr.paddle.continuation.v1':
+        raise ValueError('Unknown continuation parent record')
+    parent = record.get('parent')
+    anchors = (record.get('parent_checkpoint_sha256'), record.get('parent_receipt_sha256'))
+    if (not isinstance(parent, dict) or any(not isinstance(parent.get(key), dict) for key in ('training_receipt', 'vocabulary'))
+            or any(not isinstance(value, str) or len(value) != 64 for value in anchors)):
+        raise ValueError('Malformed continuation parent record')
+    prepared = Path(prepared).resolve()
+    parent = _absolute_closure(parent, prepared, owned)
+    if (not isinstance(parent, dict) or parent.get('sha256') != record.get('parent_checkpoint_sha256')
+            or (parent.get('training_receipt') or {}).get('sha256') != record.get('parent_receipt_sha256')):
+        raise ValueError('Continuation parent anchor differs')
+    _reject_reparse(prepared / 'vocabulary.json', owned)
+    old = read(parent['vocabulary']['file'])['tokens'][1:-1]
+    new = read(prepared / 'vocabulary.json')['tokens'][1:-1]
+    if new[:len(old)] != old:
+        raise ValueError('Continuation vocabulary does not preserve the parent token order')
+    return parent
+
+
+def _continuation_weights(prepared, parent):
+    """Check that a continuation initialization is the verified parent's weights with head tokens remapped.
+
+    Arrays are loaded as NumPy only, so the check never places tensors on a device.
+    """
+    import paddle
+    prepared = Path(prepared).resolve()
+    initialization = read(prepared / 'initialization.json')
+    path = confined(prepared, initialization['checkpoint']['file'])
+    if digest(path) != initialization['checkpoint']['sha256'] or digest(parent['file']) != parent['sha256']:
+        raise ValueError('Continuation weights changed before comparison')
+    state = paddle.load(str(path), return_numpy=True)
+    original = paddle.load(str(parent['file']), return_numpy=True)
+    if set(state) != set(original):
+        raise ValueError('Continuation initialization parameters differ from the parent')
+    old = read(parent['vocabulary']['file'])['tokens'][1:-1]
+    new = read(prepared / 'vocabulary.json')['tokens'][1:-1]
+    for key, expected in original.items():
+        actual = np.asarray(state[key])
+        if key in HEAD_AXES:
+            head, axis = HEAD_AXES[key]
+            mapping = token_mapping(tokens(old, head), tokens(new, head))
+            if actual.shape[axis] != len(tokens(new, head)):
+                raise ValueError('Continuation head dimensions differ: ' + key)
+            actual = np.take(actual, [mapping[i] for i in range(len(mapping))], axis=axis)
+        if actual.shape != np.asarray(expected).shape or not np.array_equal(actual, expected):
+            raise ValueError('Continuation initialization differs from the verified parent weights: ' + key)
+    return {'parameters': len(original), 'head_matrices': sum(key in HEAD_AXES for key in original),
+            'parent_slices_equal': True, 'non_head_parameters_equal': True}
+
+
+def _research_root(root):
+    """Resolve a dedicated research root inside repository artifacts without link or reparse ancestors."""
+    target = Path(root).absolute()
+    artifact_root = (REPO / 'artifacts').resolve()
+    if '..' in target.parts or target.resolve() == artifact_root or not target.resolve().is_relative_to(artifact_root):
+        raise ValueError('Research root must be a dedicated directory inside repository artifacts')
+    for ancestor in (target, *target.parents):
+        if ancestor.exists():
+            properties = ancestor.lstat()
+            if stat.S_ISLNK(properties.st_mode) or getattr(properties, 'st_file_attributes', 0) & 0x400:
+                raise ValueError('Research root contains a symbolic link or reparse point')
+    return target.resolve()
+
+
+def continuation(dataset, output, parent_checkpoint, parent_receipt_sha256, parent_research_root):
+    """Prepare a new dataset binding that starts from a verified fine-tuned parent of another research root.
+
+    The parent's complete ancestry is verified under its own owned root against the externally frozen receipt
+    SHA, then copied into this preparation so every later lineage check stays inside the current research root.
+    Parent token slices stay byte-identical; characters new to the parent vocabulary are appended.
+    """
+    output = Path(output).resolve()
+    if output.exists():
+        raise ValueError('Prepare output must be fresh')
+    if not parent_receipt_sha256:
+        raise ValueError('Continuation requires the externally frozen parent training receipt SHA')
+    parent_owned = _research_root(parent_research_root) / 'paddle'
+    if parent_owned.is_relative_to(ROUND) or ROUND.is_relative_to(parent_owned.parent):
+        raise ValueError('A continuation parent must come from another research root; use a warm start inside one root')
+    if not output.is_relative_to(ROUND / 'paddle') or output == ROUND / 'paddle':
+        raise ValueError('Continuation preparation must lie inside the current owned research root')
+    checkpoint = Path(parent_checkpoint).absolute()
+    receipt = checkpoint.parent / 'training.json'
+    _reject_reparse(receipt, parent_owned)
+    if digest(receipt) != parent_receipt_sha256:
+        raise ValueError('Externally anchored training receipt bytes differ')
+    parent_preparation = _closure_file(read(receipt).get('preparation'), receipt.parent, parent_owned)
+    verified = _training_checkpoint(checkpoint, parent_preparation.parent, parent_receipt_sha256, root=parent_owned)
+    parent_info = read(parent_preparation)
+    disk_guard(output)
+    audit = source_audit()
+    paddle = _paddle('cpu')
+    paddle.seed(20261011)
+    np.random.seed(20261011)
+    official = DICTIONARY.read_text(encoding='utf-8').splitlines()
+    old = read(verified['vocabulary']['file'])['tokens'][1:-1]
+    new = extended_characters(old, [c for c in train_characters(dataset) if c != ' '])
+    rows = read_split(dataset, 'train')
+    maximum = max(len(r['text']) for r in rows)
+    required = max(len(r['text']) + sum(a == b for a, b in zip(r['text'], r['text'][1:])) for r in rows)
+    preprocessing = copy.deepcopy(PREPROCESSING)
+    preprocessing['width']['min'] = max(320, 8 * (required + 1))
+    encode_labels([r['text'] for r in rows], new, maximum)
+    # Label capacity sizes no parameter (NRTR max_text_length only bounds decoding), so parent weights load as is.
+    parent_model = build_model(old, maximum)
+    state = load_original(parent_model, verified['file'])
+    del parent_model
+    expanded = build_model(new, maximum)
+    mapping_audit = expand_pretrained(expanded, state, old, new)
+    output.mkdir(parents=True)
+    write(output / 'source-audit.json', audit)
+    for filename, characters in (('vocabulary.json', new), ('original-vocabulary.json', official)):
+        write(output / filename, {'schema_version': 'localocr.pretrained.vocabulary.v1',
+              'tokens': tokens(characters), 'blank_id': 0, 'space_id': len(characters) + 1})
+    (output / 'dictionary.txt').write_text('\n'.join(new) + '\n', encoding='utf-8', newline='\n')
+    paddle.save(expanded.state_dict(), str(output / 'initialized.pdparams'))
+    parent = _snapshot_closure(verified, output, parent_owned, 'parent-provenance')
+    write(output / 'initialization.json', {'schema_version': 'localocr.paddle.initialization.v1',
+        'source_commit': COMMIT, 'source_checkpoint_sha256': CHECKPOINT_SHA,
+        'dataset_root': str(Path(dataset).resolve()), 'dataset': dataset_binding(dataset),
+        'maximum_label_length': maximum, 'maximum_required_ctc_steps': required,
+        'train_rows': len(rows), 'negative_rows': sum(not r['text'] for r in rows),
+        'old_characters': len(old), 'new_characters': len(new), 'added_characters': len(new) - len(old),
+        'official_characters': len(official),
+        'mapping_audit': mapping_audit, 'preprocessing': preprocessing,
+        'training_pool_change': parent_info['training_pool_change'],
+        'seed': 20261011, 'numpy_seed': 20261011,
+        'checkpoint': {'file': 'initialized.pdparams', 'sha256': digest(output / 'initialized.pdparams')},
+        'vocabulary_sha256': digest(output / 'vocabulary.json'), 'dictionary_sha256': digest(output / 'dictionary.txt'),
+        'continuation': {'schema_version': 'localocr.paddle.continuation.v1',
+                         'parent_research_root': str(parent_owned.parent),
+                         'parent_checkpoint_sha256': verified['sha256'], 'parent_receipt_sha256': parent_receipt_sha256,
+                         'parent_maximum_label_length': parent_info['maximum_label_length'],
+                         'parent_preprocessing': parent_info['preprocessing'], 'parent': parent,
+                         'hash_semantics': 'Integrity of locally frozen evidence; not publisher authentication'},
+        'created_utc': utc(), 'adapter_sha256': digest(__file__)})
+    weights = _continuation_weights(output, _continuation_parent(read(output / 'initialization.json'), output, ROUND / 'paddle'))
+    print(json.dumps({'prepared': str(output), 'parent_checkpoint_sha256': verified['sha256'],
+                      'added_characters': len(new) - len(old), 'maximum_label_length': maximum,
+                      'minimum_width': preprocessing['width']['min'], 'weights': weights}), flush=True)
 
 
 def export(prepared, output, checkpoint=None, original=False, identifier=None, native_reference=None, training_receipt_sha256=None):
@@ -1135,6 +1315,8 @@ def export(prepared, output, checkpoint=None, original=False, identifier=None, n
     prepared = Path(prepared).resolve()
     info = read(prepared / 'initialization.json')
     training_source = _training_checkpoint(checkpoint, prepared, training_receipt_sha256) if checkpoint and not original else None
+    if info.get('continuation') is not None and not original:
+        _continuation_weights(prepared, _continuation_parent(info, prepared, ROUND / 'paddle'))
     if original:
         characters = DICTIONARY.read_text(encoding='utf-8').splitlines()
         model = build_model(characters, info['maximum_label_length'])
@@ -1350,16 +1532,7 @@ def development_better(candidate, incumbent, policy='legacy'):
 def set_research_root(root):
     """Change owned research evidence scope while preserving fixed official inputs."""
     global ROUND, BUDGET
-    target = Path(root).absolute()
-    artifact_root = (REPO / 'artifacts').resolve()
-    if '..' in target.parts or target.resolve() == artifact_root or not target.resolve().is_relative_to(artifact_root):
-        raise ValueError('Research root must be a dedicated directory inside repository artifacts')
-    for ancestor in (target, *target.parents):
-        if ancestor.exists():
-            properties = ancestor.lstat()
-            if stat.S_ISLNK(properties.st_mode) or getattr(properties, 'st_file_attributes', 0) & 0x400:
-                raise ValueError('Research root contains a symbolic link or reparse point')
-    ROUND = target.resolve(); BUDGET = ROUND / 'gpu-budget.json'
+    ROUND = _research_root(root); BUDGET = ROUND / 'gpu-budget.json'
 
 
 def main(argv=None):
@@ -1369,6 +1542,12 @@ def main(argv=None):
     p = sub.add_parser('prepare')
     p.add_argument('--dataset', required=True)
     p.add_argument('--output', required=True)
+    p = sub.add_parser('continuation')
+    p.add_argument('--dataset', required=True)
+    p.add_argument('--output', required=True)
+    p.add_argument('--parent-checkpoint', required=True)
+    p.add_argument('--parent-receipt-sha256', required=True)
+    p.add_argument('--parent-research-root', required=True)
     p = sub.add_parser('reference')
     p.add_argument('--prepared', required=True)
     p.add_argument('--output', required=True)

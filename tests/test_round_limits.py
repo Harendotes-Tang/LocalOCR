@@ -243,3 +243,35 @@ def test_authorized_two_gib_quota_is_explicit_and_bounded(limits, capsys):
     printed = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert printed['binding']['maximum_artifact_bytes'] == two and printed['artifact_bytes'] == 16
     assert rl.describe_bytes(1024**3) == '1 GiB' and rl.describe_bytes(two) == '2 GiB'
+
+
+def test_lease_is_capped_to_the_remaining_budget_and_refused_once_spent(tmp_path, monkeypatch):
+    """A lease can never run past the authorization: longer requests are capped, a spent ledger refuses."""
+    old = tmp_path / 'closed.json'
+    write(old, {'schema_version': 'localocr.gpu-budget.v1', 'maximum_seconds': 0.0, 'used_seconds': 0.0, 'runs': [], 'active': None})
+    limits = RoundLimits(tmp_path / 'round', old, digest(old))
+    budget = BoundGPUBudget(limits, 7200.0)
+    state = budget.initialize()
+    state['used_seconds'] = 7000.0
+    state['runs'] = [{'label': 'earlier', 'elapsed_seconds': 7000.0}]
+    write(budget.path, state)
+    with budget.run('capped', 2400) as deadline:
+        assert deadline.limit == pytest.approx(200.0)
+    spent = read(budget.path)
+    spent['used_seconds'] = 7200.0
+    spent['runs'] = [{'label': 'earlier', 'elapsed_seconds': 7200.0}]
+    write(budget.path, spent)
+    with pytest.raises(RuntimeError, match='exhausted'):
+        with budget.run('refused', 10):
+            pass
+    assert read(budget.path)['used_seconds'] == 7200.0 and not budget.lock.exists()
+
+
+def test_tampered_predecessor_ledger_blocks_the_new_round(tmp_path):
+    old = tmp_path / 'closed.json'
+    write(old, {'schema_version': 'localocr.gpu-budget.v1', 'maximum_seconds': 0.0, 'used_seconds': 0.0, 'runs': [], 'active': None})
+    limits = RoundLimits(tmp_path / 'round', old, digest(old))
+    write(old, {'schema_version': 'localocr.gpu-budget.v1', 'maximum_seconds': 0.0, 'used_seconds': 1.0,
+                'runs': [{'elapsed_seconds': 1.0}], 'active': None})
+    with pytest.raises(ValueError, match='changed'):
+        BoundGPUBudget(limits, 7200.0).initialize()

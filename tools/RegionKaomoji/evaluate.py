@@ -24,6 +24,7 @@ from tools.PretrainedOcr.evaluate import (Recognizer, baseline_binding, candidat
                                          MemoryMeasurement, percentiles)
 from tools.PretrainedOcr.quality_evaluate import exact_metrics as metrics, scene_gate, ROUND, is_round, round_write_guard, verify_dual, validate_owned_cpu_capture
 from tools.PretrainedOcr import round_profile as rp
+from tools.PretrainedOcr import kaomoji_grammar as kg
 from tools.RegionKaomoji import candidates as c, fusion as f, classifier as cls
 
 REPO = Path(__file__).resolve().parents[2]
@@ -1225,14 +1226,15 @@ def effective_face_change(model, baseline_scene_text, mask):
     return False
 
 
-def summarize(root,rows,predictions,config,model_ids):
+def summarize(root,rows,predictions,config,model_ids,tail=False):
     if len(rows) != len(predictions): raise ValueError('Scene prediction count differs')
     localization=Counter(); candidates_by_source=Counter(); baseline_pairs=[]; pairs={key:[] for key in model_ids}
     body={key:Counter() for key in model_ids}; faces={key:[] for key in model_ids}; base_faces=[]
     negatives={key:Counter() for key in model_ids}; crop_pairs={key:[] for key in model_ids}
     kind_counts=Counter(); details=[]; ious=[]; coverage_values=[]; effectiveness={key:Counter(actual_routed_candidates=0,face_wrong_to_exact=0,isolated_face_wrong_to_exact=0,face_exact_to_wrong=0) for key in model_ids}
     breakdown_faces=[]
-    for row,record in zip(rows,predictions):
+    face_slots={}; body_slots={}
+    for row_position,(row,record) in enumerate(zip(rows,predictions)):
         if record['id']!=row['id'] or record['image_sha256']!=row['sha256'] or record['pixel_sha256']!=row['pixel_sha256']:
             raise ValueError('Measured scene is not the actual inferred image')
         prediction=record['prediction']; masks=masks_for_row(root,row); kinds=[r['kind'] for r in row['regions']]
@@ -1274,7 +1276,7 @@ def summarize(root,rows,predictions,config,model_ids):
         for index,(truth,mask) in enumerate(zip(row['regions'],masks)):
             baseline_text,mixed=aligned_region(prediction['baseline'],index,masks,config)
             if truth['kind']=='kaomoji':
-                localization['faces']+=1; base_faces.append({'label':truth['text'],'prediction':baseline_text})
+                localization['faces']+=1; face_slots[(row_position,index)]=len(base_faces); base_faces.append({'label':truth['text'],'prediction':baseline_text})
                 hit=[item for item in routing if mask_pixels(mask,item['bbox'])]
                 complete_candidates=[item for item in hit if mask_pixels(mask,item['bbox'])==truth['pixel_count']]
                 safe_candidates=[item for item in complete_candidates if not mask_pixels(body_union,item['bbox']) and not mask_pixels(graphic_union,item['bbox'])]
@@ -1319,28 +1321,9 @@ def summarize(root,rows,predictions,config,model_ids):
                 localization['body_regions_with_candidate']+=int(any(mask_pixels(mask,item['bbox']) for item in routing))
                 localization['body_regions_routed']+=int(any(mask_pixels(mask,item['bbox']) for item in routed))
                 for identity in model_ids:
-                    final_text,final_mixed=aligned_region(prediction['models'][identity]['regions'],index,masks,config)
-                    counter=body[identity]; counter['regions']+=1;counter['baseline_mixed_regions']+=mixed
-                    counter['final_mixed_regions']+=final_mixed;counter['baseline_exact']+=int(baseline_text==truth['text'])
-                    counter['final_exact']+=int(final_text==truth['text'])
-                    counter['baseline_correct_to_wrong']+=int(baseline_text==truth['text'] and final_text!=truth['text'])
-                    overlapping=[item for item in prediction['models'][identity]['regions'] if mask_pixels(mask,overlap_box(item))]
-                    unchanged_reading=split_children_keep_parent_reading(overlapping,prediction['baseline'])
-                    counter['erroneous_rewrites']+=int(final_text!=baseline_text and final_text!=truth['text'] and not unchanged_reading)
-                    counter['split_children_with_unchanged_reading']+=int(unchanged_reading)
-                    before=joined_regions([item for item in prediction['baseline'] if mask_pixels(mask,item['bbox'])],config)
-                    after=joined_regions(overlapping,config)
-                    preserved, splice_count = body_preserving_splices(prediction['baseline'],
-                                                prediction['models'][identity]['regions'], mask)
-                    # This post-inference deletion tripwire uses a whole raw label;
-                    # it never extracts a predicted span or changes model coordinates.
-                    literal_deleted = bool(truth['text'] and truth['text'] in before and truth['text'] not in after)
-                    counter['body_intersection_transcript_changes']+=int(before!=after)
-                    counter['body_literal_deleted']+=int(literal_deleted)
-                    counter['verified_body_preserving_splices']+=splice_count if preserved and not literal_deleted else 0
-                    counter['new_body_intersection_errors']+=int(literal_deleted or
-                                                               (before!=after and after!=truth['text'] and final_text!=truth['text']
-                                                                and not preserved and not unchanged_reading))
+                    increments=body_increments(prediction,identity,truth,index,masks,config,baseline_text,mixed)
+                    body[identity].update(increments)
+                    body_slots[(row_position,index,identity)]=increments
             elif truth['kind']=='unsupported':
                 # Cut-face parts: discovery is reported, nothing is scored, no population includes them.
                 localization['unsupported_regions']+=1
@@ -1391,6 +1374,10 @@ def summarize(root,rows,predictions,config,model_ids):
             'bbox_iou':{'mean':float(np.mean(ious)) if ious else None,'minimum':min(ious) if ious else None},
             'baseline':{'whole_scene':metrics(baseline_pairs,'prediction'),'isolated_kaomoji':metrics(base_faces,'prediction')},
             'models':{}}
+    # Tail-ambiguity counts exist only for reports of rounds that adopted them (see tail_counting), so
+    # historical summaries and their frozen verdicts recompute unchanged.
+    ambiguity=tail_ambiguity(root,rows,predictions,config,model_ids,base_faces,faces,body,effectiveness,face_slots,body_slots) if tail else None
+    if ambiguity: result['tail_ambiguity']=ambiguity
     for identity in model_ids:
         protection=body[identity];negative=negatives[identity]
         result['models'][identity]={'whole_scene':metrics(pairs[identity],'prediction'),
@@ -1408,6 +1395,91 @@ def summarize(root,rows,predictions,config,model_ids):
     breakdowns=summarize_breakdowns(breakdown_faces,model_ids)
     if breakdowns: result['breakdowns']=breakdowns
     return result,details
+
+
+def body_increments(prediction,identity,truth,index,masks,config,baseline_text,mixed):
+    """Strict body-protection increments of one body truth region for one model."""
+    mask=masks[index]; counter=Counter()
+    final_text,final_mixed=aligned_region(prediction['models'][identity]['regions'],index,masks,config)
+    counter['regions']+=1;counter['baseline_mixed_regions']+=mixed
+    counter['final_mixed_regions']+=final_mixed;counter['baseline_exact']+=int(baseline_text==truth['text'])
+    counter['final_exact']+=int(final_text==truth['text'])
+    counter['baseline_correct_to_wrong']+=int(baseline_text==truth['text'] and final_text!=truth['text'])
+    overlapping=[item for item in prediction['models'][identity]['regions'] if mask_pixels(mask,overlap_box(item))]
+    unchanged_reading=split_children_keep_parent_reading(overlapping,prediction['baseline'])
+    counter['erroneous_rewrites']+=int(final_text!=baseline_text and final_text!=truth['text'] and not unchanged_reading)
+    counter['split_children_with_unchanged_reading']+=int(unchanged_reading)
+    before=joined_regions([item for item in prediction['baseline'] if mask_pixels(mask,item['bbox'])],config)
+    after=joined_regions(overlapping,config)
+    preserved, splice_count = body_preserving_splices(prediction['baseline'],
+                                prediction['models'][identity]['regions'], mask)
+    # This post-inference deletion tripwire uses a whole raw label;
+    # it never extracts a predicted span or changes model coordinates.
+    literal_deleted = bool(truth['text'] and truth['text'] in before and truth['text'] not in after)
+    counter['body_intersection_transcript_changes']+=int(before!=after)
+    counter['body_literal_deleted']+=int(literal_deleted)
+    counter['verified_body_preserving_splices']+=splice_count if preserved and not literal_deleted else 0
+    counter['new_body_intersection_errors']+=int(literal_deleted or
+                                               (before!=after and after!=truth['text'] and final_text!=truth['text']
+                                                and not preserved and not unchanged_reading))
+    return counter
+
+
+BODY_ERROR_COUNTERS=('baseline_correct_to_wrong','erroneous_rewrites','new_body_intersection_errors','body_literal_deleted')
+
+
+def tail_pairs(row):
+    """(face index, body index) where a body region directly follows a face and only extends its tail sequence.
+
+    Glued with no separator, face+body parses and its tails are the tails of the face plus the body text:
+    the text cannot tell a tailed face from a face followed by a residue, so either reading is correct.
+    """
+    pairs=[]
+    for i,face in enumerate(row['regions']):
+        parsed=kg.parse_face(face['text'],c.ATOMS) if face['kind']=='kaomoji' else None
+        if parsed is None: continue
+        for j,other in enumerate(row['regions']):
+            if other['kind']!='body' or other['span'][0]!=face['span'][1] or not other['text']: continue
+            combined=kg.parse_face(face['text']+other['text'],c.ATOMS)
+            if combined is not None and ''.join(combined['tails'])==''.join(parsed['tails'])+other['text']:
+                pairs.append((i,j))
+    return pairs
+
+
+def tail_ambiguity(root,rows,predictions,config,model_ids,base_faces,faces,body,effectiveness,face_slots,body_slots):
+    """Counts alongside the strict ones: an object reproducing face+tail-residue on the union of both masks is
+    correct on the face and adds no body error there. None when the population has no such pair.
+
+    Under this reading a face is correct when it is strictly exact or reproduced with its residue on the union,
+    so an effective improvement needs a baseline wrong under both readings and, as in the strict counter, an
+    accepted specialist change on the face's ink (here the union)."""
+    found=[(position,i,j) for position,row in enumerate(rows) for i,j in tail_pairs(row)]
+    if not found: return None
+    base=[dict(item) for item in base_faces]; models={k:[dict(item) for item in faces[k]] for k in model_ids}
+    protection={k:Counter(body[k]) for k in model_ids}; resolved={k:0 for k in model_ids}; delta={k:0 for k in model_ids}; base_resolved=0
+    for position,i,j in found:
+        row,prediction=rows[position],predictions[position]['prediction']
+        masks=masks_for_row(root,row); union=list(masks); union[i]=masks[i]|masks[j]; union[j]=np.zeros_like(masks[j])
+        expected=row['regions'][i]['text']+row['regions'][j]['text']; slot=face_slots[(position,i)]
+        base_strict=base_faces[slot]['prediction']==base_faces[slot]['label']
+        base_ok=aligned_region(prediction['baseline'],i,union,config)[0]==expected
+        if base_ok: base[slot]['prediction']=base[slot]['label']; base_resolved+=1
+        for identity in model_ids:
+            model=prediction['models'][identity]
+            model_ok=aligned_region(model['regions'],i,union,config)[0]==expected
+            strict_ok=faces[identity][slot]['prediction']==faces[identity][slot]['label']
+            strict_gain=not base_strict and strict_ok and effective_face_change(model,prediction['baseline_text'],masks[i])
+            resolved_gain=not (base_strict or base_ok) and (strict_ok or model_ok) and effective_face_change(model,prediction['baseline_text'],union[i])
+            delta[identity]+=int(resolved_gain)-int(strict_gain)
+            if not model_ok: continue
+            resolved[identity]+=1
+            models[identity][slot]['prediction']=models[identity][slot]['label']
+            for name in BODY_ERROR_COUNTERS: protection[identity][name]-=body_slots[(position,j,identity)][name]
+    return {'pairs':len(found),'note':'Tail ambiguity: a body residue glued to a face that only extends its tail sequence; '
+            'reproducing face+residue on the union of both masks counts as correct. Strict fields are unchanged.',
+            'baseline':{'isolated_kaomoji':metrics(base,'prediction'),'resolved_pairs':base_resolved},
+            'models':{k:{'isolated_kaomoji':metrics(models[k],'prediction'),'body':dict(protection[k]),'resolved_pairs':resolved[k],
+                         'face_wrong_to_exact':effectiveness[k]['face_wrong_to_exact']+delta[k]} for k in model_ids}}
 
 
 # Optional per-face fields of browser real-font scenes; absent on every older dataset, so the
@@ -1465,7 +1537,7 @@ def evaluate(args):
     try:
         # Ground truth is first loaded here, after actual candidate/fusion output.
         rows=load_truth(root,args.split,jobs,allow_heldout=usage is not None)
-        aggregate,details=summarize(root,rows,predictions,config,[item['id'] for item in binding['models']])
+        aggregate,details=summarize(root,rows,predictions,config,[item['id'] for item in binding['models']],tail=tail_counting(output))
         if pipeline_binding(root,args.candidate,args.baseline_models,config,args.inputs)!=binding:
             raise ValueError('Pipeline changed before evaluation report')
         write_new(output/'alignment-private.json',details)
@@ -1489,9 +1561,28 @@ def evaluate(args):
         raise
 
 
+# Rounds whose selections must read the outer bracket width from pixels (baseline-else-raw and raw only
+# reproduce historical frozen configurations).
+EXACT_WIDTH_ROUNDS=('browser-font-20261016',)
+# Rounds whose reports add tail-ambiguity counts; adopted before any of their heldout reads.
+TAIL_AMBIGUITY_ROUNDS=('browser-font-20261016',)
+
+
+def tail_counting(output):
+    profile=rp.profile_for(Path(output))
+    return profile is not None and profile.name in TAIL_AMBIGUITY_ROUNDS
+
+
+def exact_width_guard(config,output):
+    profile=rp.profile_for(output)
+    if profile is not None and profile.name in EXACT_WIDTH_ROUNDS and config['fusion'].get('outer_bracket_width','exact')!='exact':
+        raise ValueError('This round freezes outer_bracket_width exact only: the width is read from pixels')
+
+
 def freeze_selection(args):
     report_path=output_path(args.dev_report)
     config=configuration(args.config, classifier=getattr(args,'classifier',None)); binding=pipeline_binding(args.dataset,args.candidate,args.baseline_models,config,args.inputs)
+    exact_width_guard(config,output_path(args.output))
     final_families(binding); report=verify_dev_evidence(report_path,binding)
     if args.selected_id not in {item['id'] for item in binding['models']} or not args.reason.strip():
         raise ValueError('Frozen research selection needs a measured model identity and explicit development reason')

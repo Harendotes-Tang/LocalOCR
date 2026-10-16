@@ -22,15 +22,17 @@ from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Patch
 
 PUBLIC_REL = Path("docs/evaluation/history")
-COUNTS_REL = Path("artifacts/browser-rendering-20261015/validation/version-comparison-counts.json")
+COUNTS_REL = Path("artifacts/browser-font-20261016/validation/version-comparison-counts.json")
 SUMMARY_SCHEMA = "localocr.version-history.anonymous-evaluation.v1"
 RECEIPT_SCHEMA = "localocr.version-history.assets-build.v1"
 MODEL = "ppocrv6-tiny-exp-20261013-001"
+MODELS = {"browser-font-20261016": "ppocrv6-tiny-exp-20261016-001"}  # versions with another specialist; MODEL otherwise
 VERSIONS = (
     ("baseline", "生产文字基线", "#64748b"),
     ("grammar-20261013", "语法路由轮 10-13", "#93b3cb"),
     ("candidates-20261013", "候选定位轮 10-13", "#155e9b"),
-    ("real-rendering-20261015", "真实渲染轮 10-15（当前）", "#b45309"),
+    ("real-rendering-20261015", "真实渲染轮 10-15（冻结）", "#b45309"),
+    ("browser-font-20261016", "浏览器字体轮 10-16（开发未过）", "#15803d"),
 )
 DATASET_NAMES = {"atoms-mixed-v1": "原子混合 v1", "cards-v2": "记录卡片 v2", "atoms-mixed-v2": "原子混合 v2", "cards-v3": "记录卡片 v3"}
 SCENE_SETS = (
@@ -68,6 +70,8 @@ def same_data(counts: dict) -> list[dict]:
                 raise ValueError("Versions disagree on the baseline of one dataset: " + key)
             entry["versions"][version] = {"exact": value["exact"], "width_only": value["exact_except_outer_bracket_width"],
                                           "cer": value["cer"], "research_gate_passed": value["research_gate_passed"]}
+            if "tail_resolved_exact" in value:
+                entry["versions"][version]["tail_resolved_exact"] = value["tail_resolved_exact"]
         rows.append(entry)
     known = counts["known_input_001"]
     first = next(iter(known.values()))
@@ -140,11 +144,11 @@ def figure(panel_a, panel_b, panel_c, public: Path, preview: Path | None = None)
     fig = plt.figure(figsize=(14, 10.5))
     grid = fig.add_gridspec(2, 2, height_ratios=(1.25, 1), width_ratios=(1.9, 1), hspace=.42, wspace=.14)
     ax = fig.add_subplot(grid[0, :])
-    width = .19
+    width = .8 / len(VERSIONS)
     for vi, (version, label, color) in enumerate(VERSIONS):
         for di, row in enumerate(panel_a):
             value = row["versions"].get(version)
-            x = di + (vi - 1.5) * width
+            x = di + (vi - (len(VERSIONS) - 1) / 2) * width
             if value is None:
                 continue  # that version never ran on this dataset (stated in the panel title)
             exact = pct(value["exact"], row["faces"])
@@ -161,7 +165,7 @@ def figure(panel_a, panel_b, panel_c, public: Path, preview: Path | None = None)
     ax.set_ylabel("颜文字整串精确率（%）")
     ax.set_title("A · 同一数据上的版本对比（实心柱顶数字为整串正确数；斜线段为“仅外括号宽度不符”；空位表示该版本未在此数据上评测）", fontsize=10.5, loc="left")
     handles = [Patch(color=color, label=label) for _, label, color in VERSIONS] + [Patch(facecolor="white", edgecolor="#475569", hatch="///", label="仅外括号宽度不符")]
-    ax.legend(handles=handles, fontsize=8, ncol=5, loc="upper left")
+    ax.legend(handles=handles, fontsize=8, ncol=6, loc="upper left")
     ax.set_ylim(0, max(45, max(pct((v["exact"] or 0) + (v.get("width_only") or 0), r["faces"]) for r in panel_a for v in r["versions"].values()) * 1.25))
     ax.grid(axis="y", alpha=.3)
     for name, rows, key, title, axis in (("B", panel_b, "chain", "B · 各轮自动整图新保留集首测（数据各不相同，只比各自基线）", fig.add_subplot(grid[1, 0])),
@@ -222,8 +226,8 @@ def main() -> None:
     panel_b = scene_firsts(docs, load)
     panel_c = crop_firsts(docs, load)
     figures = [figure(panel_a, panel_b, panel_c, public, args.preview)]
-    summary = {"schema_version": SUMMARY_SCHEMA, "generated_utc": datetime.now(timezone.utc).isoformat(), "model": MODEL,
-               "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15; the browser set is rendered by Edge with Windows system fonts, not real screenshots.",
+    summary = {"schema_version": SUMMARY_SCHEMA, "generated_utc": datetime.now(timezone.utc).isoformat(), "model": MODEL, "models": MODELS,
+               "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15; the browser set is rendered by Edge with Windows system fonts, not real screenshots. The browser-font version (2026-10-16) is a measured development configuration whose dual freeze was refused; its tail-resolved count is listed beside the strict count.",
                "normalization": "Raw Unicode exact match; the width-only count is a diagnostic of faces equal to the truth except for the outermost bracket width, never part of the exact score.",
                "versions": [{"key": key, "label": label} for key, label, _ in VERSIONS],
                "same_data": panel_a, "scene_first_tests": panel_b, "crop_first_tests": panel_c, "figures": figures, "sources": sources,

@@ -36,7 +36,12 @@ def test_registered_rounds_have_distinct_roots_and_external_predecessors():
     assert rp.BROWSER_RENDERING.maximum_seconds == 0.0 and rp.BROWSER_RENDERING.previous_used_seconds == 0.0
     assert rp.BROWSER_RENDERING.maximum_bytes == rp.GIB and rp.BROWSER_RENDERING.specialist_families == 1
     assert rp.BROWSER_RENDERING.change == 'add-browser-rendering-evaluation'
-    assert rp.CURRENT is rp.BROWSER_RENDERING and rp.by_name(rp.BROWSER_RENDERING.name) is rp.BROWSER_RENDERING
+    assert rp.by_name(rp.BROWSER_RENDERING.name) is rp.BROWSER_RENDERING
+    assert rp.BROWSER_FONT.previous_budget == rp.BROWSER_RENDERING.root / 'gpu-budget.json'
+    assert rp.BROWSER_FONT.maximum_seconds == 7200.0 and rp.BROWSER_FONT.previous_used_seconds == 0.0
+    assert rp.BROWSER_FONT.maximum_bytes == 2 * rp.GIB and rp.BROWSER_FONT.owned_bytes == 1200 * 1024 ** 2
+    assert rp.BROWSER_FONT.specialist_families == 1 and rp.BROWSER_FONT.change == 'improve-browser-font-kaomoji-recognition'
+    assert rp.CURRENT is rp.BROWSER_FONT and rp.by_name(rp.BROWSER_FONT.name) is rp.BROWSER_FONT
     assert rp.by_name(rp.CANDIDATES.name) is rp.CANDIDATES
     assert rp.by_name(rp.GRAMMAR.name) is rp.GRAMMAR
 
@@ -104,6 +109,25 @@ def test_browser_rendering_predecessor_ledger_is_the_closed_zero_second_real_ren
     assert state['active'] is None and state['runs'] == []
     assert state['maximum_seconds'] == 0.0 and state['used_seconds'] == rp.BROWSER_RENDERING.previous_used_seconds == 0.0
     assert not ledger.with_name(ledger.name + '.lock').exists()
+
+
+def test_browser_font_predecessor_ledger_is_the_closed_zero_second_browser_rendering_ledger():
+    ledger = Path(rp.BROWSER_FONT.previous_budget)
+    if not ledger.exists():
+        pytest.skip('Historical browser-rendering ledger is absent on this host')
+    from tools.PretrainedOcr.common import digest, read
+    assert digest(ledger) == rp.BROWSER_FONT.previous_sha256
+    state = read(ledger)
+    assert state['active'] is None and state['runs'] == []
+    assert state['maximum_seconds'] == 0.0 and state['used_seconds'] == rp.BROWSER_FONT.previous_used_seconds == 0.0
+    assert not ledger.with_name(ledger.name + '.lock').exists()
+
+
+def test_browser_font_root_is_not_matched_by_a_sibling_prefix(tmp_path):
+    root = Path(rp.BROWSER_FONT.root)
+    assert rp.profile_for(root / 'data' / 'x.json') is rp.BROWSER_FONT
+    assert rp.profile_for(root.with_name(root.name + '-extra') / 'x.json') is None
+    assert rp.profile_for(rp.BROWSER_RENDERING.root / 'x.json') is rp.BROWSER_RENDERING
 
 
 def test_predecessor_inside_round_root_is_rejected(tmp_path):

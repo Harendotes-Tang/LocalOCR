@@ -517,7 +517,7 @@ def _face_row(root, label, **fields):
 def test_browser_scene_fields_add_breakdowns_and_older_rows_add_none(root):
     row,record=_face_row(root,'（・ω・）',bracket_width_class='fullwidth',contact_pixels=3,
                          delivery={'format':'webp','quality':80,'method':4},device_scale_factor=1.25)
-    summary,_=e.summarize(root,[row],[record],e.configuration(),['unit'])
+    summary,_=e.summarize(root,[row],[record],e.configuration(),['unit'],tail=True)
     expected={'faces':1,'baseline_exact':0,'baseline_width_only':1,'models':{'unit':{'exact':0,'width_only':1}}}
     breakdowns=summary['breakdowns']
     assert breakdowns['by_bracket_width_class']=={'fullwidth':expected}
@@ -529,6 +529,108 @@ def test_browser_scene_fields_add_breakdowns_and_older_rows_add_none(root):
     assert 'breakdowns' not in plain
     plain.pop('breakdowns',None); summary.pop('breakdowns')
     assert plain==summary
+
+
+def _pair_row(root, face, residue, output):
+    """A face glued to a body residue; the model reads one region over both, the baseline reads nothing."""
+    image=Image.new('RGB',(60,20),'white');image.save(root/'pair.png')
+    regions=[]
+    for index,(kind,text,left,right,span) in enumerate((('kaomoji',face,10,30,[0,len(face)]),('body',residue,30,36,[len(face),len(face)+len(residue)]))):
+        mask=np.zeros((20,60),dtype='uint8');mask[5:15,left:right]=255
+        Image.fromarray(mask).save(root/f'pair-{index}.png')
+        regions.append({'id':str(index),'kind':kind,'text':text,'span':span,'bbox':[left,5,right,15],'mask':f'pair-{index}.png',
+                        'mask_sha256':common.digest(root/f'pair-{index}.png'),'pixel_count':(right-left)*10})
+    job={'id':'pair','sha256':common.digest(root/'pair.png'),'pixel_sha256':e.c.image_digest(image)}
+    row=dict(job,width=60,height=20,scene_kind='card-list',regions=regions,text=face+residue)
+    read=[{'bbox':[9,4,37,16],'text':output,'score':.9}]
+    prediction={'baseline':[],'baseline_text':'','routing':{'candidates':[],'structural_components':0},
+                'models':{'unit':{'regions':read,'text':output,'views':{}}}}
+    return row,dict(job,image_sha256=job['sha256'],prediction=prediction)
+
+
+def test_a_tail_residue_reproduced_on_both_masks_is_resolved_and_strict_counts_stay(root):
+    row,record=_pair_row(root,'(◡‿◡)','~','(◡‿◡)~')
+    assert e.tail_pairs(row)==[(0,1)]
+    summary,_=e.summarize(root,[row],[record],e.configuration(),['unit'],tail=True)
+    strict=summary['models']['unit']
+    assert strict['isolated_kaomoji']['exact']==0 and strict['isolated_kaomoji']['count']==1
+    tail=summary['tail_ambiguity']
+    assert tail['pairs']==1 and tail['models']['unit']['resolved_pairs']==1 and tail['baseline']['resolved_pairs']==0
+    assert tail['models']['unit']['isolated_kaomoji']['exact']==1
+    assert all(tail['models']['unit']['body'][name]==0 for name in e.BODY_ERROR_COUNTERS)
+    assert sum(strict['body'][name] for name in e.BODY_ERROR_COUNTERS)>=0
+
+
+def _pair_prediction(row, baseline, regions, decisions=()):
+    text=lambda items:'  '.join(item['text'] for item in items)
+    job={key:row[key] for key in ('id','sha256','pixel_sha256')}
+    prediction={'baseline':baseline,'baseline_text':text(baseline),'routing':{'candidates':[],'structural_components':0},
+                'models':{'unit':{'regions':regions,'text':text(regions),'views':{},'decisions':list(decisions)}}}
+    return dict(job,image_sha256=job['sha256'],prediction=prediction)
+
+
+def test_resolved_face_improvements_need_a_baseline_wrong_under_both_readings(root):
+    row,_=_pair_row(root,'(◡‿◡)','~','(◡‿◡)~')
+    merged=[{'bbox':[9,4,37,16],'text':'(◡‿◡)~','score':.9}]
+    split=[{'bbox':[9,4,30,16],'text':'(◡‿◡)','score':.9},{'bbox':[30,4,37,16],'text':'~','score':.9}]
+    decision={'accepted':True,'bbox':[10,5,30,15],'original_text':'(◡‿◡)~','specialist_text':'(◡‿◡)'}
+    summary,_=e.summarize(root,[row],[_pair_prediction(row,merged,split,[decision])],e.configuration(),['unit'],tail=True)
+    assert summary['models']['unit']['routing_effectiveness']['face_wrong_to_exact']==1
+    tail=summary['tail_ambiguity']
+    assert tail['baseline']['resolved_pairs']==1 and tail['models']['unit']['face_wrong_to_exact']==0
+
+
+def test_resolved_face_improvements_keep_the_effective_change_requirement(root):
+    row,_=_pair_row(root,'(◡‿◡)','~','(◡‿◡)~')
+    read=[{'bbox':[9,4,37,16],'text':'(◡‿◡)~','score':.9}]
+    summary,_=e.summarize(root,[row],[_pair_prediction(row,[],read)],e.configuration(),['unit'],tail=True)
+    assert summary['tail_ambiguity']['models']['unit']['face_wrong_to_exact']==0
+    decision={'accepted':True,'bbox':[10,5,36,15],'original_text':'','specialist_text':'(◡‿◡)~'}
+    summary,_=e.summarize(root,[row],[_pair_prediction(row,[],read,[decision])],e.configuration(),['unit'],tail=True)
+    assert summary['tail_ambiguity']['models']['unit']['face_wrong_to_exact']==1
+
+
+def test_tail_counts_apply_only_to_reports_of_adopting_rounds(root):
+    from tools.PretrainedOcr import round_profile as rp
+    row,record=_pair_row(root,'(◡‿◡)','~','(◡‿◡)~')
+    historical,_=e.summarize(root,[row],[record],e.configuration(),['unit'])
+    assert 'tail_ambiguity' not in historical
+    assert e.tail_counting(rp.BROWSER_FONT.root/'evaluation'/'scene-unit') is True
+    assert e.tail_counting(rp.REAL_RENDERING.root/'evaluation'/'scene-unit') is False
+
+
+def test_a_misread_line_end_mark_is_not_a_tail_pair(root):
+    row,record=_pair_row(root,'（^ω^）','、','（^ω^）ヽ')
+    assert e.tail_pairs(row)==[]
+    summary,_=e.summarize(root,[row],[record],e.configuration(),['unit'],tail=True)
+    assert 'tail_ambiguity' not in summary
+    assert summary['models']['unit']['isolated_kaomoji']['exact']==0
+
+
+def test_the_gate_reads_resolved_counts_only_when_pairs_exist():
+    from tools.PretrainedOcr import quality_evaluate as q
+    face={'count':2,'exact':0,'cer':.5,'ps_cer':.5}
+    body={'regions':3,'baseline_correct_to_wrong':0,'erroneous_rewrites':0,'new_body_intersection_errors':1,'body_literal_deleted':0}
+    model={'isolated_kaomoji':dict(face,exact=1,cer=.2,ps_cer=.2),'body':body,'negative':{'negative_scenes':1,'graphic_regions':1,'new_nonempty_scenes':0,'new_graphic_nonempty':0},
+           'routing_effectiveness':{'actual_routed_candidates':2,'face_wrong_to_exact':1}}
+    summary={'baseline':{'isolated_kaomoji':face},'models':{'unit':model}}
+    strict=q.scene_gate(summary,'unit')
+    assert strict['passed'] is False and 'counting' not in strict
+    resolved=dict(summary,tail_ambiguity={'pairs':1,'baseline':{'isolated_kaomoji':face,'resolved_pairs':0},
+                                          'models':{'unit':{'isolated_kaomoji':dict(face,exact=2,cer=0.,ps_cer=0.),'body':dict(body,new_body_intersection_errors=0),
+                                                            'resolved_pairs':1,'face_wrong_to_exact':2}}})
+    gate=q.scene_gate(resolved,'unit')
+    assert gate['passed'] is True and gate['counting']=={'mode':'tail-ambiguity-resolved','pairs':1,'resolved_pairs':1}
+
+
+def test_selections_in_the_browser_font_round_require_exact_width(tmp_path):
+    from tools.PretrainedOcr import round_profile as rp
+    output=rp.BROWSER_FONT.root/'evaluation'/'scene-selection-unit.json'
+    with pytest.raises(ValueError,match='exact only'):
+        e.exact_width_guard({'fusion':{'outer_bracket_width':'baseline-else-raw'}},output)
+    e.exact_width_guard({'fusion':{'outer_bracket_width':'exact'}},output)
+    e.exact_width_guard({'fusion':{}},output)
+    e.exact_width_guard({'fusion':{'outer_bracket_width':'baseline-else-raw'}},rp.REAL_RENDERING.root/'evaluation'/'x.json')
 
 
 def test_truth_loader_accepts_unsupported_parts_only_with_their_source_face(root):

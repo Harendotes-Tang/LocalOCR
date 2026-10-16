@@ -143,7 +143,7 @@ def face_record(text, atoms, source, structure):
 def common_pool(atoms, renderable):
     """Every width variant of the common listings, keyed by the split its own core belongs to."""
     families = width_families(atoms)
-    pool = {'dev': [], 'heldout': []}
+    pool = {'train': [], 'dev': [], 'heldout': []}   # train serves the browser crop generator (training only)
     for source, texts in (('common-structure', COMMON_FACES), ('paste-structure', PASTE_FACES)):
         for base in texts:
             if kg.parse_face(base, atoms) is None or not renderable(base):

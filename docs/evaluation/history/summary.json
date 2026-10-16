@@ -33,7 +33,7 @@
   "figures": [
     {
       "file": "docs/evaluation/history/figures/version-comparison.svg",
-      "sha256": "c39c491f0e2407b4b6812d9311c79a1925086f4b373f51ccb079289d1e34ebe1"
+      "sha256": "7ae9c3dedfc46d3e7020ce9ae292d7ad14d911d54ffaf7aafc276123272b5443"
     }
   ],
   "font": {
@@ -41,8 +41,11 @@
     "license": "OFL-1.1",
     "sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b"
   },
-  "generated_utc": "2026-10-15T16:05:49.015449+00:00",
+  "generated_utc": "2026-10-16T08:52:05.900182+00:00",
   "model": "ppocrv6-tiny-exp-20261013-001",
+  "models": {
+    "browser-font-20261016": "ppocrv6-tiny-exp-20261016-001"
+  },
   "normalization": "Raw Unicode exact match; the width-only count is a diagnostic of faces equal to the truth except for the outermost bracket width, never part of the exact score.",
   "promote": false,
   "same_data": [
@@ -164,6 +167,13 @@
           "exact": 0,
           "width_only": 0
         },
+        "browser-font-20261016": {
+          "cer": 0.8778877887788779,
+          "exact": 5,
+          "research_gate_passed": true,
+          "tail_resolved_exact": 5,
+          "width_only": 2
+        },
         "candidates-20261013": {
           "cer": 0.8708156529938709,
           "exact": 9,
@@ -186,6 +196,13 @@
       "versions": {
         "baseline": {
           "exact": 0,
+          "width_only": 0
+        },
+        "browser-font-20261016": {
+          "cer": 0.6674057649667405,
+          "exact": 27,
+          "research_gate_passed": true,
+          "tail_resolved_exact": 27,
           "width_only": 0
         },
         "candidates-20261013": {
@@ -212,6 +229,13 @@
           "exact": 0,
           "width_only": 1
         },
+        "browser-font-20261016": {
+          "cer": 0.8523140925637025,
+          "exact": 24,
+          "research_gate_passed": false,
+          "tail_resolved_exact": 25,
+          "width_only": 3
+        },
         "candidates-20261013": {
           "cer": 0.9048361934477379,
           "exact": 8,
@@ -236,6 +260,13 @@
         "baseline": {
           "exact": 2,
           "width_only": null
+        },
+        "browser-font-20261016": {
+          "body_lost": 0,
+          "embedded_contained": 10,
+          "embedded_faces": 35,
+          "exact": 16,
+          "width_only": 5
         },
         "candidates-20261013": {
           "body_lost": 0,
@@ -319,12 +350,12 @@
     }
   ],
   "schema_version": "localocr.version-history.anonymous-evaluation.v1",
-  "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15; the browser set is rendered by Edge with Windows system fonts, not real screenshots.",
+  "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15; the browser set is rendered by Edge with Windows system fonts, not real screenshots. The browser-font version (2026-10-16) is a measured development configuration whose dual freeze was refused; its tail-resolved count is listed beside the strict count.",
   "sources": [
     {
-      "file": "artifacts/browser-rendering-20261015/validation/version-comparison-counts.json",
+      "file": "artifacts/browser-font-20261016/validation/version-comparison-counts.json",
       "role": "version-comparison-counts",
-      "sha256": "fe5c64460f4d0b39efe95966827c74c24b35bd1ae2067033f4f6962fc1c0cb65"
+      "sha256": "b8294ca68d3a49260287d55cc08be3288844d4ed8cc1f30f847dacedc1609446"
     },
     {
       "file": "docs/evaluation/region-20261012/summary.json",
@@ -392,7 +423,11 @@
     },
     {
       "key": "real-rendering-20261015",
-      "label": "真实渲染轮 10-15（当前）"
+      "label": "真实渲染轮 10-15（冻结）"
+    },
+    {
+      "key": "browser-font-20261016",
+      "label": "浏览器字体轮 10-16（开发未过）"
     }
   ]
 }

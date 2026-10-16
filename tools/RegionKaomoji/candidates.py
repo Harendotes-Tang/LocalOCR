@@ -33,6 +33,13 @@ DEFAULT_CONFIG = {
 # ``shape_contrast_threshold`` defaults to ``contrast_threshold`` (None marks "same as the base mask"): the
 # core-ink mask it selects feeds bracket shape detection and pair interior counting only, never envelopes.
 OPTIONAL_CONFIG = {'background_window': 51, 'exterior_bridge_ratio': 0.45, 'shape_contrast_threshold': None}
+# Structured keys of the browser-font round. They are validated when present and never inserted when absent,
+# so every earlier frozen configuration normalizes (and hashes) exactly as before.
+# ``small_text_shape``: units lower than ``below_height`` detect bracket shapes on their local contrast map
+# upsampled ``upsample`` times (shape evidence only). ``low_mark_guard``: an exterior cell no taller than
+# ``maximum_height_ratio`` of the bracket height whose top lies below ``minimum_top_ratio`` of it (a low
+# mark such as a line-end comma or full stop) is never bridged into a face candidate.
+STRUCTURED_OPTIONAL = ('small_text_shape', 'low_mark_guard')
 # Bridging from a bracket pair absorbs exterior atoms (arms, tails) but must stop at body glyphs. On the
 # development scenes exterior atom cells are never "full-square" while most attached CJK body glyph cells
 # are; cells group components whose x-ranges lie within CELL_TOLERANCE pixels (radicals of one glyph).
@@ -174,8 +181,9 @@ def configuration(config=None):
         value = {**{key: default for key, default in OPTIONAL_CONFIG.items() if key not in value}, **value}
         if value.get('shape_contrast_threshold') is None:
             value['shape_contrast_threshold'] = value.get('contrast_threshold')
-    if not isinstance(value, dict) or set(value) != set(DEFAULT_CONFIG):
+    if not isinstance(value, dict) or set(value) - set(STRUCTURED_OPTIONAL) != set(DEFAULT_CONFIG):
         raise ValueError('Unknown or incomplete candidate configuration')
+    _structured_options(value)
     for key, default in DEFAULT_CONFIG.items():
         item = value[key]
         if isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(item):
@@ -203,6 +211,20 @@ def configuration(config=None):
     if not isinstance(ratio, float) or not .3 <= ratio <= .8:
         raise ValueError('Exterior bridge ratio must be a float between 0.3 and 0.8 of the bracket height')
     return value
+
+
+def _structured_options(value):
+    if any(key in value and value[key] is None for key in STRUCTURED_OPTIONAL):
+        raise ValueError('Omit an unused structured candidate key instead of setting it to null')
+    small = value.get('small_text_shape')
+    if small is not None and (not isinstance(small, dict) or set(small) != {'below_height', 'upsample'}
+                              or any(isinstance(small[k], bool) or not isinstance(small[k], int) for k in small)
+                              or not 8 <= small['below_height'] <= 64 or not 2 <= small['upsample'] <= 4):
+        raise ValueError('small_text_shape needs integer below_height 8..64 and upsample 2..4')
+    guard = value.get('low_mark_guard')
+    if guard is not None and (not isinstance(guard, dict) or set(guard) != {'maximum_height_ratio', 'minimum_top_ratio'}
+                              or any(not isinstance(guard[k], float) or not 0 < guard[k] < 1 for k in guard)):
+        raise ValueError('low_mark_guard needs float maximum_height_ratio and minimum_top_ratio in (0,1)')
 
 
 def rgb_image(image, maximum_pixels=50_000_000):
@@ -260,13 +282,104 @@ def foreground(image, threshold=8, window=None):
     flat card bodies stay background. ``window`` must exceed glyph strokes and
     is validated by ``configuration``.
     """
+    return np.ascontiguousarray((contrast_map(image, window) >= threshold).astype(np.uint8))
+
+
+def contrast_map(image, window=None):
+    """Per-pixel maximum channel distance from the local median background (the quantity ``foreground`` thresholds)."""
     array = rgb_image(image)
     window = DEFAULT_CONFIG['background_window'] if window is None else window
     if not isinstance(window, int) or window % 2 == 0 or not 3 <= window <= 201:
         raise ValueError('Background window must be an odd integer between 3 and 201 pixels')
     background = cv2.medianBlur(np.ascontiguousarray(array), window)
-    distance = np.max(np.abs(array.astype(np.int16) - background.astype(np.int16)), axis=2)
-    return np.ascontiguousarray((distance >= threshold).astype(np.uint8))
+    return np.max(np.abs(array.astype(np.int16) - background.astype(np.int16)), axis=2)
+
+
+def _small_shapes(contrast, box, config):
+    """Bracket pairs of one small unit found on its upsampled contrast, mapped back to image pixels.
+
+    Returns (pairs in image coordinates, shape components in unit-local original coordinates). Only shape
+    evidence changes: candidate boxes, masks and every other stage keep the original resolution.
+    """
+    k = config['small_text_shape']['upsample']
+    left, top, right, bottom = box
+    local = contrast[top:bottom, left:right].astype(np.float32)
+    up = cv2.resize(local, ((right - left) * k, (bottom - top) * k), interpolation=cv2.INTER_LINEAR)
+    core = np.ascontiguousarray((up >= config['shape_contrast_threshold']).astype(np.uint8))
+    def back(b, x0=0, y0=0):
+        return [x0 + b[0] // k, y0 + b[1] // k, x0 + -(-b[2] // k), y0 + -(-b[3] // k)]
+    pairs = [{**pair, 'left_bbox': back(pair['left_bbox'], left, top), 'right_bbox': back(pair['right_bbox'], left, top), 'upsample': k}
+             for pair in _bracket_shapes(core, (0, 0))]
+    components = [{**item, 'bbox': back(item['bbox'])} for item in _components(core, config['minimum_component_area'] * k * k)]
+    return pairs, components
+
+
+def _small_unit(config, height):
+    small = config.get('small_text_shape')
+    return small is not None and height < small['below_height']
+
+
+def _bracket_extent(components, strokes):
+    """(top, height) of the bracket pair measured on the same ink mask as ``components``.
+
+    Strokes may come from the stricter core mask, whose glyphs are about a pixel smaller than base-mask
+    components; each stroke is therefore replaced by the smallest base component that intersects it (the
+    bracket glyph itself), keeping the stroke when none does.
+    """
+    boxes = []
+    for stroke in strokes:
+        hits = [item['bbox'] for item in components if intersection(item['bbox'], stroke)]
+        boxes.append(min(hits, key=lambda bb: (bb[2] - bb[0]) * (bb[3] - bb[1])) if hits else stroke)
+    return min(bb[1] for bb in boxes), max(bb[3] - bb[1] for bb in boxes)
+
+
+def _low_mark(box, extent, guard):
+    """A low, small exterior mark relative to the bracket pair (a line-end comma or full stop).
+
+    ``extent`` is the bracket (top, height) on the mark's own mask. Height and width both stay within
+    ``maximum_height_ratio`` of the bracket height and the top lies below ``minimum_top_ratio`` of it;
+    wide low arcs such as a tail arch are therefore never low marks.
+    """
+    top, height = extent
+    limit = guard['maximum_height_ratio'] * height
+    return (box[3] - box[1]) <= limit and (box[2] - box[0]) <= limit and box[1] >= top + guard['minimum_top_ratio'] * height
+
+
+def _strip_low_marks(components, strokes, guard):
+    """Drop outermost low marks beyond the bracket strokes; returns (kept components, stripped sides).
+
+    A mark must be an isolated column: ink stacked above it (the dot of an exclamation mark) belongs to
+    the same glyph and is kept.
+    """
+    a, b = strokes
+    extent = _bracket_extent(components, strokes)
+    kept, sides = list(components), set()
+    def isolated(item):
+        x0, x1 = item['bbox'][0], item['bbox'][2]
+        return not any(other is not item and other['bbox'][0] < x1 and other['bbox'][2] > x0 for other in kept)
+    for side in ('right', 'left'):
+        while True:
+            beyond = [item for item in kept if (item['bbox'][0] >= b[2] if side == 'right' else item['bbox'][2] <= a[0])]
+            if not beyond:
+                break
+            outer = max(beyond, key=lambda item: item['bbox'][2]) if side == 'right' else min(beyond, key=lambda item: item['bbox'][0])
+            if not (_low_mark(outer['bbox'], extent, guard) and isolated(outer)):
+                break
+            kept.remove(outer)
+            sides.add(side)
+    return kept, sides
+
+
+def _trim_low_marks(box, pair, guard):
+    """Cut a candidate envelope before outermost low marks lying beyond the bracket pair on either side."""
+    box = list(box)
+    inside = [item for cell in pair['cells'] for item in cell['components'] if intersection(item['bbox'], box)]
+    kept, sides = _strip_low_marks(inside, pair['strokes'], guard)
+    if kept and 'right' in sides:
+        box[2] = min(box[2], max(item['bbox'][2] for item in kept))
+    if kept and 'left' in sides:
+        box[0] = max(box[0], min(item['bbox'][0] for item in kept))
+    return box
 
 
 def intersection(a, b):
@@ -552,7 +665,7 @@ def _line_scale(line):
     return max(h for h in heights if h <= typical * 1.3)
 
 
-def _bracket_groups(mask, components, config, guard_body_cells=False):
+def _bracket_groups(mask, components, config, guard_body_cells=False, contrast=None):
     """Use actual paired strokes to bridge internal spaces, without label hints.
 
     Pairs are detected per chunk and, when the line height is in range, per line, so a taller icon or
@@ -572,8 +685,11 @@ def _bracket_groups(mask, components, config, guard_body_cells=False):
             left,top,right,bottom=unit['bbox'];unit_height=bottom-top
             if not config['minimum_height']<=unit_height<=config['maximum_height'] or right-left>config['maximum_bracket_scan_width']:
                 continue
-            found=_bracket_shapes(mask[top:bottom,left:right],(left,top))
-            if guard_body_cells:
+            if contrast is not None and _small_unit(config,unit_height):
+                found=_small_shapes(contrast,unit['bbox'],config)[0]
+            else:
+                found=_bracket_shapes(mask[top:bottom,left:right],(left,top))
+            if guard_body_cells or (contrast is not None and _small_unit(config,unit_height)):
                 found=_outside_body_components(found,line_components,height)
             for pair in found:
                 key=(tuple(pair['left_bbox']),tuple(pair['right_bbox']))
@@ -585,6 +701,8 @@ def _bracket_groups(mask, components, config, guard_body_cells=False):
                 if not inside:
                     continue
                 low,high=min(inside),max(inside)
+                guard=config.get('low_mark_guard')
+                bracket=_bracket_extent(line_components,(a,b)) if guard is not None else None
                 for step in (-1,1):
                     index=(low if step<0 else high)+step
                     extent=cells[low]['bbox'][0] if step<0 else cells[high]['bbox'][2]
@@ -593,15 +711,19 @@ def _bracket_groups(mask, components, config, guard_body_cells=False):
                         gap=extent-box[2] if step<0 else box[0]-extent
                         if gap>height*ratio or box[3]-box[1]>height*1.25 or _body_like(cell,height):
                             break
+                        if guard is not None and _low_mark(box,bracket,guard):
+                            break
                         extent=box[0] if step<0 else box[2]
                         if step<0: low=index
                         else: high=index
                         index+=step
                 selected=[item for cell in cells[low:high+1] for item in cell['components']]
+                if guard is not None:
+                    selected=_strip_low_marks(selected,(a,b),guard)[0]
                 box=[min(item['bbox'][0] for item in selected),min(item['bbox'][1] for item in selected),max(item['bbox'][2] for item in selected),max(item['bbox'][3] for item in selected)]
                 if box[2]-box[0]<=config['maximum_width']:
                     groups.append({'bbox':box,'components':selected,'pair_span':[a[0],b[2]],'scale':height,
-                                   'line_cells':cells})
+                                   'line_cells':cells,'strokes':[list(a),list(b)]})
     return groups
 
 
@@ -613,7 +735,7 @@ def _masks(array, config):
     return mask, foreground(array, config['shape_contrast_threshold'], config['background_window'])
 
 
-def _crop_evidence(array, bbox, config, mask, core):
+def _crop_evidence(array, bbox, config, mask, core, contrast=None):
     """Pixel evidence for one crop plus the (base, core) bracket-pair counts used for diagnostics.
 
     Envelope facts (pixel count, components, edge ink, support) come from the base mask; bracket
@@ -625,7 +747,13 @@ def _crop_evidence(array, bbox, config, mask, core):
     components = _components(local, config['minimum_component_area'])
     occupied = np.argwhere(local)
     edge_ink = bool(local[0].any() or local[-1].any() or local[:,0].any() or local[:,-1].any())
-    if core is mask:
+    ink_height = (max(item['bbox'][3] for item in components) - min(item['bbox'][1] for item in components)) if components else 0
+    if contrast is not None and components and _small_unit(config, ink_height):
+        pairs, shape_components = _small_shapes(contrast, bbox, config)
+        if pairs:
+            pairs = _outside_body_components(pairs, components, ink_height, (left, top))
+        base_pairs = _bracket_shapes(local, (left, top))
+    elif core is mask:
         shape_local, shape_components = local, components
         pairs = _bracket_shapes(local, (left, top))
         base_pairs = pairs
@@ -655,7 +783,8 @@ def pixel_evidence(image, bbox, config=None):
     if not 0 <= left < right <= array.shape[1] or not 0 <= top < bottom <= array.shape[0]:
         raise ValueError('Candidate box outside image')
     mask, core = _masks(array, config)
-    return _crop_evidence(array, bbox, config, mask, core)[0]
+    contrast = contrast_map(array, config['background_window']) if config.get('small_text_shape') is not None else None
+    return _crop_evidence(array, bbox, config, mask, core, contrast)[0]
 
 
 def pair_geometry(pairs, components, origin):
@@ -818,9 +947,13 @@ def _merge_proposals(proposed, config):
             # box never widens a candidate: pixel envelopes stay authoritative over OCR padding.
             same['pair'] = pair
             same['ink_bbox'] = union if pixel_container and not _body_beside_pair(old, box, pair['cells'], pair['scale']) else list(box)
+            if config.get('low_mark_guard') is not None:
+                same['ink_bbox'] = _trim_low_marks(same['ink_bbox'], pair, config['low_mark_guard'])
         elif pair is None and same.get('pair') is not None and 'image-components' in proposal['sources']:
             anchor = same['pair']
             same['ink_bbox'] = same['ink_bbox'] if _body_beside_pair(box, anchor['box'], anchor['cells'], anchor['scale']) else union
+            if config.get('low_mark_guard') is not None:
+                same['ink_bbox'] = _trim_low_marks(same['ink_bbox'], anchor, config['low_mark_guard'])
         elif pair is None and 'first-pass-symbol-geometry' in proposal['sources']:
             pass  # OCR geometry only adds its source; the pixel envelope is unchanged.
         else:
@@ -841,6 +974,7 @@ def locate_candidates(image, baseline, config=None, classifier=None):
     height, width = array.shape[:2]
     entries = baseline_regions(baseline, (width, height), config['maximum_baseline_regions'])
     mask, core = _masks(array, config)
+    contrast = contrast_map(array, config['background_window']) if config.get('small_text_shape') is not None else None
     components = _components(mask, config['minimum_component_area'])
     if len(components)>config['maximum_components']:
         raise ValueError('Original image exceeds component complexity ceiling')
@@ -857,9 +991,9 @@ def locate_candidates(image, baseline, config=None, classifier=None):
             reject('pixel-size-or-component-limit')
             continue
         proposed.append({'ink_bbox': box, 'sources': ['image-components']})
-    for group in _bracket_groups(core,components,config,guard_body_cells=core is not mask):
+    for group in _bracket_groups(core,components,config,guard_body_cells=core is not mask,contrast=contrast):
         proposed.append({'ink_bbox':group['bbox'],'sources':['image-bracket-pair'],
-                         'pair':{'box':list(group['bbox']),'cells':group['line_cells'],'scale':group['scale']}})
+                         'pair':{'box':list(group['bbox']),'cells':group['line_cells'],'scale':group['scale'],'strokes':group['strokes']}})
     for entry in entries:
         text = entry['text']
         symbols = sum(unicodedata.category(c)[0] in 'PS' for c in text)
@@ -905,7 +1039,7 @@ def locate_candidates(image, baseline, config=None, classifier=None):
                 elif other[1] >= bottom: box[3] = min(box[3],other[1]-1)
         if box[0] >= box[2] or box[1] >= box[3] or area(box) > config['maximum_crop_pixels']:
             reject('invalid-or-oversized-crop'); continue
-        evidence, pair_counts = _crop_evidence(array, box, config, mask, core)
+        evidence, pair_counts = _crop_evidence(array, box, config, mask, core, contrast)
         if classifier is not None:
             evidence['classifier'] = classifier.evidence(np.ascontiguousarray(array[box[1]:box[3], box[0]:box[2]]))
         evidence['independent_face_evidence'] = bool(evidence['extra_shape_support'] or evidence.get('classifier', {}).get('face_evidence', False))

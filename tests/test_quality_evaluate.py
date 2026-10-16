@@ -347,3 +347,64 @@ def test_predecessor_crop_receipt_requires_a_cpu_only_round_and_a_bound_receipt(
     with pytest.raises(ValueError,match='does not bind'):q.predecessor_crop_receipt(selection,crop,scene)
     common.write(crop/'heldout-first-use.json',dict(receipt,dataset_binding={'bound':False}))
     with pytest.raises(ValueError,match='does not bind'):q.predecessor_crop_receipt(selection,crop,scene)
+
+
+def _selection(tmp_path, config_sha='c'*64, candidate='a'*64):
+ value={'selected_id':'unit','pipeline_binding':{'models':[{'candidate_sha256':candidate}],'config_sha256':config_sha,
+        'config':{'classifier':{'sha256':'k'*64}},'baseline':{'manifest_sha256':'b'*64},'dataset':{'dataset_sha256':'s'*64}}}
+ path=tmp_path/'selection.json';path.write_text(json.dumps(value),encoding='utf-8');return path
+
+def _scene_report(tmp_path, name, body_errors=0, negative=0, candidate='a'*64, dataset='d'*64, regions=5):
+ body={'regions':regions,'baseline_correct_to_wrong':0,'erroneous_rewrites':0,'new_body_intersection_errors':body_errors,'body_literal_deleted':0}
+ value={'split':'dev','promote':False,'enabled':False,'pipeline_binding':{'models':[{'candidate_sha256':candidate}],'config_sha256':'c'*64,
+        'config':{'classifier':{'sha256':'k'*64}},'baseline':{'manifest_sha256':'b'*64},'dataset':{'dataset_sha256':dataset}},
+        'summary':{'models':{'unit':{'body':body,'negative':{'new_nonempty_scenes':negative,'new_graphic_nonempty':0}}}}}
+ path=tmp_path/name;path.write_text(json.dumps(value),encoding='utf-8');return path
+
+def _probe_report(tmp_path, lost=0, lines=12, manifest='m'*64, name='probe.json'):
+ value={'schema_version':'localocr.known-input-evaluation.v1','independent':False,'promote':False,'enabled':False,
+        'models':[{'candidate_sha256':'a'*64}],'config_sha256':'c'*64,'classifier':{'sha256':'k'*64},'baseline':{'manifest_sha256':'b'*64},
+        'manifest':{'sha256':manifest},'summary':{'body_lines':lines,'models':{'unit':{'body_lost':lost,'gates':{'no_body_lost':lost==0}}}}}
+ path=tmp_path/name;path.write_text(json.dumps(value),encoding='utf-8');return path
+
+def _stored_summary(monkeypatch):
+ # Unit fixtures carry no worker outputs; the recomputation itself is exercised on the real reports.
+ monkeypatch.setattr(q,'_scene_regression_summary',lambda path,value:value['summary'])
+
+def test_regression_proofs_bind_the_selection_and_enforce_zero_new_errors(tmp_path,monkeypatch):
+ monkeypatch.setattr(q,'ROUND',tmp_path);_stored_summary(monkeypatch)
+ selection=_selection(tmp_path)
+ reports=[_scene_report(tmp_path,'cards.json'),_scene_report(tmp_path,'mixed.json',dataset='e'*64),_probe_report(tmp_path)]
+ proofs=q.regression_proofs(reports,selection,tmp_path/'dual.json')
+ assert [p['kind'] for p in proofs]==['scene-dev','scene-dev','known-input-probe'] and all(p['passed'] for p in proofs)
+ with pytest.raises(ValueError,match='hard condition'):
+  q.regression_proofs([_scene_report(tmp_path,'bad.json',body_errors=1)],selection,tmp_path/'dual.json')
+ with pytest.raises(ValueError,match='hard condition'):
+  q.regression_proofs([_scene_report(tmp_path,'neg.json',negative=1)],selection,tmp_path/'dual.json')
+ with pytest.raises(ValueError,match='different model'):
+  q.regression_proofs([_scene_report(tmp_path,'other.json',candidate='z'*64)],selection,tmp_path/'dual.json')
+ with pytest.raises(ValueError,match='hard condition'):
+  q.regression_proofs([_probe_report(tmp_path,lost=1)],selection,tmp_path/'dual.json')
+
+def test_regression_proofs_refuse_empty_populations_and_the_selection_dataset(tmp_path,monkeypatch):
+ monkeypatch.setattr(q,'ROUND',tmp_path);_stored_summary(monkeypatch)
+ selection=_selection(tmp_path)
+ with pytest.raises(ValueError,match='hard condition'):
+  q.regression_proofs([_scene_report(tmp_path,'empty.json',regions=0)],selection,tmp_path/'dual.json')
+ with pytest.raises(ValueError,match='hard condition'):
+  q.regression_proofs([_probe_report(tmp_path,lines=0)],selection,tmp_path/'dual.json')
+ with pytest.raises(ValueError,match="selection's own development dataset"):
+  q.regression_proofs([_scene_report(tmp_path,'self.json',dataset='s'*64)],selection,tmp_path/'dual.json')
+
+def test_a_round_requiring_regressions_refuses_a_dual_freeze_without_them(tmp_path,monkeypatch):
+ monkeypatch.setattr(q,'ROUND',tmp_path);_stored_summary(monkeypatch)
+ monkeypatch.setattr(q,'REQUIRED_REGRESSIONS',{None:{'scene-dev':('d'*64,'e'*64),'known-input-probe':('m'*64,)}})
+ selection=_selection(tmp_path)
+ complete=[_scene_report(tmp_path,'cards.json'),_scene_report(tmp_path,'mixed.json',dataset='e'*64),_probe_report(tmp_path)]
+ assert len(q.regression_proofs(complete,selection,tmp_path/'dual.json'))==3
+ for reports in ([_scene_report(tmp_path,'only.json')],
+                 [_scene_report(tmp_path,'a.json'),_scene_report(tmp_path,'b.json'),_probe_report(tmp_path)],
+                 [complete[0],complete[1],_probe_report(tmp_path,manifest='n'*64,name='other-probe.json')],
+                 [*complete,_scene_report(tmp_path,'extra.json')]):
+  with pytest.raises(ValueError,match='pinned regression reports'):
+   q.regression_proofs(reports,selection,tmp_path/'dual.json')

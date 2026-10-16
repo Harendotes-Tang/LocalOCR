@@ -429,3 +429,162 @@ def test_windows_junction_ancestor_of_owned_root_rejected(tmp_path):
         assert link.lstat().st_file_attributes & 0x400
         os.rmdir(link)  # Removes the verified test junction, retaining its target.
         assert artifact.read_bytes() == b'non-model-ancestor-control'
+
+
+def _continuation_fixture(tmp_path, monkeypatch):
+    import tools.PretrainedOcr.paddle_adapter as adapter
+    from tools.PretrainedOcr.common import digest, write
+    monkeypatch.setattr(adapter, 'ROUND', tmp_path / 'round')
+    owned = tmp_path / 'round/paddle'
+    prepared = owned / 'continued'
+    snapshot = prepared / 'parent-provenance'
+    snapshot.mkdir(parents=True)
+    vocabulary, weights, receipt = snapshot / 'v-vocabulary.json', snapshot / 'w-best.pdparams', snapshot / 'r-training.json'
+    write(vocabulary, {'tokens': ['<blank>', 'A', 'B', ' ']})
+    write(prepared / 'vocabulary.json', {'tokens': ['<blank>', 'A', 'B', 'C', ' ']})
+    weights.write_bytes(b'parent-selected-weights-control')
+    write(receipt, {'synthetic_control': True})
+    parent = {'file': 'parent-provenance/w-best.pdparams', 'sha256': digest(weights),
+              'training_receipt': {'file': 'parent-provenance/r-training.json', 'sha256': digest(receipt)},
+              'vocabulary': {'file': 'parent-provenance/v-vocabulary.json', 'sha256': digest(vocabulary)},
+              'parents': []}
+    initialization = {'continuation': {'schema_version': 'localocr.paddle.continuation.v1', 'parent': parent,
+                                       'parent_checkpoint_sha256': digest(weights), 'parent_receipt_sha256': digest(receipt)}}
+    return adapter, owned, prepared, initialization, weights
+
+
+def test_continuation_parent_snapshot_is_reverified_inside_its_preparation(tmp_path, monkeypatch):
+    from pathlib import Path
+    adapter, owned, prepared, initialization, weights = _continuation_fixture(tmp_path, monkeypatch)
+    parent = adapter._continuation_parent(initialization, prepared, owned)
+    assert parent['file'] == str(weights.resolve())
+    assert Path(parent['training_receipt']['file']).is_absolute() and Path(parent['vocabulary']['file']).is_absolute()
+    weights.write_bytes(b'replaced-parent-weights-control')
+    with pytest.raises(ValueError, match='bytes differ'):
+        adapter._continuation_parent(initialization, prepared, owned)
+
+
+def test_continuation_parent_anchor_token_order_and_location_are_enforced(tmp_path, monkeypatch):
+    import copy
+    from tools.PretrainedOcr.common import digest, write
+    adapter, owned, prepared, initialization, _ = _continuation_fixture(tmp_path, monkeypatch)
+    with pytest.raises(ValueError, match='Unknown continuation'):
+        adapter._continuation_parent({'continuation': {'schema_version': 'other'}}, prepared, owned)
+    forged = copy.deepcopy(initialization)
+    forged['continuation']['parent_receipt_sha256'] = '0' * 64
+    with pytest.raises(ValueError, match='anchor differs'):
+        adapter._continuation_parent(forged, prepared, owned)
+    elsewhere = owned / 'other-run/best.pdparams'
+    elsewhere.parent.mkdir()
+    elsewhere.write_bytes(b'owned-but-outside-the-snapshot-control')
+    moved = copy.deepcopy(initialization)
+    moved['continuation']['parent'].update(file=str(elsewhere), sha256=digest(elsewhere))
+    moved['continuation']['parent_checkpoint_sha256'] = digest(elsewhere)
+    with pytest.raises(ValueError, match='outside its preparation snapshot'):
+        adapter._continuation_parent(moved, prepared, owned)
+    write(prepared / 'vocabulary.json', {'tokens': ['<blank>', 'B', 'A', 'C', ' ']})
+    with pytest.raises(ValueError, match='parent token order'):
+        adapter._continuation_parent(initialization, prepared, owned)
+
+
+def test_continuation_refuses_unanchored_same_root_or_outside_output_before_reading(tmp_path, monkeypatch):
+    import tools.PretrainedOcr.paddle_adapter as adapter
+    monkeypatch.setattr(adapter, 'REPO', tmp_path)
+    current = tmp_path / 'artifacts/new-round'
+    (current / 'paddle').mkdir(parents=True)
+    (tmp_path / 'artifacts/old-round/paddle').mkdir(parents=True)
+    monkeypatch.setattr(adapter, 'ROUND', current.resolve())
+    arguments = dict(dataset=tmp_path / 'no-data', parent_checkpoint=tmp_path / 'no-parent/best.pdparams')
+    with pytest.raises(ValueError, match='externally frozen'):
+        adapter.continuation(output=current / 'paddle/next', parent_receipt_sha256=None,
+                             parent_research_root=tmp_path / 'artifacts/old-round', **arguments)
+    with pytest.raises(ValueError, match='another research root'):
+        adapter.continuation(output=current / 'paddle/next', parent_receipt_sha256='0' * 64,
+                             parent_research_root=current, **arguments)
+    with pytest.raises(ValueError, match='inside repository artifacts'):
+        adapter.continuation(output=current / 'paddle/next', parent_receipt_sha256='0' * 64,
+                             parent_research_root=tmp_path / 'elsewhere', **arguments)
+    with pytest.raises(ValueError, match='inside the current owned'):
+        adapter.continuation(output=current / 'next', parent_receipt_sha256='0' * 64,
+                             parent_research_root=tmp_path / 'artifacts/old-round', **arguments)
+    assert not (current / 'paddle/next').exists() and not (current / 'next').exists()
+
+
+def test_training_checkpoint_and_snapshot_honor_an_explicit_owned_root(tmp_path, monkeypatch):
+    import tools.PretrainedOcr.paddle_adapter as adapter
+    from tools.PretrainedOcr.common import digest, write
+    monkeypatch.setattr(adapter, 'ROUND', tmp_path / 'current')
+    owned = tmp_path / 'parent-round/paddle'
+    prepared, run = owned / 'prepared', owned / 'run'
+    prepared.mkdir(parents=True)
+    run.mkdir()
+    checkpoint = run / 'best.pdparams'
+    checkpoint.write_bytes(b'unchanged-initialization-control')
+    write(prepared / 'initialization.json', {'dataset': {}, 'checkpoint': {}})
+    write(run / 'training.json', {'schema_version': 'localocr.paddle.training.v1', 'selected_weights_changed': False})
+    with pytest.raises(ValueError, match='escapes the owned research root'):
+        adapter._training_checkpoint(checkpoint, prepared)
+    with pytest.raises(ValueError, match='selected changed'):
+        adapter._training_checkpoint(checkpoint, prepared, root=owned)
+    output = tmp_path / 'current/paddle/continued'
+    output.mkdir(parents=True)
+    copied = adapter._snapshot_closure({'file': str(checkpoint), 'sha256': digest(checkpoint)}, output, owned, 'parent-provenance')
+    assert copied['file'].startswith('parent-provenance/') and digest(output / copied['file']) == digest(checkpoint)
+    with pytest.raises(ValueError, match='escapes the owned research root'):
+        adapter._snapshot_closure({'file': str(checkpoint), 'sha256': digest(checkpoint)}, output)
+
+
+def test_continuation_trained_checkpoint_requires_an_external_anchor(tmp_path, monkeypatch):
+    import tools.PretrainedOcr.paddle_adapter as adapter
+    from tools.PretrainedOcr.common import write
+    _, owned, prepared, initialization, _ = _continuation_fixture(tmp_path, monkeypatch)
+    write(prepared / 'initialization.json', initialization)
+    run = owned / 'run'
+    run.mkdir()
+    (run / 'best.pdparams').write_bytes(b'never-deserialized-control')
+    write(run / 'training.json', {'schema_version': 'localocr.paddle.training.v1', 'selected_weights_changed': True})
+    with pytest.raises(ValueError, match='continuation-trained checkpoint requires an external'):
+        adapter._training_checkpoint(run / 'best.pdparams', prepared)
+
+
+def test_malformed_continuation_records_are_rejected_before_any_lookup(tmp_path, monkeypatch):
+    import copy
+    adapter, owned, prepared, initialization, _ = _continuation_fixture(tmp_path, monkeypatch)
+    for mutate in (lambda r: r.update(parent={}), lambda r: r.update(parent_receipt_sha256=None),
+                   lambda r: r['parent'].pop('vocabulary')):
+        broken = copy.deepcopy(initialization)
+        mutate(broken['continuation'])
+        with pytest.raises(ValueError, match='Malformed continuation'):
+            adapter._continuation_parent(broken, prepared, owned)
+
+
+def test_continuation_weights_must_equal_the_parent_with_remapped_head_tokens(tmp_path, monkeypatch):
+    import pickle
+    import sys
+    from types import SimpleNamespace
+    from tools.PretrainedOcr.common import digest, write
+    adapter, owned, prepared, initialization, weights = _continuation_fixture(tmp_path, monkeypatch)
+    monkeypatch.setitem(sys.modules, 'paddle', SimpleNamespace(load=lambda path, return_numpy: pickle.loads(open(path, 'rb').read())))
+    old, new = ['A', 'B'], ['A', 'B', 'C']
+    rng = np.random.default_rng(3)
+    parent_state = {'head.ctc_head.fc2.bias': rng.normal(size=len(tokens(old))).astype('float32'),
+                    'backbone.conv1.weight': rng.normal(size=(2, 3)).astype('float32')}
+    mapping = token_mapping(tokens(old), tokens(new))
+    expanded = remap_array(parent_state['head.ctc_head.fc2.bias'], np.zeros(len(tokens(new)), 'float32'), mapping, 0)
+    def save(state):
+        (prepared / 'initialized.pdparams').write_bytes(pickle.dumps(state))
+        value = dict(initialization, checkpoint={'file': 'initialized.pdparams', 'sha256': digest(prepared / 'initialized.pdparams')})
+        write(prepared / 'initialization.json', value)
+    weights.write_bytes(pickle.dumps(parent_state))
+    parent = dict(initialization['continuation']['parent'], file=str(weights), sha256=digest(weights))
+    parent['vocabulary'] = dict(parent['vocabulary'], file=str(prepared / 'parent-provenance/v-vocabulary.json'))
+    save({'head.ctc_head.fc2.bias': expanded, 'backbone.conv1.weight': parent_state['backbone.conv1.weight']})
+    assert adapter._continuation_weights(prepared, parent)['parent_slices_equal'] is True
+    changed = expanded.copy()
+    changed[mapping[1]] += 1
+    save({'head.ctc_head.fc2.bias': changed, 'backbone.conv1.weight': parent_state['backbone.conv1.weight']})
+    with pytest.raises(ValueError, match='differs from the verified parent weights'):
+        adapter._continuation_weights(prepared, parent)
+    save({'head.ctc_head.fc2.bias': expanded, 'backbone.conv1.weight': parent_state['backbone.conv1.weight'] * 2})
+    with pytest.raises(ValueError, match='differs from the verified parent weights'):
+        adapter._continuation_weights(prepared, parent)

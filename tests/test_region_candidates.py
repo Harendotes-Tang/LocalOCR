@@ -640,3 +640,100 @@ def test_core_mask_strokes_inside_dense_body_cells_are_not_bracket_evidence():
     # The guard only concerns strokes that exist on the core mask: the base mask result is untouched.
     base = c.locate_candidates(body_stroke_fixture(dense=True), [])
     assert base['shape_detection'] == {'threshold': 8, 'base_pairs': 0, 'core_pairs': 0, 'merged_bracket_candidates': 0}
+
+
+# ---- browser-font round: optional structured keys (absent means the previous behaviour)
+
+def test_structured_keys_are_never_inserted_and_are_validated_when_present():
+    assert set(c.configuration()) == set(c.DEFAULT_CONFIG)
+    frozen = {k: v for k, v in c.DEFAULT_CONFIG.items() if k not in c.OPTIONAL_CONFIG}
+    assert c.configuration(frozen) == c.configuration()
+    good = dict(c.DEFAULT_CONFIG, small_text_shape={'below_height': 22, 'upsample': 2},
+                low_mark_guard={'maximum_height_ratio': .45, 'minimum_top_ratio': .5})
+    assert c.configuration(good)['small_text_shape'] == {'below_height': 22, 'upsample': 2}
+    for bad in ({'small_text_shape': {'below_height': 22}}, {'small_text_shape': {'below_height': 22, 'upsample': 9}},
+                {'small_text_shape': {'below_height': True, 'upsample': 2}},
+                {'low_mark_guard': {'maximum_height_ratio': .45}}, {'low_mark_guard': {'maximum_height_ratio': 1, 'minimum_top_ratio': .5}},
+                {'unknown_key': 1}):
+        with pytest.raises(ValueError):
+            c.configuration(dict(c.DEFAULT_CONFIG, **bad))
+
+
+def test_structured_keys_must_be_omitted_rather_than_null():
+    for key in c.STRUCTURED_OPTIONAL:
+        with pytest.raises(ValueError, match='instead of setting it to null'):
+            c.configuration({**c.DEFAULT_CONFIG, key: None})
+
+
+def test_small_shapes_map_upsampled_strokes_back_to_original_pixels():
+    image = Image.new('RGB', (80, 24), (40, 60, 120)); draw = ImageDraw.Draw(image)
+    draw.arc((6, 3, 12, 20), 90, 270, fill='white', width=1)
+    draw.arc((40, 3, 46, 20), 270, 90, fill='white', width=1)
+    draw.point([(20, 10), (30, 10)], fill='white'); draw.line((22, 15, 28, 15), fill='white')
+    array = np.asarray(image)
+    config = c.configuration(dict(c.DEFAULT_CONFIG, small_text_shape={'below_height': 22, 'upsample': 3}))
+    pairs, components = c._small_shapes(c.contrast_map(array, 51), [2, 1, 60, 23], config)
+    for pair in pairs:
+        for key in ('left_bbox', 'right_bbox'):
+            box = pair[key]
+            assert all(isinstance(v, int) for v in box) and 2 <= box[0] < box[2] <= 60 and 1 <= box[1] < box[3] <= 23
+        assert pair['upsample'] == 3
+    assert all(0 <= item['bbox'][0] < item['bbox'][2] <= 58 for item in components)
+
+
+def test_small_text_shape_never_routes_on_blank_or_graphic_scenes():
+    config = dict(c.DEFAULT_CONFIG, small_text_shape={'below_height': 22, 'upsample': 2},
+                  low_mark_guard={'maximum_height_ratio': .45, 'minimum_top_ratio': .5})
+    blank = np.full((60, 200, 3), (40, 60, 120), dtype=np.uint8)
+    graphic = Image.fromarray(blank.copy()); ImageDraw.Draw(graphic).ellipse((20, 10, 50, 40), outline=(206, 176, 104), width=4)
+    for image in (blank, np.asarray(graphic)):
+        routing = c.locate_candidates(image, [], config)
+        assert not any(item['route_eligible'] for item in routing['candidates'])
+        assert all(0 <= v for item in routing['candidates'] for v in item['bbox'])
+
+
+FONTS = __import__('pathlib').Path(__file__).resolve().parents[1] / 'artifacts/ocr-data-fonts-v1/fonts.json'
+
+
+@pytest.mark.skipif(not FONTS.exists(), reason='Pinned local OFL fonts absent')
+@pytest.mark.parametrize('size', [16, 24])
+def test_low_mark_guard_runs_through_the_exterior_bridge_walk(size):
+    # Regression: with exterior arms beside the pair the bridge walk ran and the guard received the walk's
+    # x edge instead of the bracket (top, height), crashing whole-scene evaluation.
+    from tools.PretrainedOcr.data import MixedRenderer
+    image = np.asarray(MixedRenderer(FONTS).render('ヽ(^_^)ノ、', size=size)[0].convert('RGB'))
+    plain = dict(c.DEFAULT_CONFIG, shape_contrast_threshold=80)
+    guarded = dict(plain, low_mark_guard={'maximum_height_ratio': .45, 'minimum_top_ratio': .5})
+    def pair_boxes(config):
+        return [item['bbox'] for item in c.locate_candidates(image, [], config)['candidates'] if 'image-bracket-pair' in item['sources']]
+    before, after = pair_boxes(plain), pair_boxes(guarded)
+    assert before and after and len(before) == len(after)
+    # The comma is cut off the right edge; the left arm and the bracket span stay.
+    assert all(a[0] == b[0] and a[2] < b[2] for a, b in zip(after, before))
+
+
+@pytest.mark.skipif(not FONTS.exists(), reason='Pinned local OFL fonts absent')
+@pytest.mark.parametrize('size', [12, 16, 24, 32])
+@pytest.mark.parametrize('shape_threshold', [8, 80])
+def test_low_mark_guard_strips_line_end_marks_and_never_an_exterior_atom(size, shape_threshold):
+    # As in production: bracket strokes come from the core mask, components from the base mask (threshold 8),
+    # whose halo makes marks about a pixel larger than the core-mask strokes.
+    from tools.OcrDatasets.render import Unsupported
+    from tools.PretrainedOcr import kaomoji_grammar as kg
+    from tools.PretrainedOcr.data import MixedRenderer
+    renderer, atoms = MixedRenderer(FONTS), kg.default_atoms()
+    guard = {'maximum_height_ratio': .45, 'minimum_top_ratio': .5}
+    def stripped(text):
+        image = np.asarray(renderer.render(text, size=size)[0].convert('RGB'))
+        base, core = c.foreground(image, 8, 51), c.foreground(image, shape_threshold, 51)
+        pair = max(c._bracket_shapes(core, (0, 0)), key=lambda p: p['right_bbox'][2] - p['left_bbox'][0])
+        return c._strip_low_marks(c._components(base, 2), (pair['left_bbox'], pair['right_bbox']), guard)[1]
+    for core in ('(^_^)', '（^ω^）'):
+        for mark in ('、', '。', '，'):
+            assert stripped(core + mark) == {'right'}, (core, mark)
+        for side, pool in (('right', atoms.arms_right + atoms.tails), ('left', atoms.arms_left)):
+            for atom in pool:
+                try:
+                    assert stripped(core + atom if side == 'right' else atom + core) == set(), (core, side, atom)
+                except Unsupported:
+                    continue

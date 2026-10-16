@@ -1,18 +1,18 @@
 {
-  "built_utc": "2026-10-15T16:05:49.015449+00:00",
+  "built_utc": "2026-10-16T08:52:05.900182+00:00",
   "figures": [
     {
       "file": "docs/evaluation/history/figures/version-comparison.svg",
-      "sha256": "c39c491f0e2407b4b6812d9311c79a1925086f4b373f51ccb079289d1e34ebe1"
+      "sha256": "7ae9c3dedfc46d3e7020ce9ae292d7ad14d911d54ffaf7aafc276123272b5443"
     }
   ],
   "schema_version": "localocr.version-history.assets-build.v1",
-  "script_sha256": "b6c2d24322ca29798b491ed3d15d0f7fc2fa611fa7db1ccc8ec5f7f6edefef12",
+  "script_sha256": "76e258bcc0f2ed440277a121f59fb3338a65710e6a640fd9cb9782137c31608a",
   "sources": [
     {
-      "file": "artifacts/browser-rendering-20261015/validation/version-comparison-counts.json",
+      "file": "artifacts/browser-font-20261016/validation/version-comparison-counts.json",
       "role": "version-comparison-counts",
-      "sha256": "fe5c64460f4d0b39efe95966827c74c24b35bd1ae2067033f4f6962fc1c0cb65"
+      "sha256": "b8294ca68d3a49260287d55cc08be3288844d4ed8cc1f30f847dacedc1609446"
     },
     {
       "file": "docs/evaluation/region-20261012/summary.json",
@@ -66,5 +66,5 @@
     }
   ],
   "statement": "Built from tracked anonymous round summaries and a local counts-only recount; no images, labels, row predictions, private screenshots or weights opened; no inference; no network.",
-  "summary_sha256": "457cbd8715c7fba4c56deb8c7ad552ac14b7487ef206bc7716f080b4654e9334"
+  "summary_sha256": "85bfb3ab9e254439dba7aeaf937b17879ac2ebd2069a6ff30e29b72d36b1d7f2"
 }

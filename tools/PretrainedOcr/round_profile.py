@@ -79,8 +79,16 @@ BROWSER_RENDERING = RoundProfile(
     previous_budget=ARTIFACTS / 'real-rendering-20261015/gpu-budget.json',
     previous_sha256='29bfea13764ff5952e9627ef3c404fa51858996d179a4db38bdd97beb0db38ca',
     previous_used_seconds=0.0, maximum_seconds=0.0, specialist_families=1)
-ROUNDS = (QUALITY, GRAMMAR, CANDIDATES, REAL_RENDERING, BROWSER_RENDERING)
-CURRENT = BROWSER_RENDERING
+# Browser real-font retrain round: browser-rendered crops, Tiny warm start and classifier retrain,
+# bound to the closed zero-second browser-rendering ledger with a new 7200 s authorization.
+BROWSER_FONT = RoundProfile(
+    name='browser-font-20261016', change='improve-browser-font-kaomoji-recognition',
+    root=ARTIFACTS / 'browser-font-20261016', maximum_bytes=2 * GIB, owned_bytes=1200 * 1024 ** 2,
+    previous_budget=ARTIFACTS / 'browser-rendering-20261015/gpu-budget.json',
+    previous_sha256='d53c7819bf11442a4e9520e850fc602ed34a80ee1629a6edc923ab26b0996d35',
+    previous_used_seconds=0.0, maximum_seconds=7200.0, specialist_families=1)
+ROUNDS = (QUALITY, GRAMMAR, CANDIDATES, REAL_RENDERING, BROWSER_RENDERING, BROWSER_FONT)
+CURRENT = BROWSER_FONT
 
 
 def _resolved(path):

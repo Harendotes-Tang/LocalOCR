@@ -100,15 +100,20 @@ def raw_crop_gate(baseline,model):
     return {'face':faces,'raw_generic_protection':ordinary,'raw_negative':negative,'raw_generic_replacement_passed':faces['passed'] and protected,'specialist_face_eligible':faces['passed'],'production_enabled':False,'promote':False}
 
 def scene_gate(summary,identity):
-    model=summary['models'][identity]
-    faces=face_gate(summary['baseline']['isolated_kaomoji'],model['isolated_kaomoji'])
-    body=model['body'];negative=model['negative'];routing=model['routing_effectiveness']
+    # With tail-ambiguity pairs the gate reads the resolved counts; strict fields stay reported alongside.
+    model=summary['models'][identity];tail=summary.get('tail_ambiguity')
+    resolved=tail['models'][identity] if tail else None
+    faces=face_gate(tail['baseline']['isolated_kaomoji'] if tail else summary['baseline']['isolated_kaomoji'],
+                    resolved['isolated_kaomoji'] if tail else model['isolated_kaomoji'])
+    body=resolved['body'] if tail else model['body'];negative=model['negative'];routing=model['routing_effectiveness']
     if count(body,'regions')<=0 or count(negative,'negative_scenes')<=0 or count(negative,'graphic_regions')<=0:raise ValueError('Final protection population missing')
     protection={name:count(body,name) for name in ('baseline_correct_to_wrong','erroneous_rewrites','new_body_intersection_errors','body_literal_deleted')}
     negatives={name:count(negative,name) for name in ('new_nonempty_scenes','new_graphic_nonempty')}
-    routes=count(routing,'actual_routed_candidates');effective=count(routing,'face_wrong_to_exact')
+    routes=count(routing,'actual_routed_candidates');effective=count(resolved,'face_wrong_to_exact') if tail else count(routing,'face_wrong_to_exact')
     passed=faces['passed'] and not any(protection.values()) and not any(negatives.values()) and routes>0 and effective>0
-    return {'face':faces,'body_and_punctuation_new_errors':protection,'negative_new_nonempty':negatives,'actual_routed_candidates':routes,'effective_face_improvements':effective,'passed':passed,'research_quality_passed':passed,'production_enabled':False,'promote':False,'app_acceptance':False}
+    gate={'face':faces,'body_and_punctuation_new_errors':protection,'negative_new_nonempty':negatives,'actual_routed_candidates':routes,'effective_face_improvements':effective,'passed':passed,'research_quality_passed':passed,'production_enabled':False,'promote':False,'app_acceptance':False}
+    if tail:gate['counting']={'mode':'tail-ambiguity-resolved','pairs':tail['pairs'],'resolved_pairs':resolved['resolved_pairs']}
+    return gate
 
 def validate_owned_cpu_capture(actual):
     if (actual.get('providers')!=['CPUExecutionProvider'] or actual.get('intra_op_threads')!=2 or actual.get('inter_op_threads')!=1 or type(actual.get('worker_pid')) is not int or actual['worker_pid']<=0 or actual.get('worker_exit_code')!=0 or actual.get('capture')!='successful-owned-subprocess'):
@@ -191,7 +196,7 @@ def recompute_development(crop_selection,scene_selection,crop_dataset,scene_data
     jobs=scene.image_jobs(scene_dataset,'dev',pipeline['inputs']['file'])
     rows=scene.load_truth(scene_dataset,'dev',jobs)
     predictions=scene.read_predictions(sdev['outputs']['predictions']['file'],jobs)
-    aggregate,_=scene.summarize(scene_dataset,rows,predictions,pipeline['config'],[m['id'] for m in pipeline['models']])
+    aggregate,_=scene.summarize(scene_dataset,rows,predictions,pipeline['config'],[m['id'] for m in pipeline['models']],tail=scene.tail_counting(sdev_path))
     if aggregate!=sdev['summary']:raise ValueError('Scene aggregate differs from actual worker output')
     if cs['selected_id']!=ss['selected_id']:raise ValueError('Both freezes must select the same specialist identity')
     identity=ss['selected_id']
@@ -200,7 +205,70 @@ def recompute_development(crop_selection,scene_selection,crop_dataset,scene_data
     if not set(item['candidate_sha256'] for item in pipeline['models']).issubset({item['candidate_sha256'] for item in cs['candidate_bindings']}):raise ValueError('Scene specialists absent from crop freeze')
     return {'selected_id':identity,'crop':cg,'scene':sg}
 
-def freeze_dual(crop_selection,scene_selection,crop_dataset,scene_dataset,output):
+# Rounds whose dual freeze must carry regression proofs, pinned by identity: scene development datasets by
+# freeze dataset_sha256 and known-input probe manifests by sha256. Each pinned item needs exactly one proof.
+REQUIRED_REGRESSIONS={'browser-font-20261016':{
+    'scene-dev':('81862891f4989f3b3d1bb87f46b2b1d22422e00c01b58c8cceafb2efd7a2cb5a',   # cards-v4
+                 'ee53228e1ed1610a33b7dd2cdb4512f79c11f681aa317de342fb4f0b2bcda70c'),  # atoms-mixed-v3
+    'known-input-probe':('9cc6f325259e69d4ce140cd3266ba80919ceb043346397993b299bafcad8d804',)}}  # known-input-001
+
+def _same_binding(models,config_sha256,classifier,baseline,selection):
+    pb=selection['pipeline_binding']
+    return (sorted(m['candidate_sha256'] for m in models)==sorted(m['candidate_sha256'] for m in pb['models'])
+            and config_sha256==pb['config_sha256'] and (classifier or {}).get('sha256')==(pb['config'].get('classifier') or {}).get('sha256')
+            and baseline.get('manifest_sha256')==pb['baseline'].get('manifest_sha256'))
+
+def _scene_regression_summary(path,value):
+    """Re-verify a scene development report against its bound worker outputs and recompute its summary."""
+    from tools.RegionKaomoji import evaluate as scene
+    binding=value['pipeline_binding'];root=Path(binding['inputs']['file']).parent
+    pipeline=scene.pipeline_binding(root,[m['candidate_file'] for m in binding['models']],Path(binding['baseline']['manifest_file']).parent,binding['config'],binding['inputs']['file'])
+    dev=scene.verify_dev_evidence(path,pipeline)
+    jobs=scene.image_jobs(root,'dev',pipeline['inputs']['file'])
+    predictions=scene.read_predictions(dev['outputs']['predictions']['file'],jobs)
+    aggregate,_=scene.summarize(root,scene.load_truth(root,'dev',jobs),predictions,pipeline['config'],[m['id'] for m in pipeline['models']],tail=scene.tail_counting(path))
+    if aggregate!=dev['summary']:raise ValueError('Regression aggregate differs from actual worker output')
+    return aggregate
+
+def regression_proof(path,scene_selection):
+    """Hard regression conditions of the selected configuration on one development report: zero new body
+    errors (tail-ambiguity resolved counts when present, zero lost body lines for a known-input probe) and
+    zero new negative outputs over a non-empty population. The report must bind the same specialists,
+    classifier, config and baseline, and must not be the selection's own development dataset."""
+    p=bound(reference(path));value=common.read(p);selection=common.read(scene_selection);identity=selection['selected_id']
+    if value.get('promote') is not False or value.get('enabled') is not False:raise ValueError('Regression reports must stay disabled')
+    if value.get('schema_version')=='localocr.known-input-evaluation.v1':
+        if value.get('independent') is not False:raise ValueError('Known-input regression must be a development probe')
+        if not _same_binding(value['models'],value['config_sha256'],value.get('classifier'),value['baseline'],selection):raise ValueError('Regression report binds a different model or configuration')
+        model=value['summary']['models'][identity];lost=count(model,'body_lost');lines=count(value['summary'],'body_lines')
+        return {'report':reference(p),'kind':'known-input-probe','manifest_sha256':value['manifest']['sha256'],'body_lines':lines,'body_lost':lost,
+                'passed':lines>0 and lost==0 and model['gates']['no_body_lost'] is True}
+    binding=value.get('pipeline_binding') or {}
+    if value.get('split')!='dev' or not _same_binding(binding.get('models',[]),binding.get('config_sha256'),binding.get('config',{}).get('classifier'),binding.get('baseline',{}),selection):
+        raise ValueError('Regression report binds a different model, configuration or split')
+    if binding['dataset']['dataset_sha256']==selection['pipeline_binding']['dataset']['dataset_sha256']:
+        raise ValueError("The selection's own development dataset is not a regression report")
+    summary=_scene_regression_summary(p,value);model=summary['models'][identity];tail=summary.get('tail_ambiguity')
+    body=tail['models'][identity]['body'] if tail else model['body'];negative=model['negative']
+    errors={name:count(body,name) for name in ('baseline_correct_to_wrong','erroneous_rewrites','new_body_intersection_errors','body_literal_deleted')}
+    negatives={name:count(negative,name) for name in ('new_nonempty_scenes','new_graphic_nonempty')}
+    regions=count(model['body'],'regions')
+    return {'report':reference(p),'kind':'scene-dev','dataset_sha256':binding['dataset']['dataset_sha256'],'counting':'tail-ambiguity-resolved' if tail else 'strict',
+            'body_regions':regions,'body_new_errors':errors,'negative_new_nonempty':negatives,
+            'passed':regions>0 and not any(errors.values()) and not any(negatives.values())}
+
+def regression_proofs(reports,scene_selection,output):
+    proofs=[regression_proof(path,scene_selection) for path in reports]
+    profile=rp.profile_for(output)
+    required=REQUIRED_REGRESSIONS.get(profile.name if profile else None,{})
+    for kind,pinned in required.items():
+        field='dataset_sha256' if kind=='scene-dev' else 'manifest_sha256'
+        if sorted(item[field] for item in proofs if item['kind']==kind)!=sorted(pinned):
+            raise ValueError('This round requires exactly its pinned regression reports in the dual freeze')
+    if not all(item['passed'] for item in proofs):raise ValueError('Regression hard condition failed; new heldout remains unconsumed')
+    return proofs
+
+def freeze_dual(crop_selection,scene_selection,crop_dataset,scene_dataset,output,regression_reports=()):
     selections=[Path(crop_selection),Path(scene_selection)];datasets=[Path(crop_dataset),Path(scene_dataset)]
     if not all(is_round(p) for p in selections+datasets+[Path(output)]):raise ValueError('Dual selection must belong to the new research round')
     # Refuse manufacturing a new freeze after either crop or scene first-use exists. A CPU-only round
@@ -215,7 +283,10 @@ def freeze_dual(crop_selection,scene_selection,crop_dataset,scene_dataset,output
     round_root=round_scope(datasets[1])[0] or ROUND
     if any(Path(round_root).glob('evaluation-heldout-first-use-*.json')):raise ValueError('Scene heldout already consumed')
     gates=recompute_development(*selections,*datasets)
+    regressions=regression_proofs(regression_reports,selections[1],output)
     value={'schema_version':DUAL_SCHEMA,'frozen_utc':common.utc(),'crop_selection':reference(selections[0]),'scene_selection':reference(selections[1]),'crop_dataset':{'path':str(datasets[0].resolve()),'binding':common.dataset_binding(datasets[0])},'scene_dataset':{'path':str(datasets[1].resolve()),'binding':common.read(datasets[1]/'freeze.json')},'source_inventory':source_inventory(),'gates':gates,'production_enabled':False,'promote':False,'enabled':False,'usage':'both selections frozen before either first new heldout; no tuning on results'}
+    if regressions:
+        value['regressions']=regressions
     if predecessor is not None:
         value['crop_predecessor']=predecessor;value['usage']='scene selection frozen before its first new heldout; the crop side is the predecessor round\'s frozen specialist whose crop heldout that round consumed; no tuning on results'
     from .evaluate import write_new
@@ -233,10 +304,14 @@ def verify_dual(path,kind,selection,dataset):
     if Path(selection).resolve()!=Path(value[kind+'_selection']['file']).resolve() or Path(dataset).resolve()!=Path(value[kind+'_dataset']['path']).resolve():raise ValueError('Wrong dual-freeze selection/data slot')
     gates=recompute_development(value['crop_selection']['file'],value['scene_selection']['file'],value['crop_dataset']['path'],value['scene_dataset']['path'])
     if gates!=value['gates']:raise ValueError('Development gate proof changed')
+    if 'regressions' in value or REQUIRED_REGRESSIONS.get((rp.profile_for(path).name if rp.profile_for(path) else None)):
+        reports=[item['report']['file'] for item in value.get('regressions',[])]
+        if regression_proofs(reports,value['scene_selection']['file'],path)!=value.get('regressions'):raise ValueError('Regression proof changed')
     return reference(path)
 
 def main(argv=None):
-    p=argparse.ArgumentParser();p.add_argument('--crop-selection',required=True);p.add_argument('--scene-selection',required=True);p.add_argument('--crop-dataset',required=True);p.add_argument('--scene-dataset',required=True);p.add_argument('--output',required=True);a=p.parse_args(argv)
-    value=freeze_dual(a.crop_selection,a.scene_selection,a.crop_dataset,a.scene_dataset,a.output)
+    p=argparse.ArgumentParser();p.add_argument('--crop-selection',required=True);p.add_argument('--scene-selection',required=True);p.add_argument('--crop-dataset',required=True);p.add_argument('--scene-dataset',required=True);p.add_argument('--output',required=True)
+    p.add_argument('--regression-report',action='append',default=[],help='Development scene report or known-input probe of the selected configuration (repeatable)');a=p.parse_args(argv)
+    value=freeze_dual(a.crop_selection,a.scene_selection,a.crop_dataset,a.scene_dataset,a.output,a.regression_report)
     print(json.dumps({'schema_version':value['schema_version'],'selected_id':value['gates']['selected_id'],'research_quality_passed':True,'production_enabled':False}))
 if __name__=='__main__':main()

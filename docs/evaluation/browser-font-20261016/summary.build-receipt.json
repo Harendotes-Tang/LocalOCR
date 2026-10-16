@@ -1,0 +1,154 @@
+{
+  "built_utc": "2026-10-16T09:08:00.842936+00:00",
+  "figures": [
+    {
+      "file": "docs/evaluation/browser-font-20261016/figures/browser-cards-dev-breakdowns.svg",
+      "sha256": "59504d7f4de4b75b1ee7dff17a450c89ea1ade8ea24236bbc558436bc53b4fcb"
+    },
+    {
+      "file": "docs/evaluation/browser-font-20261016/figures/crop-dev-by-kind.svg",
+      "sha256": "c155b792239699b5f036efa978e01f205bde0d415cdc2bceaf5fdf627eb4df48"
+    }
+  ],
+  "schema_version": "localocr.browser-font.assets-build.v1",
+  "script_sha256": "a45e8f59807f1960c979dc83d8e32675c89a520d2238ad164357b7500661b32c",
+  "sources": [
+    {
+      "file": "artifacts/browser-rendering-20261015/evaluation/scene-browser-cards-dev-003/evaluation.json",
+      "role": "scene-dev:候选定位轮配置 t008-exact（上一轮 003）",
+      "sha256": "8f57de740dae1befe8b1fc5dc43a2577172f21dc0bf26febce632d9c9ac53c72"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/evaluation/scene-browser-cards-dev-003/resources.json",
+      "role": "scene-resources:候选定位轮配置 t008-exact（上一轮 003）",
+      "sha256": "fd859b1a38cf3133e1ad1f85e11ad20a5d206b5db86d0e44f7f6358ef8671d77"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/evaluation/scene-browser-cards-dev-004/evaluation.json",
+      "role": "scene-dev:真实渲染轮冻结配置 t080-baseline（上一轮 004）",
+      "sha256": "d0ccf648a74ec5f74f1da607797ce67cbc095595569945e627882890ba217fae"
+    },
+    {
+      "file": "artifacts/browser-rendering-20261015/evaluation/scene-browser-cards-dev-004/resources.json",
+      "role": "scene-resources:真实渲染轮冻结配置 t080-baseline（上一轮 004）",
+      "sha256": "d046c6e6096fb88ac581278846cfe3abd6ab665a0abfcc042a3b8edf4c044883"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-browser-cards-dev-005/evaluation.json",
+      "role": "scene-dev:第 1 档 exact+t080+b045（最终）",
+      "sha256": "dbb546aab42a23af8dd0ec9316f60bc805a082fc4d9b7bdceb926703cb54d837"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-browser-cards-dev-005/resources.json",
+      "role": "scene-resources:第 1 档 exact+t080+b045（最终）",
+      "sha256": "b025cc8ea3f8bdad6096e150edbc2b97d1a505f69587bd1ab998f5f6653e291e"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-browser-cards-dev-003/evaluation.json",
+      "role": "scene-dev:第 2 档 +低位守卫",
+      "sha256": "e1ffd74b4b88c18670d5e8a838499691dabf7e7d0056e95e31c5dac6a2f03e33"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-browser-cards-dev-003/resources.json",
+      "role": "scene-resources:第 2 档 +低位守卫",
+      "sha256": "c5df862c4d0211c3998f1c6005d3bea8b4427c4b407f655960e716864767fd4b"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-browser-cards-dev-004/evaluation.json",
+      "role": "scene-dev:第 3 档 +小字号形状",
+      "sha256": "e47d45442781110a55f0e38e69854706b6d38b82f0c4b22e9735d81ff6f06e26"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-browser-cards-dev-004/resources.json",
+      "role": "scene-resources:第 3 档 +小字号形状",
+      "sha256": "0db1e6b7790709bb00fac676371bbdbfbf9fa9589af69123484d8e3451ae6db1"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-cards-v4-dev-001/evaluation.json",
+      "role": "scene-dev:cards-v4 dev",
+      "sha256": "cc18ba2eb027392dc3018d326d747fe830b4530b1b6ea211c18d6c7a48010a7f"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-cards-v4-dev-001/resources.json",
+      "role": "scene-resources:cards-v4 dev",
+      "sha256": "db2a73c6dfae068387746903f5cae612491c7835408791b7f5aaf78e9597e34a"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-mixed-v3-dev-001/evaluation.json",
+      "role": "scene-dev:atoms-mixed-v3 dev",
+      "sha256": "712f3a7ad8a4de123b0070750b44143ef8dafc7e302b34d48ef4be96bbd2e845"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-mixed-v3-dev-001/resources.json",
+      "role": "scene-resources:atoms-mixed-v3 dev",
+      "sha256": "3ff58750ac7db817852c81b96327ab70ed3931b53e8f844d41e9d1dfd33f4783"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/known-input-probe-001/evaluation.json",
+      "role": "probe:known-input-001",
+      "sha256": "cce8e8d00ea78ab8226737426ed8b48b62de93937ffb80c2adc33daf2445bad2"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/crop-dev-002/evaluation.json",
+      "role": "crop-dev:browser-crops-v1",
+      "sha256": "09d33659a70bb13e4c0c8950e4c5b44d95498abd56e8f545514e8ae05264b956"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/crop-grammar-dev-001/evaluation.json",
+      "role": "crop-dev:atoms-corpus-v1",
+      "sha256": "1063f45b867b7627073187a4ca108200a06c8d47279d4cc5a09f6b06632fbc43"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/data/browser-crops-v1/dataset.json",
+      "role": "crop-dataset",
+      "sha256": "f9c1ec0c4ef5664bbe3412d20f81c2aa0d104a619e78fe8c2418ec15b635ade3"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/data/browser-crops-v1/generation.json",
+      "role": "crop-generation",
+      "sha256": "0f553c182a4dcd69616bc345c3788873f5285a16dd972e265178790b0a199872"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/gpu-budget.json",
+      "role": "gpu-budget",
+      "sha256": "4b73ac8e2454e261412a6ae8a09aa53993d927ffbfd6d0036c30da8ea71df9b7"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/validation/be6-receipt.json",
+      "role": "be6-receipt",
+      "sha256": "56895642ac312d7d2baf3074fcce3dadb135b6f804feaf316ac7822b62f7dd1e"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/validation/be5-receipt.json",
+      "role": "be5-receipt",
+      "sha256": "541f28ebc0141d963dca4dd719304f592d2f7b091eb41d5a39a2fce698d2d45f"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/validation/be4-receipt.json",
+      "role": "be4-receipt",
+      "sha256": "aa1d91bc92565a18ae9f7b407764410219becea8bd6f48c0ba59286ebb70a5ff"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/validation/int1-receipt.json",
+      "role": "int1-receipt",
+      "sha256": "96f0cac58d58471fd6ff1723d8789d6cb5e3785ad026ce645fdc58f7ab1e33ef"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/validation/int2-receipt.json",
+      "role": "int2-receipt",
+      "sha256": "9f179c1120a7c8bb51796dd036834cc62fa298d182f45a190c997101b64b6c4e"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/crop-selection-001.json",
+      "role": "crop-selection",
+      "sha256": "46e341b96706b9ea1ac8205cf26a12d74fc0b29b924a74f59b7fd157e65878f0"
+    },
+    {
+      "file": "artifacts/browser-font-20261016/evaluation/scene-selection-browser-cards-001.json",
+      "role": "scene-selection",
+      "sha256": "b625fc94e922aac2269f9d080a0e339be11dc8f70af7e22e07c298726886179c"
+    }
+  ],
+  "statement": "Built from explicit completed local reports and receipts; no images, pages, labels, row predictions or weights opened; no inference; no network.",
+  "summary_sha256": "227c304d6148aa1358cb4418c1fcc25220153e830414dd44bf620422d5db3ab9"
+}
