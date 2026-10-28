@@ -704,8 +704,8 @@ def test_spliced_face_inside_a_body_box_takes_the_parent_bracket_width(root):
 
 def test_bracket_pairs_round_adopts_exact_width_and_tail_counting():
     from tools.PretrainedOcr import round_profile as rp
-    assert e.EXACT_WIDTH_ROUNDS==('browser-font-20261016','bracket-pairs-20261016')
-    assert e.TAIL_AMBIGUITY_ROUNDS==('browser-font-20261016','bracket-pairs-20261016')
+    assert e.EXACT_WIDTH_ROUNDS==('browser-font-20261016','bracket-pairs-20261016','candidate-recovery-20261018','complete-spans-20261019','pixel-owned-spans-20261020')
+    assert e.TAIL_AMBIGUITY_ROUNDS==('browser-font-20261016','bracket-pairs-20261016','candidate-recovery-20261018','complete-spans-20261019','pixel-owned-spans-20261020')
     assert e.tail_counting(rp.BRACKET_PAIRS.root/'evaluation'/'scene-browser-cards-dev-001') is True
     output=rp.BRACKET_PAIRS.root/'evaluation'/'scene-selection-browser-cards-001.json'
     for width in ('baseline-else-raw','raw'):

@@ -10,6 +10,7 @@ import inspect
 import json
 import math
 import os
+import platform
 from pathlib import Path
 import shutil
 import stat
@@ -496,7 +497,17 @@ def coalesce_body_children(output, plan, spans):
 def implementation_binding():
     names = ['scripts/local-ai-ocr-worker.py', 'localocr/__init__.py', 'localocr/bundles.py', 'localocr/version.py',
              'tools/RegionKaomoji/__init__.py', 'tools/RegionKaomoji/evaluate.py',
-             'tools/RegionKaomoji/candidates.py', 'tools/RegionKaomoji/fusion.py', 'tools/RegionKaomoji/classifier.py',
+             'tools/RegionKaomoji/candidates.py', 'tools/RegionKaomoji/bracket_profiles.py',
+             'tools/RegionKaomoji/line_spans.py', 'tools/RegionKaomoji/local_ownership.py',
+             'tools/RegionKaomoji/span_quality.py', 'tools/RegionKaomoji/joint_quality.py',
+             'tools/RegionKaomoji/pixel_ownership.py', 'tools/RegionKaomoji/local_windows.py',
+             'tools/RegionKaomoji/owned_fusion.py', 'tools/RegionKaomoji/ctc_trace.py',
+             'tools/RegionKaomoji/baseline_trace.py', 'tools/RegionKaomoji/position_spans.py',
+             'tools/RegionKaomoji/position_quality.py',
+             'tools/RegionKaomoji/position_data.py',
+             'tools/RegionKaomoji/initial_trace.py',
+             'tools/RegionKaomoji/first_pass_quality.py', 'tools/RegionKaomoji/first_pass_data.py',
+             'tools/RegionKaomoji/fusion.py', 'tools/RegionKaomoji/classifier.py',
              'tools/PretrainedOcr/kaomoji_atoms.json', 'tools/PretrainedOcr/kaomoji_grammar.py', 'tools/PretrainedOcr/round_profile.py',
              'tools/PretrainedOcr/quality_evaluate.py', 'tools/PretrainedOcr/__init__.py', 'tools/PretrainedOcr/common.py', 'tools/PretrainedOcr/evaluate.py',
              'tools/OcrDatasets/__init__.py', 'tools/OcrDatasets/evaluate.py',
@@ -580,17 +591,62 @@ class FullBaseline:
         self.engine = self.worker.create_engine(safe_path(root), safe_path(root) / 'manifest.json')
         self.runtime_receipt = baseline_runtime_receipt(self.engine._load_rec_model())
 
+    def trace_capture(self, image, *, initial=False):
+        """Observe existing forwards for this image; never add an OCR request.
+
+        The adapter authenticates its live sidecar in this worker. Unknown
+        initial perspective crops and painted sibling crops remain unsupported.
+        The observer is removed even when inference or validation raises.
+        """
+        from contextlib import contextmanager
+        from tools.RegionKaomoji.baseline_trace import BaselineTraceAdapter
+
+        @contextmanager
+        def capture():
+            if getattr(self, '_trace_observer', None) is not None:
+                raise ValueError('A baseline trace capture is already active')
+            arguments = dict(image_sha256=c.image_digest(np.asarray(image.convert('RGB'))),
+                             image_size=[image.width, image.height],
+                             identity={'model': self.binding, 'runtime': self.runtime_receipt})
+            if initial:
+                from tools.RegionKaomoji.initial_trace import InitialTraceAdapter
+                adapter = InitialTraceAdapter(self.engine, **arguments)
+            else:
+                adapter = BaselineTraceAdapter(self.engine._load_rec_model(), **arguments)
+            self._trace_observer = adapter
+            try:
+                with adapter:
+                    yield adapter
+            finally:
+                del self._trace_observer
+        return capture()
+
+    def _reread(self, pixels, initial, *, production=False):
+        observer = getattr(self, '_trace_observer', None)
+        if observer is None:
+            return self.worker.reread_symbols(self.engine, pixels, initial)
+        callback = (observer.observe_production_reread
+                    if production and hasattr(observer, 'observe_production_reread') else observer.observe_reread)
+        return self.worker.reread_symbols(self.engine, pixels, initial, observer=callback)
+
     def predict(self, image):
         pixels = np.asarray(image.convert('RGB'))[:, :, ::-1].copy()
-        initial = self.engine(pixels)
+        observer = getattr(self, '_trace_observer', None)
+        if observer is not None and hasattr(observer, 'observe_initial'):
+            with observer.observe_initial(pixels):
+                initial = self.engine(pixels)
+        else:
+            initial = self.engine(pixels)
         self.worker.serialize_json_result(initial, image.width, image.height, self.binding['version'])
-        result = self.worker.reread_symbols(self.engine, pixels, initial)
+        result = self._reread(pixels, initial, production=True)
         raw = json.loads(self.worker.serialize_json_result(result, image.width, image.height, self.binding['version']))
         canonical = []
         for region in raw['regions']:
             rect = region['rect']; canonical.append({'bbox': [rect['x'], rect['y'], rect['x'] + rect['width'],
                                                            rect['y'] + rect['height']],
                                                    'text': region['text'], 'score': region['score']})
+        if observer is not None and hasattr(observer, 'finish_production'):
+            observer._safe(observer.finish_production, canonical)
         return canonical, raw
 
     def predict_context(self, image):
@@ -629,7 +685,7 @@ class FullBaseline:
             children = [first_pass[int(index)] for index in sorted(plan['children'], key=int)]
             boxes = [[[l, t], [r, t], [r, b], [l, b]] for l, t, r, b in (item['bbox'] for item in children)]
             result = SimpleNamespace(boxes=boxes, txts=[item['text'] for item in children], scores=[item['score'] for item in children])
-            reread = self.worker.reread_symbols(self.engine, pixels, result)
+            reread = self._reread(pixels, result)
             if len(reread.txts) == len(children):
                 for item, text, score in zip(children, reread.txts, reread.scores):
                     item['text'], item['score'] = str(text), float(score)
@@ -655,14 +711,32 @@ def predict_scene(image, baseline, models, config, classifier=None):
     """Inference boundary: receives pixels and model objects, never scene truth."""
     timings = {}; started = time.perf_counter()
     split_config = config.get('split') or dict(c.split_configuration(), enabled=False)
-    if split_config['enabled'] and hasattr(baseline, 'first_pass'):
-        production, native, first_pass, plan = baseline.first_pass(image, split_config)
-        timings['baseline_seconds'] = time.perf_counter() - started
+    position_options = config['candidate'].get('position_spans', {})
+    trace_enabled = position_options.get('mode') in ('ctc', 'union')
+    from contextlib import nullcontext
+    if trace_enabled and hasattr(baseline, 'trace_capture'):
+        capture = (baseline.trace_capture(image, initial=True) if position_options.get('initial_trace') == 'horizontal-v1'
+                   else baseline.trace_capture(image))
     else:
-        production, native = baseline.predict(image); timings['baseline_seconds'] = time.perf_counter() - started
-        first_pass, plan = split_entries(image, production, dict(split_config, enabled=False), lambda crops: [])
+        capture = nullcontext(None)
+    with capture as observer:
+        if split_config['enabled'] and hasattr(baseline, 'first_pass'):
+            production, native, first_pass, plan = baseline.first_pass(image, split_config)
+            timings['baseline_seconds'] = time.perf_counter() - started
+        else:
+            production, native = baseline.predict(image); timings['baseline_seconds'] = time.perf_counter() - started
+            first_pass, plan = split_entries(image, production, dict(split_config, enabled=False), lambda crops: [])
+        if observer is not None and hasattr(observer, 'bind_initial_entries'):
+            observer._safe(observer.bind_initial_entries, first_pass, plan)
+        position_trace = observer.sidecar(first_pass) if observer is not None else None
+    if trace_enabled:
+        timings['baseline_seconds'] = time.perf_counter() - started
     entries = first_pass
-    started = time.perf_counter(); routing = c.locate_candidates(image, entries, config['candidate'], classifier=classifier)
+    started = time.perf_counter()
+    candidate_arguments = {'classifier': classifier}
+    if 'position_spans' in config['candidate']:
+        candidate_arguments['position_trace'] = position_trace
+    routing = c.locate_candidates(image, entries, config['candidate'], **candidate_arguments)
     timings['candidate_seconds'] = time.perf_counter() - started
     views = {}; contexts = {}; selected = []; skipped = []; pixels = 0; context_times = []
     for candidate in routing['candidates']:
@@ -703,19 +777,35 @@ def predict_scene(image, baseline, models, config, classifier=None):
                 records[candidate['candidate_id']].append({'model_id': identity, 'view_id': identity + ':' + transform,
                     'transform': transform, 'image_sha256': c.image_digest(array), 'text': text, 'score': float(score)})
         at = time.perf_counter()
-        fused = f.fuse_candidates(image, entries, routing['candidates'], records, config['fusion'], config['candidate'], contexts=contexts, classifier=classifier)
-        regions, split_stats = materialize_splits(fused['regions'], plan, config)
+        fusion_arguments = {'contexts': contexts, 'classifier': classifier}
+        if 'position_spans' in config['candidate']:
+            fusion_arguments['position_trace'] = position_trace
+        fused = f.fuse_candidates(image, entries, routing['candidates'], records, config['fusion'], config['candidate'], **fusion_arguments)
+        if 'owned_ownership' in config['fusion']:
+            from tools.RegionKaomoji import owned_fusion
+            regions, split_stats = owned_fusion.materialize_atomic(fused['regions'], plan, config, materialize_splits)
+            fused = owned_fusion.commit_ownership(image, production, routing['candidates'], fused, regions,
+                config['candidate'], config['fusion']['owned_ownership'])
+            regions = fused['final_regions']
+        else:
+            regions, split_stats = materialize_splits(fused['regions'], plan, config)
         results[identity] = {'regions': regions, 'decisions': fused['decisions'], 'views': records,
                              'text': joined_regions(regions, config),
                              'specialist_seconds': sum(infer_times), 'fusion_seconds': time.perf_counter() - at,
                              'view_latency': percentiles(infer_times), 'accepted_count': fused['accepted_count'],
                              'split': split_stats}
+        if 'final_decisions' in fused:
+            results[identity].update(final_decisions=fused['final_decisions'],
+                                     final_accepted_count=fused['final_accepted_count'],
+                                     owned_ownership=fused['owned_ownership'])
     result = {'baseline': production, 'baseline_native': native, 'baseline_text': joined_regions(production, config),
               'first_pass': {'entries': entries, 'plan': plan, 'config': split_config,
                              'split_parents': len(plan['parents']), 'split_children': len(plan.get('children', {}))},
               'routing': routing, 'models': results, 'contexts': contexts,
               'view_budget': {'pixels': pixels, 'selected': len(selected), 'context_crops': len(context_times),
               'skipped': skipped}, 'timings': timings}
+    if trace_enabled:
+        result['ctc_trace'] = position_trace
     if len(json.dumps(result, ensure_ascii=False, allow_nan=False).encode('utf-8')) > config['limits']['maximum_scene_output_bytes']:
         raise ValueError('Scene research output exceeds byte limit')
     return result
@@ -958,6 +1048,11 @@ def worker(args):
                      'actual_specialist_models':len(models),'no_python_children_or_socket_io':True,
                      'onnxruntime_version':__import__('onnxruntime').__version__,
                      'baseline_runtime':baseline.runtime_receipt,'worker_pid':os.getpid(),'worker_ownership':ownership}
+        if rp.profile_for(output) in (rp.COMPLETE_SPANS, rp.PIXEL_OWNED_SPANS, rp.OWNED_POSITION, rp.FIRST_PASS_POSITION):
+            resources['measurement_machine'] = {
+                'schema_version': 'localocr.cpu-measurement-machine.v1',
+                'fingerprint_sha256': hash_object({'node': platform.node(), 'processor': platform.processor(),
+                    'machine': platform.machine(), 'system': platform.system(), 'release': platform.release()})}
         write_new(output.with_suffix('.resources.json'), {'pipeline_binding':binding,'resources':resources})
     finally:
         timer.cancel(); timer.join()
@@ -1024,6 +1119,7 @@ def run_worker(args, output, binding, jobs, usage=None):
     paths = {key: temporary / name for key, name in [('jobs','jobs.json'),('config','config.json'),
              ('binding','binding.json'),('predictions','predictions.jsonl')]}
     process = None; started=time.perf_counter(); temporary_created=False
+    started_utc = common.utc() if rp.profile_for(output) in (rp.OWNED_POSITION, rp.FIRST_PASS_POSITION) else None
     try:
         temporary.mkdir(); temporary_created=True
         write_new(paths['jobs'], {'schema_version':'localocr.region-inference-jobs.v1','split':args.split,
@@ -1053,6 +1149,9 @@ def run_worker(args, output, binding, jobs, usage=None):
         resources['resources']['worker_exit_code']=code
         resources['resources']['capture']='successful-owned-subprocess'
         resources['resources']['process_wall_seconds']=time.perf_counter()-started
+        if started_utc is not None:
+            resources['resources']['started_utc'] = started_utc
+            resources['resources']['completed_utc'] = common.utc()
         copy_new(paths['predictions'],output/'predictions.jsonl')
         write_new(output/'resources.json',resources)
         return predictions,resources['resources']
@@ -1392,6 +1491,12 @@ def summarize(root,rows,predictions,config,model_ids,tail=False):
             for key in ('baseline_correct_to_wrong','erroneous_rewrites','new_body_intersection_errors','body_literal_deleted'):result['models'][identity]['body'].setdefault(key,0)
             for key in ('new_nonempty_scenes','new_graphic_nonempty'):result['models'][identity]['negative'].setdefault(key,0)
             result['models'][identity]['research_quality_gates']=scene_gate(result,identity)
+            if rows and rows[0]['split'] == 'heldout' and rp.profile_for(root) in (rp.COMPLETE_SPANS, rp.PIXEL_OWNED_SPANS, rp.OWNED_POSITION, rp.FIRST_PASS_POSITION):
+                from tools.RegionKaomoji import span_quality
+                floor = span_quality.summarize_heldout_floor(result, identity)
+                gate = result['models'][identity]['research_quality_gates']
+                gate['independent_exact_floor'] = floor
+                gate['passed'] = gate['research_quality_passed'] = gate['passed'] and floor['passed']
     breakdowns=summarize_breakdowns(breakdown_faces,model_ids)
     if breakdowns: result['breakdowns']=breakdowns
     return result,details
@@ -1563,9 +1668,9 @@ def evaluate(args):
 
 # Rounds whose selections must read the outer bracket width from pixels (baseline-else-raw and raw only
 # reproduce historical frozen configurations).
-EXACT_WIDTH_ROUNDS=('browser-font-20261016','bracket-pairs-20261016')
+EXACT_WIDTH_ROUNDS=('browser-font-20261016','bracket-pairs-20261016','candidate-recovery-20261018','complete-spans-20261019','pixel-owned-spans-20261020')
 # Rounds whose reports add tail-ambiguity counts; adopted before any of their heldout reads.
-TAIL_AMBIGUITY_ROUNDS=('browser-font-20261016','bracket-pairs-20261016')
+TAIL_AMBIGUITY_ROUNDS=('browser-font-20261016','bracket-pairs-20261016','candidate-recovery-20261018','complete-spans-20261019','pixel-owned-spans-20261020')
 
 
 def tail_counting(output):

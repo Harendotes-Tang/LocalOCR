@@ -47,8 +47,20 @@ def test_registered_rounds_have_distinct_roots_and_external_predecessors():
     assert rp.BRACKET_PAIRS.maximum_bytes == rp.GIB and rp.BRACKET_PAIRS.owned_bytes == 600 * 1024 ** 2
     assert rp.BRACKET_PAIRS.specialist_families == 1 and rp.BRACKET_PAIRS.change == 'improve-bracket-pair-localization'
     assert rp.BRACKET_PAIRS.root == rp.ARTIFACTS / 'bracket-pairs-20261016'
-    assert rp.CURRENT is rp.BRACKET_PAIRS and rp.by_name(rp.BRACKET_PAIRS.name) is rp.BRACKET_PAIRS
-    assert rp.ROUNDS[-1] is rp.BRACKET_PAIRS
+    assert rp.by_name(rp.BRACKET_PAIRS.name) is rp.BRACKET_PAIRS
+    assert rp.CURRENT is rp.PIXEL_OWNED_SPANS and rp.by_name(rp.RECOVERY.name) is rp.RECOVERY
+    assert rp.OWNED_POSITION in rp.ROUNDS
+    assert rp.COMPLETE_SPANS.previous_budget == rp.RECOVERY.root / 'gpu-budget.json'
+    assert rp.COMPLETE_SPANS.maximum_seconds == 0.0 and rp.COMPLETE_SPANS.specialist_families == 1
+    assert rp.COMPLETE_SPANS.change == 'improve-complete-span-localization'
+    assert rp.PIXEL_OWNED_SPANS.previous_budget == rp.COMPLETE_SPANS.root / 'gpu-budget.json'
+    assert rp.PIXEL_OWNED_SPANS.maximum_seconds == rp.PIXEL_OWNED_SPANS.previous_used_seconds == 0.0
+    assert rp.PIXEL_OWNED_SPANS.maximum_bytes == 2 * rp.GIB
+    assert rp.PIXEL_OWNED_SPANS.owned_bytes == 1200 * 1024 ** 2
+    assert rp.PIXEL_OWNED_SPANS.specialist_families == 1
+    assert rp.PIXEL_OWNED_SPANS.change == 'improve-pixel-owned-complete-spans'
+    assert rp.RECOVERY.previous_budget == rp.BRACKET_PAIRS.root / 'gpu-budget.json'
+    assert rp.RECOVERY.maximum_seconds == 0.0 and rp.RECOVERY.specialist_families == 1
     assert rp.by_name(rp.CANDIDATES.name) is rp.CANDIDATES
     assert rp.by_name(rp.GRAMMAR.name) is rp.GRAMMAR
 

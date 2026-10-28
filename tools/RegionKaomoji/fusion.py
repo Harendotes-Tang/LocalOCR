@@ -29,8 +29,18 @@ def configuration(config=None):
     value = copy.deepcopy(DEFAULT_CONFIG if config is None else config)
     if isinstance(value, dict):
         value = {**{key: default for key, default in OPTIONAL_CONFIG.items() if key not in value}, **value}
-    if not isinstance(value, dict) or set(value) != set(DEFAULT_CONFIG):
+    if not isinstance(value, dict) or set(value) - {'pixel_ownership', 'owned_ownership'} != set(DEFAULT_CONFIG):
         raise ValueError('Unknown or incomplete fusion configuration')
+    if 'pixel_ownership' in value:
+        from tools.RegionKaomoji import pixel_ownership
+        if value['pixel_ownership'] is None:
+            raise ValueError('Omit the optional pixel-ownership strategy instead of null')
+        value['pixel_ownership'] = pixel_ownership.configuration(value['pixel_ownership'])
+    if 'owned_ownership' in value:
+        from tools.RegionKaomoji import owned_fusion
+        if value['owned_ownership'] is None:
+            raise ValueError('Omit the optional final-owner strategy instead of null')
+        value['owned_ownership'] = owned_fusion.configuration(value['owned_ownership'])
     for key, default in DEFAULT_CONFIG.items():
         item = value[key]
         if type(item) is not type(default):
@@ -340,7 +350,8 @@ def _whole_reading_proof(parent, index, whole):
                    'method':'whole-reading-agreement'}
 
 
-def fuse_candidates(image, baseline, candidates, views, config=None, candidate_config=None, contexts=None, classifier=None):
+def fuse_candidates(image, baseline, candidates, views, config=None, candidate_config=None, contexts=None, classifier=None,
+                    *, position_trace=None):
     """Return complete region output and per-crop acceptance/retention evidence.
 
     Baseline indices refer only to actual OCR regions. A mixed parent can be
@@ -359,7 +370,9 @@ def fuse_candidates(image, baseline, candidates, views, config=None, candidate_c
         raise ValueError('Unbounded candidate/view collection')
     # Recompute localization from the original inputs. Evidence fields supplied
     # by a caller cannot manufacture a confirmed region or omit a body neighbor.
-    regenerated = c.locate_candidates(array,baseline,candidate_config,classifier=classifier)
+    regenerated = (c.locate_candidates(array,baseline,candidate_config,classifier=classifier,position_trace=position_trace)
+                   if 'position_spans' in candidate_config else
+                   c.locate_candidates(array,baseline,candidate_config,classifier=classifier))
     expected = {item['candidate_id']:item for item in regenerated['candidates']}
     if len(views)>candidate_config['maximum_candidates'] or not set(views).issubset(expected) or not set(contexts).issubset(expected):
         raise ValueError('View collection includes unknown automatic candidates')
@@ -457,6 +470,19 @@ def fuse_candidates(image, baseline, candidates, views, config=None, candidate_c
         pending.append({'identity':identity,'bbox':bbox,'accepted':reason is None,'reason':reason,'text':text,'spliced_text':spliced_text,
                         'splice':splice,'whole':whole,'mixed_index':mixed_index,'indices':indices,'claim_indices':claim_indices,
                         'evidence':evidence,'original':original,'width_source':width_source})
+    if 'pixel_ownership' in config:
+        from tools.RegionKaomoji import pixel_ownership
+        # Only already accepted insertions participate. Original regeneration,
+        # body/context/neighbor/pixel/view guards above remain authoritative.
+        accepted = [{**expected[item['identity']], 'specialist_text': item['text']} for item in pending
+                    if item['accepted'] and not item['indices'] and item['mixed_index'] is None]
+        ownership = pixel_ownership.resolve_conflicts(array, accepted, candidate_config, config['pixel_ownership'])
+        for item in pending:
+            proof = ownership['suppressed'].get(item['identity'])
+            if proof is not None:
+                item['accepted'] = False
+                item['reason'] = proof['reason']
+                item['pixel_ownership'] = proof
     # Candidates competing for one baseline region: the containing (larger) accepted candidate wins, so a
     # bracket-pair envelope that stopped short of a far arm cannot consume the region before the box that
     # covers the arm. Decisions keep the candidate order; only consumption is resolved by area.
@@ -490,6 +516,8 @@ def fuse_candidates(image, baseline, candidates, views, config=None, candidate_c
                   'splice':item['splice'],'pixel_evidence':item['evidence'],'view_scores':[_recorded_score(record) for record in views.get(identity,[])],
                   'bracket_width_source':item['width_source'] if item['accepted'] else None,
                   'score_semantics':'Uncalibrated scores are recorded; no cross-model score comparison.'})
+        if 'pixel_ownership' in item:
+            decisions[-1]['pixel_ownership'] = item['pixel_ownership']
     output=[]
     for entry in entries:
         index=entry['index']
@@ -498,5 +526,11 @@ def fuse_candidates(image, baseline, candidates, views, config=None, candidate_c
         output.append(replacements.get(index,{'bbox':entry['bbox'],'text':entry['text'],'score':entry['score'],'source':'baseline','baseline_index':index}))
     output.extend(insertions)
     output.sort(key=lambda item:(item['bbox'][1],item['bbox'][0]))
-    return {'schema_version':SCHEMA,'image_size':[width,height],'image_sha256':c.image_digest(array),'config':config,
-            'candidate_config':candidate_config,'regions':output,'decisions':decisions,'accepted_count':sum(item['accepted'] for item in decisions)}
+    result = {'schema_version':SCHEMA,'image_size':[width,height],'image_sha256':c.image_digest(array),'config':config,
+              'candidate_config':candidate_config,'regions':output,'decisions':decisions,'accepted_count':sum(item['accepted'] for item in decisions)}
+    if 'owned_ownership' in config:
+        # Cross-operation ownership is a final-parent commit, performed only
+        # after split materialization by the evaluation pipeline. A standalone
+        # fusion call must not imply that the requested commit already ran.
+        result['owned_ownership_pending'] = True
+    return result

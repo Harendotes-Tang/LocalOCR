@@ -1,0 +1,514 @@
+{
+  "schema_version": "localocr.complete-span-anonymous-summary.v1",
+  "status": "FAIL",
+  "retained_configuration": "start",
+  "both_new_tiers_rejected": true,
+  "promote": false,
+  "enabled": false,
+  "app_acceptance": "NOT_RUN",
+  "evidence_domain": "Local Edge/system-font rendered development images; not daily-use screenshots",
+  "historical_independent_reference": {
+    "crop_face_subset": {
+      "exact": 1076,
+      "count": 1200
+    },
+    "whole_card_faces": {
+      "exact": 29,
+      "count": 522
+    },
+    "different_populations": true
+  },
+  "paired_development_diagnostic": {
+    "faces": 244,
+    "fixed_margin_pixels": 4,
+    "original_rgb": true,
+    "truth_rectangles_used_for_automatic_selection": false,
+    "raw_exact": 219,
+    "edge_pad_4_exact": 193,
+    "edge_pad_6_exact": 162,
+    "existing_agreement_exact": 192,
+    "automatic_final_exact": 20,
+    "body_contaminated_rectangles": 61,
+    "clean_rectangles": 183,
+    "clean_raw_exact": 164,
+    "clean_agreement_exact": 147,
+    "truth_rectangle_agreement_correct_automatic_final_wrong": 175,
+    "diagnostic_only": true
+  },
+  "reports": {
+    "start-anchor": {
+      "faces": 244,
+      "strict_exact": 20,
+      "safe_complete": 66,
+      "stage_partition": {
+        "nohit": 6,
+        "partial-only": 77,
+        "complete-but-body/graphicunsafe": 95,
+        "safe-unrouted": 27,
+        "safe-routed-raw-wrong": 3,
+        "safe-routed-raw-correct": 36
+      },
+      "strict_exact_by_stage": {
+        "nohit": 0,
+        "partial-only": 0,
+        "complete-but-body/graphicunsafe": 2,
+        "safe-unrouted": 0,
+        "safe-routed-raw-wrong": 0,
+        "safe-routed-raw-correct": 18
+      },
+      "safe_routed_raw_correct_final_wrong": 18,
+      "raw_correct_final_wrong_reasons_nonexclusive": {
+        "raw-view-outside-agreement": 2,
+        "exact-unicode-view-disagreement": 3,
+        "context-not-unique-raw-prefix-suffix": 2,
+        "insufficient-independent-pixel-shape-support": 3,
+        "mixed-region-not-confirmed-face-fragment": 1,
+        "multiple-baseline-regions-not-one-face-expression": 1,
+        "ordinary-body-region-protected": 4,
+        "exact-views-and-independent-pixels": 1,
+        "mixed-region-ordinary-letter-number-protected": 1
+      },
+      "protection_new_errors": {
+        "baseline_correct_to_wrong": 0,
+        "erroneous_rewrites": 0,
+        "new_body_intersection_errors": 0,
+        "body_literal_deleted": 0,
+        "new_nonempty_scenes": 0,
+        "new_graphic_nonempty": 0
+      },
+      "warm_p95_seconds": 3.5020408300008055,
+      "warm_p95_ratio_to_start": 1.0,
+      "providers": [
+        "CPUExecutionProvider"
+      ],
+      "intra_op_threads": 2,
+      "inter_op_threads": 1,
+      "line_proposals": 0,
+      "line_retained": 0,
+      "line_routed": 0,
+      "line_accepted_before_parent_materialization": 0,
+      "recorded_local_ownership_candidates": 0,
+      "local_proof_routed": 0,
+      "local_proof_accepted_before_parent_materialization": 0
+    },
+    "start-new": {
+      "faces": 256,
+      "strict_exact": 16,
+      "safe_complete": 64,
+      "stage_partition": {
+        "nohit": 5,
+        "partial-only": 82,
+        "complete-but-body/graphicunsafe": 105,
+        "safe-unrouted": 29,
+        "safe-routed-raw-wrong": 3,
+        "safe-routed-raw-correct": 32
+      },
+      "strict_exact_by_stage": {
+        "nohit": 0,
+        "partial-only": 0,
+        "complete-but-body/graphicunsafe": 0,
+        "safe-unrouted": 0,
+        "safe-routed-raw-wrong": 0,
+        "safe-routed-raw-correct": 16
+      },
+      "safe_routed_raw_correct_final_wrong": 16,
+      "raw_correct_final_wrong_reasons_nonexclusive": {
+        "ordinary-body-region-protected": 3,
+        "insufficient-independent-pixel-shape-support": 7,
+        "exact-unicode-view-disagreement": 3,
+        "mixed-region-not-confirmed-face-fragment": 2,
+        "context-not-unique-raw-prefix-suffix": 1
+      },
+      "protection_new_errors": {
+        "baseline_correct_to_wrong": 0,
+        "erroneous_rewrites": 0,
+        "new_body_intersection_errors": 0,
+        "body_literal_deleted": 0,
+        "new_nonempty_scenes": 0,
+        "new_graphic_nonempty": 0
+      },
+      "warm_p95_seconds": 3.641423634998864,
+      "warm_p95_ratio_to_start": 1.0,
+      "providers": [
+        "CPUExecutionProvider"
+      ],
+      "intra_op_threads": 2,
+      "inter_op_threads": 1,
+      "line_proposals": 0,
+      "line_retained": 0,
+      "line_routed": 0,
+      "line_accepted_before_parent_materialization": 0,
+      "recorded_local_ownership_candidates": 0,
+      "local_proof_routed": 0,
+      "local_proof_accepted_before_parent_materialization": 0
+    },
+    "line-anchor": {
+      "faces": 244,
+      "strict_exact": 21,
+      "safe_complete": 77,
+      "stage_partition": {
+        "nohit": 12,
+        "partial-only": 68,
+        "complete-but-body/graphicunsafe": 87,
+        "safe-unrouted": 32,
+        "safe-routed-raw-wrong": 4,
+        "safe-routed-raw-correct": 41
+      },
+      "strict_exact_by_stage": {
+        "nohit": 0,
+        "partial-only": 0,
+        "complete-but-body/graphicunsafe": 1,
+        "safe-unrouted": 1,
+        "safe-routed-raw-wrong": 0,
+        "safe-routed-raw-correct": 19
+      },
+      "safe_routed_raw_correct_final_wrong": 22,
+      "raw_correct_final_wrong_reasons_nonexclusive": {
+        "raw-view-outside-agreement": 2,
+        "exact-unicode-view-disagreement": 4,
+        "mixed-region-not-confirmed-face-fragment": 2,
+        "context-not-unique-raw-prefix-suffix": 2,
+        "insufficient-independent-pixel-shape-support": 4,
+        "multiple-baseline-regions-not-one-face-expression": 1,
+        "ordinary-body-region-protected": 4,
+        "exact-views-and-independent-pixels": 2,
+        "mixed-region-ordinary-letter-number-protected": 1
+      },
+      "protection_new_errors": {
+        "baseline_correct_to_wrong": 0,
+        "erroneous_rewrites": 0,
+        "new_body_intersection_errors": 0,
+        "body_literal_deleted": 0,
+        "new_nonempty_scenes": 0,
+        "new_graphic_nonempty": 0
+      },
+      "warm_p95_seconds": 3.9350905900013458,
+      "warm_p95_ratio_to_start": 1.1236563995173183,
+      "providers": [
+        "CPUExecutionProvider"
+      ],
+      "intra_op_threads": 2,
+      "inter_op_threads": 1,
+      "line_proposals": 893,
+      "line_retained": 446,
+      "line_routed": 51,
+      "line_accepted_before_parent_materialization": 5,
+      "recorded_local_ownership_candidates": 0,
+      "local_proof_routed": 0,
+      "local_proof_accepted_before_parent_materialization": 0
+    },
+    "line-new": {
+      "faces": 256,
+      "strict_exact": 16,
+      "safe_complete": 75,
+      "stage_partition": {
+        "nohit": 11,
+        "partial-only": 69,
+        "complete-but-body/graphicunsafe": 101,
+        "safe-unrouted": 34,
+        "safe-routed-raw-wrong": 6,
+        "safe-routed-raw-correct": 35
+      },
+      "strict_exact_by_stage": {
+        "nohit": 0,
+        "partial-only": 0,
+        "complete-but-body/graphicunsafe": 0,
+        "safe-unrouted": 0,
+        "safe-routed-raw-wrong": 0,
+        "safe-routed-raw-correct": 16
+      },
+      "safe_routed_raw_correct_final_wrong": 19,
+      "raw_correct_final_wrong_reasons_nonexclusive": {
+        "ordinary-body-region-protected": 3,
+        "insufficient-independent-pixel-shape-support": 9,
+        "exact-unicode-view-disagreement": 3,
+        "mixed-region-not-confirmed-face-fragment": 2,
+        "context-not-unique-raw-prefix-suffix": 1,
+        "raw-view-outside-agreement": 1
+      },
+      "protection_new_errors": {
+        "baseline_correct_to_wrong": 0,
+        "erroneous_rewrites": 0,
+        "new_body_intersection_errors": 0,
+        "body_literal_deleted": 0,
+        "new_nonempty_scenes": 0,
+        "new_graphic_nonempty": 0
+      },
+      "warm_p95_seconds": 3.8203931449990702,
+      "warm_p95_ratio_to_start": 1.0491482255127018,
+      "providers": [
+        "CPUExecutionProvider"
+      ],
+      "intra_op_threads": 2,
+      "inter_op_threads": 1,
+      "line_proposals": 773,
+      "line_retained": 376,
+      "line_routed": 35,
+      "line_accepted_before_parent_materialization": 1,
+      "recorded_local_ownership_candidates": 0,
+      "local_proof_routed": 0,
+      "local_proof_accepted_before_parent_materialization": 0
+    },
+    "ownership-start-anchor": {
+      "faces": 244,
+      "strict_exact": 21,
+      "safe_complete": 66,
+      "stage_partition": {
+        "nohit": 6,
+        "partial-only": 77,
+        "complete-but-body/graphicunsafe": 95,
+        "safe-unrouted": 19,
+        "safe-routed-raw-wrong": 5,
+        "safe-routed-raw-correct": 42
+      },
+      "strict_exact_by_stage": {
+        "nohit": 0,
+        "partial-only": 0,
+        "complete-but-body/graphicunsafe": 2,
+        "safe-unrouted": 0,
+        "safe-routed-raw-wrong": 0,
+        "safe-routed-raw-correct": 19
+      },
+      "safe_routed_raw_correct_final_wrong": 23,
+      "raw_correct_final_wrong_reasons_nonexclusive": {
+        "raw-view-outside-agreement": 2,
+        "exact-unicode-view-disagreement": 4,
+        "insufficient-independent-pixel-shape-support": 4,
+        "context-not-unique-raw-prefix-suffix": 2,
+        "mixed-region-not-confirmed-face-fragment": 3,
+        "baseline-region-already-consumed": 1,
+        "multiple-baseline-regions-not-one-face-expression": 1,
+        "ordinary-body-region-protected": 4,
+        "exact-views-and-independent-pixels": 1,
+        "mixed-region-ordinary-letter-number-protected": 1
+      },
+      "protection_new_errors": {
+        "baseline_correct_to_wrong": 0,
+        "erroneous_rewrites": 0,
+        "new_body_intersection_errors": 0,
+        "body_literal_deleted": 0,
+        "new_nonempty_scenes": 0,
+        "new_graphic_nonempty": 0
+      },
+      "warm_p95_seconds": 4.16482825500243,
+      "warm_p95_ratio_to_start": 1.189257480759147,
+      "providers": [
+        "CPUExecutionProvider"
+      ],
+      "intra_op_threads": 2,
+      "inter_op_threads": 1,
+      "line_proposals": 0,
+      "line_retained": 0,
+      "line_routed": 0,
+      "line_accepted_before_parent_materialization": 0,
+      "recorded_local_ownership_candidates": 61,
+      "local_proof_routed": 29,
+      "local_proof_accepted_before_parent_materialization": 2
+    },
+    "ownership-start-new": {
+      "faces": 256,
+      "strict_exact": 16,
+      "safe_complete": 64,
+      "stage_partition": {
+        "nohit": 5,
+        "partial-only": 82,
+        "complete-but-body/graphicunsafe": 105,
+        "safe-unrouted": 24,
+        "safe-routed-raw-wrong": 4,
+        "safe-routed-raw-correct": 36
+      },
+      "strict_exact_by_stage": {
+        "nohit": 0,
+        "partial-only": 0,
+        "complete-but-body/graphicunsafe": 0,
+        "safe-unrouted": 0,
+        "safe-routed-raw-wrong": 0,
+        "safe-routed-raw-correct": 16
+      },
+      "safe_routed_raw_correct_final_wrong": 20,
+      "raw_correct_final_wrong_reasons_nonexclusive": {
+        "ordinary-body-region-protected": 3,
+        "insufficient-independent-pixel-shape-support": 8,
+        "exact-unicode-view-disagreement": 4,
+        "mixed-region-not-confirmed-face-fragment": 3,
+        "mixed-region-ordinary-letter-number-protected": 1,
+        "context-not-unique-raw-prefix-suffix": 1
+      },
+      "protection_new_errors": {
+        "baseline_correct_to_wrong": 0,
+        "erroneous_rewrites": 0,
+        "new_body_intersection_errors": 0,
+        "body_literal_deleted": 0,
+        "new_nonempty_scenes": 0,
+        "new_graphic_nonempty": 0
+      },
+      "warm_p95_seconds": 4.1029943099994854,
+      "warm_p95_ratio_to_start": 1.1267555553175195,
+      "providers": [
+        "CPUExecutionProvider"
+      ],
+      "intra_op_threads": 2,
+      "inter_op_threads": 1,
+      "line_proposals": 0,
+      "line_retained": 0,
+      "line_routed": 0,
+      "line_accepted_before_parent_materialization": 0,
+      "recorded_local_ownership_candidates": 36,
+      "local_proof_routed": 12,
+      "local_proof_accepted_before_parent_materialization": 0
+    }
+  },
+  "comparisons": {
+    "start-to-line-anchor": {
+      "safe_complete": {
+        "gained": 12,
+        "lost": 1,
+        "unchanged_true": 65,
+        "unchanged_false": 166
+      },
+      "final_exact": {
+        "gained": 2,
+        "lost": 1,
+        "unchanged_true": 19,
+        "unchanged_false": 222
+      },
+      "category_transitions": {
+        "safe-routed-raw-correct -> safe-routed-raw-correct": 36,
+        "safe-unrouted -> safe-unrouted": 25,
+        "complete-but-body/graphicunsafe -> complete-but-body/graphicunsafe": 86,
+        "partial-only -> partial-only": 67,
+        "safe-routed-raw-wrong -> safe-routed-raw-wrong": 3,
+        "complete-but-body/graphicunsafe -> safe-unrouted": 4,
+        "complete-but-body/graphicunsafe -> safe-routed-raw-correct": 2,
+        "partial-only -> nohit": 3,
+        "nohit -> nohit": 6,
+        "partial-only -> safe-unrouted": 3,
+        "partial-only -> safe-routed-raw-correct": 2,
+        "safe-unrouted -> safe-routed-raw-correct": 1,
+        "safe-unrouted -> nohit": 1,
+        "complete-but-body/graphicunsafe -> nohit": 2,
+        "partial-only -> complete-but-body/graphicunsafe": 1,
+        "partial-only -> safe-routed-raw-wrong": 1,
+        "complete-but-body/graphicunsafe -> partial-only": 1
+      }
+    },
+    "start-to-ownership-start-anchor": {
+      "safe_complete": {
+        "gained": 0,
+        "lost": 0,
+        "unchanged_true": 66,
+        "unchanged_false": 178
+      },
+      "final_exact": {
+        "gained": 1,
+        "lost": 0,
+        "unchanged_true": 20,
+        "unchanged_false": 223
+      },
+      "category_transitions": {
+        "safe-routed-raw-correct -> safe-routed-raw-correct": 36,
+        "safe-unrouted -> safe-unrouted": 19,
+        "complete-but-body/graphicunsafe -> complete-but-body/graphicunsafe": 95,
+        "partial-only -> partial-only": 77,
+        "safe-routed-raw-wrong -> safe-routed-raw-wrong": 3,
+        "safe-unrouted -> safe-routed-raw-correct": 6,
+        "nohit -> nohit": 6,
+        "safe-unrouted -> safe-routed-raw-wrong": 2
+      }
+    },
+    "start-to-line-new": {
+      "safe_complete": {
+        "gained": 13,
+        "lost": 2,
+        "unchanged_true": 62,
+        "unchanged_false": 179
+      },
+      "final_exact": {
+        "gained": 0,
+        "lost": 0,
+        "unchanged_true": 16,
+        "unchanged_false": 240
+      },
+      "category_transitions": {
+        "complete-but-body/graphicunsafe -> complete-but-body/graphicunsafe": 97,
+        "partial-only -> partial-only": 69,
+        "safe-routed-raw-correct -> safe-routed-raw-correct": 32,
+        "partial-only -> safe-routed-raw-correct": 2,
+        "partial-only -> complete-but-body/graphicunsafe": 4,
+        "safe-unrouted -> safe-unrouted": 26,
+        "nohit -> nohit": 5,
+        "partial-only -> safe-unrouted": 4,
+        "partial-only -> safe-routed-raw-wrong": 1,
+        "partial-only -> nohit": 2,
+        "safe-unrouted -> nohit": 2,
+        "complete-but-body/graphicunsafe -> nohit": 2,
+        "safe-routed-raw-wrong -> safe-routed-raw-wrong": 3,
+        "complete-but-body/graphicunsafe -> safe-unrouted": 4,
+        "safe-unrouted -> safe-routed-raw-wrong": 1,
+        "complete-but-body/graphicunsafe -> safe-routed-raw-wrong": 1,
+        "complete-but-body/graphicunsafe -> safe-routed-raw-correct": 1
+      }
+    },
+    "start-to-ownership-start-new": {
+      "safe_complete": {
+        "gained": 0,
+        "lost": 0,
+        "unchanged_true": 64,
+        "unchanged_false": 192
+      },
+      "final_exact": {
+        "gained": 0,
+        "lost": 0,
+        "unchanged_true": 16,
+        "unchanged_false": 240
+      },
+      "category_transitions": {
+        "complete-but-body/graphicunsafe -> complete-but-body/graphicunsafe": 105,
+        "partial-only -> partial-only": 82,
+        "safe-routed-raw-correct -> safe-routed-raw-correct": 32,
+        "safe-unrouted -> safe-unrouted": 24,
+        "nohit -> nohit": 5,
+        "safe-routed-raw-wrong -> safe-routed-raw-wrong": 3,
+        "safe-unrouted -> safe-routed-raw-wrong": 1,
+        "safe-unrouted -> safe-routed-raw-correct": 4
+      }
+    }
+  },
+  "line_regression_cause": "Additional overlapping pixel-only short candidate and unchanged complete candidate were both inserted; baseline-index consumption does not exclude parentless pixel insertions.",
+  "joint_configuration": "NOT_RUN; effect unknown",
+  "latency_attribution": {
+    "baseline_objects_identical_per_population": {
+      "anchor": 60,
+      "new": 60
+    },
+    "baseline_stage_mean_anchor_start_seconds": 1.9221606149999084,
+    "baseline_stage_mean_anchor_ownership_seconds": 2.3557000149999414,
+    "observation": "Baseline stage drift confounds attribution; fixed measured gate still failed, no retrospective timing selection."
+  },
+  "strict_development_passed": false,
+  "conditional_not_run": [
+    "fixed_regressions",
+    "current_source_four_model_crop_dev",
+    "paired_freeze",
+    "new_card_heldout",
+    "new_crop_heldout"
+  ],
+  "new_heldout_claims": 0,
+  "new_heldouts_sealed": true,
+  "gpu_seconds": 0,
+  "training": false,
+  "validation": {
+    "full_suite_passed": 1383,
+    "full_suite_skipped": 10,
+    "subtests_passed": 28,
+    "additional_integration_passed": 8,
+    "legacy_replay_reports": 25,
+    "legacy_replay_scenes": 1970,
+    "legacy_replay_mismatches": 0
+  },
+  "next_round_recommendations": [
+    "Mutual pixel ownership for parentless insertions with complete-arm preservation and adjacent-expression controls.",
+    "Bounded local component windows and original-pixel shape evidence, retaining all protections and shared budgets.",
+    "Predeclare joint configuration and interleaved repeated timing with one fixed aggregate; preserve all quality floors."
+  ]
+}

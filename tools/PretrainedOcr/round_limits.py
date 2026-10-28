@@ -106,7 +106,12 @@ class RoundLimits:
                     if deadline is not None and deadline.remaining() <= minimum_remaining:
                         raise TimeoutError('Resource inventory reached native cleanup deadline')
                     path = Path(directory) / name
-                    info = path.lstat()
+                    try:
+                        info = path.lstat()
+                    except FileNotFoundError:
+                        # Browser scratch can disappear after directory enumeration.
+                        # Deleted entries consume no current bytes; other errors still fail closed.
+                        continue
                     if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
                         raise ValueError('Research resource path contains a reparse point')
                     if stat.S_ISREG(info.st_mode):
@@ -139,7 +144,7 @@ class BoundGPUBudget(GPUBudget):
 
     @contextlib.contextmanager
     def run(self, label, limit_seconds=2700):
-        """Close only after the tracked native process has actually exited.
+        """Close only after the native root and its owned cleanup are confirmed.
 
         A failed termination keeps the original active interval and exclusive
         lock. Its entire elapsed time must be charged by an explicit subsequent
@@ -175,7 +180,9 @@ class BoundGPUBudget(GPUBudget):
                 status = 'failed'
                 raise
             finally:
-                if self.native_process is not None and self.native_process.poll() is None:
+                if self.native_process is not None and (
+                        self.native_process.poll() is None
+                        or not getattr(self.native_process, '_round_cleanup_confirmed', False)):
                     state['active'] = {**active, 'native_pid': self.native_process.pid,
                                        'cleanup_confirmed': False, 'audit_required': True}
                     write(self.path, state)
@@ -241,13 +248,21 @@ class BoundGPUBudget(GPUBudget):
 
 
 def _stop_owned(process):
-    if process.poll() is not None:
+    """Confirm confined Windows descendants and root within one 15-second bound."""
+    if getattr(process, '_round_cleanup_confirmed', False) and process.poll() is not None:
         return
+    deadline = time.monotonic()+15
+    process._round_cleanup_confirmed = False
+    job = getattr(process, '_round_owned_job', None)
     if os.name == 'nt':
-        subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'], capture_output=True, timeout=15)
+        if job is None:
+            raise RuntimeError('Windows native cleanup has no proved confined job')
+        job.stop(process, deadline)
     else:
-        process.kill()
-    process.wait(timeout=15)
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=max(0., deadline-time.monotonic()))
+    process._round_cleanup_confirmed = True
 
 
 def supervise(limits, label, seconds, command, log, *, reserve_bytes=0, child_budget=None, cleanup_seconds=15):
@@ -285,10 +300,24 @@ def supervise(limits, label, seconds, command, log, *, reserve_bytes=0, child_bu
             with log.open('xb', buffering=0) as stream:
                 env = os.environ.copy()
                 env.update(PYTHONUTF8='1', PYTHONUNBUFFERED='1', PYTHONDONTWRITEBYTECODE='1')
-                process = subprocess.Popen(command, stdout=stream, stderr=subprocess.STDOUT, env=env)
+                job = None
+                if os.name == 'nt':
+                    from ._owned_job import CREATE_SUSPENDED, NativeJob
+                    job = NativeJob()
+                try:
+                    process = subprocess.Popen(command, stdout=stream, stderr=subprocess.STDOUT, env=env,
+                                               creationflags=CREATE_SUSPENDED if job is not None else 0)
+                except BaseException:
+                    if job is not None:
+                        job.close()
+                    raise
+                process._round_owned_job = job
+                process._round_cleanup_confirmed = False
                 budget.native_process = process
                 try:
                     budget.attach_native(process, child_budget)
+                    if job is not None:
+                        job.attach_and_resume(process)
                     print(json.dumps({'event': 'native-start', 'pid': process.pid, 'label': label,
                                       'lease_limit_seconds': deadline.limit}), flush=True)
                     next_audit = time.monotonic()

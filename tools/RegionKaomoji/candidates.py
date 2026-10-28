@@ -43,7 +43,9 @@ OPTIONAL_CONFIG = {'background_window': 51, 'exterior_bridge_ratio': 0.45, 'shap
 # (``family_match``) and, when pairs share a stroke, the pair with the nearest partner (``innermost_partner``).
 # ``dense_guard``: only a dense base component no wider than ``maximum_width_ratio`` times its own height (one
 # glyph) vetoes core-mask bracket strokes inside it; a halo-glued multi-glyph blob no longer does.
-STRUCTURED_OPTIONAL = ('small_text_shape', 'low_mark_guard', 'pair_selection', 'dense_guard')
+STRUCTURED_OPTIONAL = ('small_text_shape', 'low_mark_guard', 'pair_selection', 'dense_guard',
+                       'bracket_profile', 'pair_recrop', 'line_spans', 'local_ownership', 'local_windows',
+                       'position_spans')
 # Projection of the atom table: every declared bracket pair mirrors glyphs of one shape family.
 PAIR_FAMILY = {'curve': 'curve', 'small-curve': 'curve', 'right-angle': 'square'}
 # Strokes found on the upsampled small-text path map back with up to one pixel of rounding per edge.
@@ -224,6 +226,21 @@ def configuration(config=None):
 def _structured_options(value):
     if any(key in value and value[key] is None for key in STRUCTURED_OPTIONAL):
         raise ValueError('Omit an unused structured candidate key instead of setting it to null')
+    if 'position_spans' in value:
+        from tools.RegionKaomoji import position_spans
+        position_spans.configuration(value['position_spans'])
+        if 'line_spans' in value or 'local_windows' in value:
+            raise ValueError('Position spans replace other optional span proposers')
+    if 'line_spans' in value:
+        from tools.RegionKaomoji import line_spans
+        line_spans.configuration(value['line_spans'])
+    if 'local_windows' in value:
+        from tools.RegionKaomoji import local_windows
+        local_windows.configuration(value['local_windows'])
+        if 'line_spans' in value:
+            raise ValueError('Use either complete line spans or local windows, not both')
+    if 'local_ownership' in value and value['local_ownership'] != {'strategy': 'pixel-partition-v1'}:
+        raise ValueError('Unsupported local ownership strategy')
     small = value.get('small_text_shape')
     if small is not None and (not isinstance(small, dict) or set(small) != {'below_height', 'upsample'}
                               or any(isinstance(small[k], bool) or not isinstance(small[k], int) for k in small)
@@ -242,6 +259,18 @@ def _structured_options(value):
                               or not isinstance(dense['maximum_width_ratio'], float)
                               or not 1.0 <= dense['maximum_width_ratio'] <= 3.0):
         raise ValueError('dense_guard needs a float maximum_width_ratio between 1.0 and 3.0')
+    if 'bracket_profile' in value and value['bracket_profile'] != 'row-contiguous-v1':
+        raise ValueError('Unsupported bracket profile')
+    if 'bracket_profile' in value and not (selection or {}).get('family_match'):
+        raise ValueError('The row-contiguous profile requires all-size family matching')
+    recrop = value.get('pair_recrop')
+    if recrop is not None and (not isinstance(recrop, dict)
+                              or set(recrop) != {'maximum_gap_height', 'maximum_exterior_cells'}
+                              or type(recrop['maximum_gap_height']) is not float
+                              or not .3 <= recrop['maximum_gap_height'] <= .58
+                              or type(recrop['maximum_exterior_cells']) is not int
+                              or not 0 <= recrop['maximum_exterior_cells'] <= 2):
+        raise ValueError('pair_recrop requires gap ratio .3..58 and at most two exterior cells')
 
 
 def _dense_ratio(config):
@@ -266,7 +295,9 @@ def _select_pairs(pairs, options, stage):
     if stage == 'family':
         if not options['family_match']:
             return pairs
-        return [pair for pair in pairs if PAIR_FAMILY[pair['left_shape']['kind']] == PAIR_FAMILY[pair['right_shape']['kind']]]
+        # The new profile may identify braces; the historical mapping and legacy output remain unchanged.
+        families = {**PAIR_FAMILY, 'brace': 'brace'}
+        return [pair for pair in pairs if families[pair['left_shape']['kind']] == families[pair['right_shape']['kind']]]
     if stage != 'innermost':
         raise ValueError('Unknown pair selection stage')
     if not options['innermost_partner']:
@@ -367,7 +398,7 @@ def _small_shapes(contrast, box, config):
     def back(b, x0=0, y0=0):
         return [x0 + b[0] // k, y0 + b[1] // k, x0 + -(-b[2] // k), y0 + -(-b[3] // k)]
     pairs = [{**pair, 'left_bbox': back(pair['left_bbox'], left, top), 'right_bbox': back(pair['right_bbox'], left, top), 'upsample': k}
-             for pair in _bracket_shapes(core, (0, 0))]
+             for pair in _bracket_shapes(core, (0, 0), config.get('bracket_profile'))]
     components = [{**item, 'bbox': back(item['bbox'])} for item in _components(core, config['minimum_component_area'] * k * k)]
     return pairs, components
 
@@ -601,7 +632,7 @@ def _small_curve_profile(profile, h):
     return None
 
 
-def _bracket_shapes(mask, origin):
+def _bracket_shapes(mask, origin, profile_mode=None):
     """Find and audit separate curved, small-curve and right-angle pixel pairs."""
     components = _components(mask, 2)
     if not components:
@@ -624,12 +655,16 @@ def _bracket_shapes(mask, origin):
         edge = float(np.mean(np.concatenate((profile[:edge_count], profile[-edge_count:]))))
         middle = float(np.mean(profile[len(profile)//3:max(len(profile)//3+1, 2*len(profile)//3)]))
         curvature = middle-edge
-        observed = _right_angle_profile(local)
-        if observed is None and abs(curvature) >= (.65 if h < 12 else 1.0):
+        if profile_mode is not None:
+            from .bracket_profiles import classify
+            observed = classify(local)
+        else:
+            observed = _right_angle_profile(local)
+        if profile_mode is None and observed is None and abs(curvature) >= (.65 if h < 12 else 1.0):
             observed = {'kind': 'curve', 'direction': 'left' if curvature < 0 else 'right',
                         'measurements': {'average_curvature': curvature,
                                          'required_absolute_curvature': .65 if h < 12 else 1.0}}
-        if observed is None:
+        if profile_mode is None and observed is None:
             observed = _small_curve_profile(profile, h)
         if observed is None:
             continue
@@ -752,7 +787,7 @@ def _bracket_groups(mask, components, config, guard_body_cells=False, contrast=N
             if contrast is not None and _small_unit(config,unit_height):
                 found=_small_shapes(contrast,unit['bbox'],config)[0]
             else:
-                found=_bracket_shapes(mask[top:bottom,left:right],(left,top))
+                found=_bracket_shapes(mask[top:bottom,left:right],(left,top),config.get('bracket_profile'))
             found=_select_pairs(found,selection,'family')
             if guard_body_cells or (contrast is not None and _small_unit(config,unit_height)):
                 found=_outside_body_components(found,line_components,height,maximum_width_ratio=dense_ratio)
@@ -826,22 +861,24 @@ def _crop_evidence(array, bbox, config, mask, core, contrast=None):
         if pairs:
             pairs = _outside_body_components(pairs, components, ink_height, (left, top), dense_ratio)
         pairs = _select_pairs(pairs, selection, 'innermost')
-        base_pairs = family_innermost(_bracket_shapes(local, (left, top)))
+        base_pairs = family_innermost(_bracket_shapes(local, (left, top), config.get('bracket_profile')))
     elif core is mask:
         shape_local, shape_components = local, components
-        pairs = family_innermost(_bracket_shapes(local, (left, top)))
+        pairs = family_innermost(_bracket_shapes(local, (left, top), config.get('bracket_profile')))
         base_pairs = pairs
     else:
         shape_local = core[top:bottom, left:right]
         shape_components = _components(shape_local, config['minimum_component_area'])
-        pairs = _select_pairs(_bracket_shapes(shape_local, (left, top)), selection, 'family')
+        pairs = _select_pairs(_bracket_shapes(shape_local, (left, top), config.get('bracket_profile')), selection, 'family')
         if pairs and components:
             ink_height = max(item['bbox'][3] for item in components) - min(item['bbox'][1] for item in components)
             pairs = _outside_body_components(pairs, components, ink_height, (left, top), dense_ratio)
         pairs = _select_pairs(pairs, selection, 'innermost')
-        base_pairs = family_innermost(_bracket_shapes(local, (left, top)))
+        base_pairs = family_innermost(_bracket_shapes(local, (left, top), config.get('bracket_profile')))
     shape_counts = {kind: sum(kind in pair['shape_kinds'] for pair in pairs)
                     for kind in ('curve', 'small-curve', 'right-angle')}
+    if config.get('bracket_profile') is not None:
+        shape_counts['brace'] = sum('brace' in pair['shape_kinds'] for pair in pairs)
     evidence = {'pixel_count': int(local.sum()), 'component_count': len(components),
                 'edge_ink': edge_ink, 'paired_bracket_shapes': pairs, 'bracket_shape_counts': shape_counts,
                 'pixel_support': bool(len(occupied) >= 6 and len(components) >= 3),
@@ -1004,6 +1041,9 @@ def _merge_proposals(proposed, config):
         same = None
         for existing in merged:
             old = existing['ink_bbox']; overlap = intersection(box, old)
+            if config.get('pair_recrop') is not None and pair is not None and existing.get('pair') is not None:
+                if not all(_same_stroke(a, b) for a, b in zip(pair['strokes'], existing['pair']['strokes'])):
+                    continue
             # Containment merges only a pixel chunk with its pair. A first-pass box that is much larger than the
             # pair stays a separate candidate (as before): the pair may stop short of a far arm the box covers.
             contained = ((pair is not None and 'image-components' in existing['sources'] and overlap >= .9 * area(box))
@@ -1021,13 +1061,17 @@ def _merge_proposals(proposed, config):
             # A pixel chunk meets its pair: keep the chunk unless it holds body beside the pair. A first-pass
             # box never widens a candidate: pixel envelopes stay authoritative over OCR padding.
             same['pair'] = pair
-            same['ink_bbox'] = union if pixel_container and not _body_beside_pair(old, box, pair['cells'], pair['scale']) else list(box)
-            if config.get('low_mark_guard') is not None:
+            same['ink_bbox'] = (list(box) if config.get('pair_recrop') is not None else
+                               union if pixel_container and not _body_beside_pair(old, box, pair['cells'], pair['scale']) else list(box))
+            if 'recrop' in proposal:
+                same['recrop'] = proposal['recrop']
+            if config.get('low_mark_guard') is not None and config.get('pair_recrop') is None:
                 same['ink_bbox'] = _trim_low_marks(same['ink_bbox'], pair, config['low_mark_guard'])
         elif pair is None and same.get('pair') is not None and 'image-components' in proposal['sources']:
             anchor = same['pair']
-            same['ink_bbox'] = same['ink_bbox'] if _body_beside_pair(box, anchor['box'], anchor['cells'], anchor['scale']) else union
-            if config.get('low_mark_guard') is not None:
+            same['ink_bbox'] = (same['ink_bbox'] if config.get('pair_recrop') is not None else
+                               same['ink_bbox'] if _body_beside_pair(box, anchor['box'], anchor['cells'], anchor['scale']) else union)
+            if config.get('low_mark_guard') is not None and config.get('pair_recrop') is None:
                 same['ink_bbox'] = _trim_low_marks(same['ink_bbox'], anchor, config['low_mark_guard'])
         elif pair is None and 'first-pass-symbol-geometry' in proposal['sources']:
             pass  # OCR geometry only adds its source; the pixel envelope is unchanged.
@@ -1036,7 +1080,183 @@ def _merge_proposals(proposed, config):
     return merged
 
 
-def locate_candidates(image, baseline, config=None, classifier=None):
+def _crosses_component_boundary(mask, box):
+    """Whether an 8-connected ink edge crosses this half-open envelope.
+
+    Checking boundary adjacency avoids another full-canvas label image and covers
+    components on other physical lines as well as components used by discovery.
+    """
+    left, top, right, bottom = box
+    height, width = mask.shape
+    for inner, outer in ((left, left - 1), (right - 1, right)):
+        if not 0 <= outer < width:
+            continue
+        rows = np.flatnonzero(mask[top:bottom, inner]) + top
+        for delta in (-1, 0, 1):
+            adjacent = rows + delta
+            adjacent = adjacent[(adjacent >= 0) & (adjacent < height)]
+            if np.any(mask[adjacent, outer]):
+                return True
+    for inner, outer in ((top, top - 1), (bottom - 1, bottom)):
+        if not 0 <= outer < height:
+            continue
+        columns = np.flatnonzero(mask[inner, left:right]) + left
+        for delta in (-1, 0, 1):
+            adjacent = columns + delta
+            adjacent = adjacent[(adjacent >= 0) & (adjacent < width)]
+            if np.any(mask[outer, adjacent]):
+                return True
+    return False
+
+
+def _recrop_proposals(proposals, config, mask):
+    """Replace each anchored proposal with one complete-component envelope.
+
+    This measures only original line cells retained by discovery. The cap on exterior
+    cells prevents a sparse run from chaining across a line; another bracket anchor
+    or dense/tall cell is a barrier. No pixel, OCR text or fusion guard is changed.
+    Ownership and crop evidence are computed by the caller after this replacement.
+    """
+    option = config.get('pair_recrop')
+    if option is None:
+        return proposals
+    result, anchors, envelopes = [], set(), {}
+    for proposal in proposals:
+        pair = proposal.get('pair')
+        if pair is None:
+            item = dict(proposal)
+        else:
+            strokes = pair['strokes']
+            anchor = tuple(tuple(b) for b in strokes)
+            if anchor in anchors:
+                continue
+            anchors.add(anchor)
+            cells, scale = pair['cells'], pair['scale']
+            guard = config.get('low_mark_guard')
+            bracket = (_bracket_extent([p for cell in cells for p in cell['components']], strokes)
+                       if guard is not None else None)
+            left = min(b[0] for b in strokes)
+            right = max(b[2] for b in strokes)
+            inside = [i for i, cell in enumerate(cells) if cell['bbox'][0] < right and cell['bbox'][2] > left]
+            box = list(proposal['ink_bbox'])
+            if inside:
+                low, high = min(inside), max(inside)
+                other_strokes = [b for p in proposals if p.get('pair') is not None
+                                 and tuple(tuple(b) for b in p['pair']['strokes']) != anchor
+                                 for b in p['pair']['strokes']]
+                for step in (-1, 1):
+                    for _ in range(option['maximum_exterior_cells']):
+                        index = (low if step < 0 else high) + step
+                        if not 0 <= index < len(cells):
+                            break
+                        cell = cells[index]
+                        cb = cell['bbox']
+                        edge = cells[low]['bbox'][0] if step < 0 else cells[high]['bbox'][2]
+                        gap = edge - cb[2] if step < 0 else cb[0] - edge
+                        if (gap > scale * option['maximum_gap_height'] or cb[3] - cb[1] > scale * 1.25
+                                or _body_like(cell, scale) or any(intersection(cb, b) for b in other_strokes)
+                                or (guard is not None and _low_mark(cb, bracket, guard))):
+                            break
+                        if step < 0:
+                            low = index
+                        else:
+                            high = index
+                selected = [component for cell in cells[low:high + 1] for component in cell['components']]
+                if guard is not None:
+                    selected = _strip_low_marks(selected, strokes, guard)[0]
+                proposed_box = [min(p['bbox'][0] for p in selected), min(p['bbox'][1] for p in selected),
+                                max(p['bbox'][2] for p in selected), max(p['bbox'][3] for p in selected)]
+                if (proposed_box[2] - proposed_box[0] <= config['maximum_width']
+                        and area(proposed_box) <= config['maximum_crop_pixels']
+                        and not _crosses_component_boundary(mask, proposed_box)):
+                    box = proposed_box
+            item = {**proposal, 'ink_bbox': box,
+                    'recrop': {'original_ink_bbox': list(proposal['ink_bbox']), 'final_ink_bbox': box,
+                               'changed': box != proposal['ink_bbox'], 'anchor_strokes': strokes}}
+        key = tuple(item['ink_bbox'])
+        if key in envelopes:
+            existing = envelopes[key]
+            existing['sources'] = sorted(set(existing['sources'] + item['sources']))
+            if item.get('pair') is not None:
+                existing.update({k: v for k, v in item.items() if k != 'sources'})
+        else:
+            envelopes[key] = item
+            result.append(item)
+    return result
+
+
+def _local_partition(mask, box, owned, neighbors, entries, config):
+    """Additional geometry proof; it never supplies text or bypasses fusion guards."""
+    if 'local_ownership' not in config:
+        return None
+    from tools.RegionKaomoji import local_ownership
+    return local_ownership.prove_local_partition(
+        mask, box, entries, [entry['index'] for entry in owned],
+        [entry['index'] for entry in neighbors], padding=config['padding'],
+        minimum_blank_band=config['minimum_context_blank_band'])
+
+
+def _span_record(array, proposal, entries, config, mask, core, contrast, classifier, identity,
+                 evidence_key='line_span'):
+    """Materialize one bounded geometric hypothesis through existing pixel/route checks."""
+    height, width = mask.shape
+    left, top, right, bottom = proposal['ink_bbox']
+    limits = proposal[evidence_key]['crop_limits']
+    pad = config['padding']
+    box = [max(0, limits[0], left-pad), max(0, limits[1], top-pad),
+           min(width, limits[2], right+pad), min(height, limits[3], bottom+pad)]
+    if (not box[0] <= left < right <= box[2] or not box[1] <= top < bottom <= box[3]
+            or area(box) > config['maximum_crop_pixels']):
+        return None
+    owned, neighbors, baseline_pixels = [], [], []
+    for entry in entries:
+        overlap = intersection(box, entry['bbox'])
+        if not overlap:
+            continue
+        ox, oy, oright, obottom = entry['bbox']
+        visible = int(mask[oy:obottom, ox:oright].sum())
+        captured = int(mask[max(box[1], oy):min(box[3], obottom),
+                            max(box[0], ox):min(box[2], oright)].sum())
+        coverage = overlap/area(entry['bbox'])
+        ink = captured/visible if visible else 0.
+        baseline_pixels.append({'index': entry['index'], 'visible_pixels': visible,
+                                'captured_pixels': captured, 'ink_coverage': ink, 'box_coverage': coverage})
+        if coverage >= config['baseline_coverage'] or (visible >= 6 and ink >= config['baseline_ink_coverage']):
+            owned.append(entry)
+        else:
+            neighbors.append({'index': entry['index'], 'bbox': entry['bbox'],
+                              'overlap_pixels': overlap, 'coverage': coverage})
+    evidence, pair_counts = _crop_evidence(array, box, config, mask, core, contrast)
+    evidence[evidence_key] = proposal[evidence_key]
+    if classifier is not None:
+        evidence['classifier'] = classifier.evidence(np.ascontiguousarray(array[box[1]:box[3], box[0]:box[2]]))
+    evidence['independent_face_evidence'] = bool(evidence['extra_shape_support'] or evidence.get('classifier', {}).get('face_evidence', False))
+    evidence.update({'neighbor_body_overlap': bool(neighbors), 'neighbor_regions': neighbors,
+                     'baseline_region_count': len(owned), 'baseline_pixel_coverage': baseline_pixels,
+                     'clipped_canvas': left == 0 or top == 0 or right == width or bottom == height,
+                     'ink_bbox': proposal['ink_bbox']})
+    splice_index, contexts = _mixed_contexts(mask, box, owned, neighbors, entries, config)
+    if splice_index is None:
+        proof = _local_partition(mask, box, owned, neighbors, entries, config)
+        if proof is not None:
+            splice_index, contexts = proof['parent_index'], proof['context_crops']
+            evidence['local_ownership'] = proof
+    evidence['mixed_region_separable'] = splice_index is not None
+    evidence['mixed_baseline_index'] = splice_index
+    if not evidence['pixel_support']:
+        return None
+    ordered = sorted(owned, key=lambda entry: (entry['bbox'][1], entry['bbox'][0]))
+    original = ''.join(entry['text'] for entry in ordered)
+    eligible, reason = _route_eligibility(original, evidence)
+    return ({'candidate_id': identity, 'bbox': box, 'sources': proposal['sources'],
+             'baseline_indices': [entry['index'] for entry in ordered], 'baseline_text': original,
+             'baseline_scores': [entry['score'] for entry in ordered],
+             'route_eligible': eligible, 'route_reason': reason, 'splice_baseline_index': splice_index,
+             'baseline_parent_sha256': baseline_parent_digest(entries[splice_index]) if splice_index is not None else None,
+             'context_crops': contexts, 'evidence': evidence}, pair_counts)
+
+
+def locate_candidates(image, baseline, config=None, classifier=None, position_trace=None):
     """Discover candidates from pixels and first-pass geometry; an optional classifier adds face evidence.
 
     The classifier only contributes a recorded probability compared with its
@@ -1078,7 +1298,9 @@ def locate_candidates(image, baseline, config=None, classifier=None):
         if not config['minimum_height'] <= h <= config['maximum_height'] or box[2]-box[0] > config['maximum_width']:
             reject('ocr-size-limit'); continue
         proposed.append({'ink_bbox': list(box), 'sources': ['first-pass-symbol-geometry']})
-    merged = _merge_proposals(proposed, config)
+    # Every raw anchor participates before a merge can lose a second pair's
+    # metadata. In recrop mode the recovered pair envelope stays authoritative.
+    merged = _merge_proposals(_recrop_proposals(proposed, config, mask), config)
     candidates = []; crop_pixels = 0
     for proposal in sorted(merged, key=lambda p: (p['ink_bbox'][1], p['ink_bbox'][0])):
         left, top, right, bottom = proposal['ink_bbox']; padding = config['padding']
@@ -1115,6 +1337,8 @@ def locate_candidates(image, baseline, config=None, classifier=None):
         if box[0] >= box[2] or box[1] >= box[3] or area(box) > config['maximum_crop_pixels']:
             reject('invalid-or-oversized-crop'); continue
         evidence, pair_counts = _crop_evidence(array, box, config, mask, core, contrast)
+        if 'recrop' in proposal:
+            evidence['pair_recrop'] = proposal['recrop']
         if classifier is not None:
             evidence['classifier'] = classifier.evidence(np.ascontiguousarray(array[box[1]:box[3], box[0]:box[2]]))
         evidence['independent_face_evidence'] = bool(evidence['extra_shape_support'] or evidence.get('classifier', {}).get('face_evidence', False))
@@ -1122,6 +1346,11 @@ def locate_candidates(image, baseline, config=None, classifier=None):
                          'baseline_region_count':len(owned),'baseline_pixel_coverage':baseline_pixels,'clipped_canvas':left==0 or top==0 or right==width or bottom==height,
                          'ink_bbox':proposal['ink_bbox']})
         splice_index,context_crops=_mixed_contexts(mask,box,owned,neighbors,entries,config)
+        if splice_index is None:
+            proof = _local_partition(mask, box, owned, neighbors, entries, config)
+            if proof is not None:
+                splice_index, context_crops = proof['parent_index'], proof['context_crops']
+                evidence['local_ownership'] = proof
         evidence['mixed_region_separable']=splice_index is not None
         evidence['mixed_baseline_index']=splice_index
         if not evidence['pixel_support']:
@@ -1141,7 +1370,82 @@ def locate_candidates(image, baseline, config=None, classifier=None):
                            'route_eligible':eligible,'route_reason':route_reason,'splice_baseline_index':splice_index,
                            'baseline_parent_sha256':baseline_parent_digest(entries[splice_index]) if splice_index is not None else None,
                            'context_crops':context_crops,'evidence':evidence})
-    return {'schema_version':SCHEMA,'image_size':[width,height],'image_sha256':image_digest(array),
+    line_statistics = None
+    if 'line_spans' in config or 'local_windows' in config or 'position_spans' in config:
+        trace_rows = []
+        if 'position_spans' in config:
+            from tools.RegionKaomoji import position_spans as span_helper
+            option_key, evidence_key, identity_prefix = 'position_spans', 'position_span', 'position-span-'
+            proposer = span_helper.propose_spans
+            if position_trace is not None:
+                from tools.RegionKaomoji import ctc_trace
+                trace_rows = ctc_trace.validate_sidecar(image_digest(array), [width, height], entries, position_trace)
+        elif 'local_windows' in config:
+            from tools.RegionKaomoji import local_windows as span_helper
+            option_key, evidence_key, identity_prefix = 'local_windows', 'local_window', 'local-window-'
+            proposer = span_helper.propose_windows
+        else:
+            from tools.RegionKaomoji import line_spans as span_helper
+            option_key, evidence_key, identity_prefix = 'line_spans', 'line_span', 'line-span-'
+            proposer = span_helper.propose_spans
+        legacy = candidates
+        retained = [item for item in legacy if item['route_eligible']]
+        pixels = sum(area(item['bbox']) for item in retained)
+        remaining_slots = config['maximum_candidates'] - len(retained)
+        remaining_pixels = config['maximum_crop_pixels'] - pixels
+        spans = {'proposals': [], 'rejections': {}}
+        if remaining_slots > 0 and remaining_pixels > 0:
+            limits = {key: config[key] for key in span_helper.DEFAULT_LIMITS}
+            limits.update(maximum_candidates=remaining_slots, maximum_crop_pixels=remaining_pixels)
+            proposal_arguments = {'limits': limits, 'options': config[option_key]}
+            if option_key == 'position_spans':
+                proposal_arguments['trace_rows'] = trace_rows
+            spans = proposer(mask, core, _physical_lines(components, config), entries, proposed,
+                             **proposal_arguments)
+        else:
+            spans['rejections']['shared-budget-exhausted'] = 1
+        new_records = []
+        known_boxes = {tuple(item['bbox']) for item in retained}
+        for position, proposal in enumerate(spans['proposals']):
+            if len(new_records) >= remaining_slots:
+                break
+            if area(proposal['ink_bbox']) > remaining_pixels:
+                reject(identity_prefix + 'shared-budget')
+                continue
+            built = _span_record(array, proposal, entries, config, mask, core, contrast, classifier,
+                                 f'{identity_prefix}{position:03d}', evidence_key=evidence_key)
+            if built is not None and tuple(built[0]['bbox']) not in known_boxes:
+                new_records.append(built)
+                known_boxes.add(tuple(built[0]['bbox']))
+        # Old eligible candidates retain priority. No new hypothesis can displace
+        # an already-routable old candidate or increase the shared output budget.
+        new_records.sort(key=lambda value: (not value[0]['route_eligible'],
+                         not value[0]['evidence']['extra_shape_support'], value[0]['bbox'][1], value[0]['bbox'][0]))
+        for item, pair_counts in new_records:
+            if len(retained) >= config['maximum_candidates'] or pixels + area(item['bbox']) > config['maximum_crop_pixels']:
+                reject(identity_prefix + 'shared-budget')
+                continue
+            retained.append(item)
+            pixels += area(item['bbox'])
+            shape_detection['base_pairs'] += pair_counts['base_pairs']
+            shape_detection['core_pairs'] += pair_counts['core_pairs']
+            shape_detection['merged_bracket_candidates'] += int(pair_counts['core_pairs'] > 0 and pair_counts['base_pairs'] == 0)
+        for item in legacy:
+            if item['route_eligible'] or tuple(item['bbox']) in {tuple(value['bbox']) for value in retained}:
+                continue
+            if len(retained) < config['maximum_candidates'] and pixels + area(item['bbox']) <= config['maximum_crop_pixels']:
+                retained.append(item)
+                pixels += area(item['bbox'])
+        candidates, crop_pixels = retained, pixels
+        line_statistics = {'proposals': len(spans['proposals']), 'materialized': len(new_records),
+                           'retained': sum(item['candidate_id'].startswith(identity_prefix) for item in retained),
+                           'rejections': spans['rejections']}
+    result = {'schema_version':SCHEMA,'image_size':[width,height],'image_sha256':image_digest(array),
             'config':config,'candidates':candidates,'rejections':rejections,'crop_pixels':crop_pixels,
             'structural_components':len(structural),'shape_detection':shape_detection,
             'discovered_count':len(candidates),'route_eligible_count':sum(item['route_eligible'] for item in candidates)}
+    if line_statistics is not None:
+        statistics_key = ('position_span_detection' if 'position_spans' in config else
+                          'local_window_detection' if 'local_windows' in config else 'line_span_detection')
+        result[statistics_key] = line_statistics
+    return result

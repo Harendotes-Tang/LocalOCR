@@ -38,6 +38,7 @@ from tools.PretrainedOcr.data import MixedRenderer
 from tools.PretrainedOcr.grammar_data import renderable_atoms
 from tools.PretrainedOcr.quality_corpus import EMOJI
 from . import browser_scenes as bs, card_scenes as cs
+from . import exposure
 from .scenes import sha, th, read, pixels, bbox
 
 GENERATOR_ID = 'localocr.browser-crop-data.20261016.v1'
@@ -66,10 +67,14 @@ def kind_counts(total):
 
 class StratifiedFaces:
     """Faces of one split: ~20% outside width families ('none'), the rest 45/45/10 by width class."""
-    def __init__(self, split, rng, atoms, allowed, pool, seen):
+    def __init__(self, split, rng, atoms, allowed, pool, seen, exclusions=None):
         self.split, self.rng, self.atoms, self.allowed, self.seen = split, rng, atoms, allowed, seen
+        self.exclusions = exclusions
         self.families = bs.width_families(atoms)
-        self.pool = {name: [f for f in pool[split] if f['bracket_width_class'] == name] for name in (*bs.WIDTH_CLASS_WEIGHTS, 'none')}
+        self.pool = {name: [f for f in pool[split] if f['bracket_width_class'] == name
+                           and (exclusions is None or not exclusions.matches(f['text'], f['core_key'])
+                                and exposure.split_matches(f['text'], split, f['core_key']))]
+                     for name in (*bs.WIDTH_CLASS_WEIGHTS, 'none')}
 
     def __call__(self):
         names = list(bs.WIDTH_CLASS_WEIGHTS)
@@ -83,7 +88,9 @@ class StratifiedFaces:
                 continue
             text = composed['text'] if target == 'none' else bs.rewrite_width(composed['text'], self.atoms, self.families, target, self.rng)
             record = bs.face_record(text, self.atoms, 'atom-table-' + self.split + '-partition', composed['structure'])
-            if record['core_partition'] != self.split or th(text) in self.seen:
+            if (record['core_partition'] != self.split or th(text) in self.seen
+                    or self.exclusions is not None and (self.exclusions.matches(text, record['core_key'])
+                                                        or not exposure.split_matches(text, self.split, record['core_key']))):
                 continue
             self.seen.add(th(text))
             return {**record, 'bracket_width_class': bs.width_class(text, self.atoms, self.families)}
@@ -95,23 +102,28 @@ def tail_start(face, word, atoms):
     return any(kg.parse_face(face + word[:k], atoms) is not None for k in range(1, len(word) + 1))
 
 
-def words(rng, atoms, count):
+def words(rng, atoms, count, exclusions=None):
+    if exclusions is not None:
+        return exclusions.words(rng, count, atoms, strip=True)
     for _ in range(1000):
         text = cs.comment_words(rng, count)
-        if text.strip() and not cs.contains_face(text, atoms):
+        if (text.strip() and not cs.contains_face(text, atoms)
+                and (exclusions is None or not exclusions.matches(text.strip()))):
             return text.strip()
     raise ValueError('Original comment words exhausted')
 
 
 class Labels:
     """Non-face labels are unique across the whole dataset: a label already owned anywhere is never reused."""
-    def __init__(self, owners):
+    def __init__(self, owners, exclusions=None):
         self.owners = owners
+        self.exclusions = exclusions
 
     def take(self, split, make, atoms):
         for _ in range(20000):
             text = make()
-            if not text or th(text) in self.owners or cs.contains_face(text, atoms):
+            if (not text or th(text) in self.owners or cs.contains_face(text, atoms)
+                    or self.exclusions is not None and self.exclusions.matches(text)):
                 continue
             self.owners[th(text)] = split
             return text
@@ -126,26 +138,29 @@ def covered(text, families, fonts):
 
 def plan_target(kind, split, rng, faces, labels, atoms):
     """One row spec: (kind, left, separator_left, target, separator_right, right, extra)."""
+    def body_words(count):
+        extra = {'exclusions': labels.exclusions} if labels.exclusions is not None else {}
+        return words(rng, atoms, count, **extra)
     if kind == 'face':
         face = faces()
-        left = words(rng, atoms, rng.randrange(1, 4))
-        right = words(rng, atoms, rng.randrange(1, 4))
+        left = body_words(rng.randrange(1, 4))
+        right = body_words(rng.randrange(1, 4))
         sep_left, sep_right = rng.choice(('', ' ')), rng.choice(('', ' '))
         if sep_right == '' and tail_start(face['text'], right, atoms):
             sep_right = ' '              # a tail-shaped neighbour is never glued to the face
         return {'kind': 'face', 'left': left, 'sep_left': sep_left, 'target': face['text'], 'sep_right': sep_right, 'right': right, 'face': face}
     if kind == 'plain':
-        text = labels.take(split, lambda: words(rng, atoms, rng.randrange(2, 7)), atoms)
+        text = labels.take(split, lambda: body_words(rng.randrange(2, 7)), atoms)
     elif kind == 'punctuation':
         tokens = cs.PUNCTUATION + cs.FRAGMENTS
         text = labels.take(split, lambda: ''.join(rng.choice(tokens) for _ in range(rng.randrange(2, 5))) + rng.choice(('', str(rng.randrange(10, 1000)))), atoms)
     elif kind == 'emoji':
         text = labels.take(split, lambda: ''.join(rng.choice(EMOJI) for _ in range(rng.randrange(1, 4))), atoms)
     else:
-        return {'kind': kind, 'left': words(rng, atoms, rng.randrange(1, 3)), 'target': '', 'size': [rng.randrange(40, 160), rng.randrange(18, 34)],
+        return {'kind': kind, 'left': body_words(rng.randrange(1, 3)), 'target': '', 'size': [rng.randrange(40, 160), rng.randrange(18, 34)],
                 'geometry': rng.choice(('badge-ring', 'badge-double', 'badge-diamond', 'icon-circle', 'icon-triangle')) if kind == 'graphic' else None}
-    left = words(rng, atoms, rng.randrange(1, 3)) if rng.random() < .5 else ''
-    right = words(rng, atoms, rng.randrange(1, 3)) if rng.random() < .5 else ''
+    left = body_words(rng.randrange(1, 3)) if rng.random() < .5 else ''
+    right = body_words(rng.randrange(1, 3)) if rng.random() < .5 else ''
     return {'kind': kind, 'left': left, 'sep_left': FAR if left else '', 'target': text, 'sep_right': FAR if right else '', 'right': right}
 
 
@@ -275,7 +290,11 @@ def render_page(session, style, specs, path, fonts, rng):
 
 # ---------------------------------------------------------------- dataset
 
-def copy_source_rows(writer, root, rng, counts, owners, source):
+class ExposedSourceExhausted(ValueError):
+    """No exact kind-stratified whole-group sample survives exposure exclusions."""
+
+
+def copy_source_rows(writer, root, rng, counts, owners, source, exclusions=None):
     """Seeded, kind-stratified copies of whole groups from the grammar round's train split."""
     rows = common.read_split(source, 'train')
     groups = {}
@@ -283,20 +302,41 @@ def copy_source_rows(writer, root, rng, counts, owners, source):
         groups.setdefault(row['group_id'], []).append(row)
     by_kind = {}
     for group in groups.values():
+        if exclusions is not None and any(exclusions.matches(text, key) or not exposure.split_matches(text, 'train', key)
+                                           for row in group for text, key in exposure.targets(row)):
+            continue
         by_kind.setdefault(group[0]['kind'], []).append(group)
-    copied = []
+    selected = []
     for kind, total in counts.items():
         pool = sorted(by_kind.get(kind, []), key=lambda g: g[0]['id'])
-        chosen = rng.sample(pool, total // len(pool[0]))
-        for group in chosen:
-            for row in group:
-                identifier = 'train-src-' + row['id']
-                path = root / 'images' / (identifier + '.png')
-                writer.bytes(path, (source / row['image']).read_bytes())
-                owners.setdefault(row['text_sha256'], 'train')
-                copied.append({**row, 'id': identifier, 'image': path.relative_to(root).as_posix(), 'group_id': 'src:' + row['group_id'],
-                               'origin': 'noto-grammar-copy', 'source': {'dataset': _relative(source),
-                                                                        'row_id': row['id'], 'sha256': row['sha256']}})
+        if exclusions is None:
+            chosen = rng.sample(pool, total // len(pool[0]))
+        else:
+            # Determine the whole sample before copying any bytes. A shortage can safely
+            # switch this unused train contract to original browser rows without partial output.
+            rng.shuffle(pool)
+            reachable = {0: []}
+            for group in pool:
+                for size, chosen_so_far in list(reachable.items()):
+                    size += len(group)
+                    if size <= total and size not in reachable:
+                        reachable[size] = chosen_so_far + [group]
+                if total in reachable:
+                    break
+            if total not in reachable:
+                raise ExposedSourceExhausted('Copied train source exhausted by exposure exclusions: ' + kind)
+            chosen = reachable[total]
+        selected.extend(chosen)
+    copied = []
+    for group in selected:
+        for row in group:
+            identifier = 'train-src-' + row['id']
+            path = root / 'images' / (identifier + '.png')
+            writer.bytes(path, (source / row['image']).read_bytes())
+            owners.setdefault(row['text_sha256'], 'train')
+            copied.append({**row, 'id': identifier, 'image': path.relative_to(root).as_posix(), 'group_id': 'src:' + row['group_id'],
+                           'origin': 'noto-grammar-copy', 'source': {'dataset': _relative(source),
+                                                                    'row_id': row['id'], 'sha256': row['sha256']}})
     if len(copied) != sum(counts.values()):
         raise RuntimeError('Copied grammar rows differ from the requested kind counts')
     return copied
@@ -406,16 +446,18 @@ def summarize(rows):
             'platform_fonts': dict(Counter(f for r in browser for f in r['font_id']))}
 
 
-def generate(output, fonts, counts=COUNTS, seed=20261016, source=None):
+def generate(output, fonts, counts=COUNTS, seed=20261016, source=None, exclusions=None):
     """Render, validate, freeze and seal the browser crop dataset inside the registered round."""
     if len(counts) != 3 or any(not isinstance(n, int) or isinstance(n, bool) or n < 100 for n in counts):
         raise ValueError('Three split counts of at least 100 rows are required')
     source = SOURCE if source is None else Path(source)
     root = qd.output_root(output)
     profile = rp.profile_for(root)
-    if profile is None or profile.change != rp.CURRENT.change or root.exists():
+    if (profile is None or profile.change not in (rp.CURRENT.change, rp.OWNED_POSITION.change, rp.FIRST_PASS_POSITION.change)
+            or root.exists()):
         raise ValueError("Fresh browser crops must be generated inside the current round's registered research root")
     qd.storage_gate(root, 256 * 1024 ** 2)
+    excluded = exposure.load(exclusions) if exclusions is not None else None
     renderer, atoms = MixedRenderer(fonts), kg.default_atoms()
     allowed, excluded_atoms = renderable_atoms(renderer, atoms)
     def renderable(text):
@@ -424,7 +466,7 @@ def generate(output, fonts, counts=COUNTS, seed=20261016, source=None):
         except Unsupported:
             return False
         return True
-    pool = bs.common_pool(atoms, renderable)
+    pool = bs.common_pool(atoms, renderable, exclusions=excluded)
     root.mkdir(parents=True)
     for name in ('images', 'pages'):
         (root / name).mkdir()
@@ -432,14 +474,20 @@ def generate(output, fonts, counts=COUNTS, seed=20261016, source=None):
     writer, font_files, started = qd.Writer(root), bs.FontFiles(), time.perf_counter()
     owners, pixel_owner, seen_faces, exclusions, splits, rows_by_split = {}, {}, set(), Counter(), {}, {}
     browser_train = int(round(counts[0] * BROWSER_TRAIN_SHARE))
-    copied = copy_source_rows(writer, root, random.Random(seed + 100), kind_counts(counts[0] - browser_train), owners, source)
+    train_source_fallback = False
+    try:
+        copied = copy_source_rows(writer, root, random.Random(seed + 100), kind_counts(counts[0] - browser_train), owners, source, exclusions=excluded)
+    except ExposedSourceExhausted:
+        if excluded is None:
+            raise
+        copied, browser_train, train_source_fallback = [], counts[0], True
     for row in copied:
         pixel_owner[row['pixel_sha256']] = 'train'
     with bs.BrowserSession(root / 'browser-temp') as session:
         for index, split in enumerate(SPLITS):
             rng = random.Random(seed + index)
-            faces = StratifiedFaces(split, rng, atoms, allowed, pool, seen_faces)
-            labels = Labels(owners)
+            faces = StratifiedFaces(split, rng, atoms, allowed, pool, seen_faces, exclusions=excluded)
+            labels = Labels(owners, exclusions=excluded)
             def replan(kind, split=split, rng=rng, faces=faces, labels=labels):
                 return _plan(kind, split, rng, faces, labels, atoms)
             total = browser_train if split == 'train' else counts[index]
@@ -462,16 +510,25 @@ def generate(output, fonts, counts=COUNTS, seed=20261016, source=None):
         'private_inputs_consumed': False, 'license': 'CC0-1.0',
         'license_note': 'Labels are original CC0 text. Browser crops are rendered with locally licensed Windows system fonts for local training and evaluation only; crops and any weights trained on them stay in ignored directories, and any release needs a separate license review.',
         'seed': seed, 'requested_counts': dict(zip(SPLITS, counts)), 'splits': splits, 'train_vocabulary': train_vocabulary, 'kind_shares': dict(KIND_SHARES),
-        'browser_train_share': BROWSER_TRAIN_SHARE, 'none_share': NONE_SHARE, 'width_class_weights': bs.WIDTH_CLASS_WEIGHTS, 'margin_device_pixels': list(MARGIN),
+        'browser_train_share': browser_train / counts[0] if excluded is not None else BROWSER_TRAIN_SHARE, 'none_share': NONE_SHARE, 'width_class_weights': bs.WIDTH_CLASS_WEIGHTS, 'margin_device_pixels': list(MARGIN),
         'rows_per_page': ROWS_PER_PAGE, 'device_scales': list(bs.DEVICE_SCALES), 'font_sizes': list(bs.FONT_SIZES), 'webp': bs.WEBP, 'font_family': bs.FONT_FAMILY,
         'source': {'dataset': _relative(source),
                    'freeze_sha256': sha(source / 'freeze.json'), 'train_sha256': read(source / 'dataset.json')['splits']['train']['sha256']},
         'isolation': {'faces': 'core partition per split (train 0-6, dev 7, heldout 8-9)', 'labels': 'non-empty labels disjoint across splits', 'pixels': 'disjoint across splits',
-                      'browser_cards_v1': 'never opened; isolation from its sealed heldout rests on the core partition'},
+                      'browser_cards_v1': ('exposed target labels bound by cross-round inventory; no source images or predictions read'
+                                           if excluded is not None else 'never opened; isolation from its sealed heldout rests on the core partition')},
         'atoms_binding': kg.binding(atoms), 'excluded_atoms': excluded_atoms, 'environment': env,
-        'source_sha256': sha(__file__), 'dependency_sha256': {name: sha(Path(__file__).with_name(name)) for name in ('browser_scenes.py', 'card_scenes.py', 'known_input.py', 'scenes.py')},
+        'source_sha256': sha(__file__), 'dependency_sha256': {name: sha(Path(__file__).with_name(name)) for name in ('browser_scenes.py', 'card_scenes.py', 'known_input.py', 'scenes.py') + (('exposure.py',) if excluded is not None else ())},
         'exclusions': dict(exclusions), 'summary': summary,
-        'usage': {'train': 'training (specialist warm start, classifier)', 'dev': 'crop development selection', 'heldout': 'sealed first evaluation after the dual freeze'}})
+        **({'exposure_exclusions': excluded.binding,
+            'exposure_split_policy': 'raw-and-width-sibling split agreement',
+            'exposure_distribution': {'common_pool_available': {s: len(rows) for s, rows in pool.items()},
+                                      'empty_common_class_fallback': 'original atom compositions',
+                                      'train_source_exhausted': train_source_fallback,
+                                      'train_used_for_training': False,
+                                      'body_word_recovery': excluded.word_recovery_summary()}} if excluded is not None else {}),
+        'usage': {'train': 'schema contract only; not used for training in this CPU round' if excluded is not None else 'training (specialist warm start, classifier)',
+                  'dev': 'crop development selection', 'heldout': 'sealed first evaluation after the dual freeze'}})
     atomic_write(root / 'progress.json', {'pid': os.getpid(), 'phase': 'validating', 'updated_utc': utc()})
     binding = validate(root)
     writer.json(root / 'heldout-seal.json', {'schema_version': 'localocr.heldout-seal.v1', 'dataset_sha256': binding['dataset_sha256'],
@@ -553,6 +610,14 @@ def validate(root):
             or meta.get('synthetic_only') is not True or meta['environment']['browser']['blocked_requests'] != 0):
         raise ValueError('Unknown browser crop dataset schema/generator')
     atoms = kg.default_atoms()
+    excluded = exposure.load_bound(meta['exposure_exclusions']) if 'exposure_exclusions' in meta else None
+    if excluded is not None:
+        if meta.get('exposure_split_policy') != 'raw-and-width-sibling split agreement':
+            raise ValueError('Cross-round exposure split policy differs')
+        share = meta.get('browser_train_share')
+        expected_share = 1.0 if meta.get('exposure_distribution', {}).get('train_source_exhausted') else round(meta['requested_counts']['train'] * BROWSER_TRAIN_SHARE) / meta['requested_counts']['train']
+        if share != expected_share:
+            raise ValueError('Exclusion-aware train share differs from its declared fallback')
     if meta.get('atoms_binding') != kg.binding(atoms):
         raise ValueError('Dataset atoms binding differs from the canonical table')
     source = Path(meta['source']['dataset'])
@@ -570,6 +635,8 @@ def validate(root):
         if len(rows) != info['count'] or len(rows) != meta['requested_counts'][split] or len({r['id'] for r in rows}) != len(rows):
             raise ValueError('Split count or identities changed')
         for row in rows:
+            if excluded is not None:
+                excluded.assert_clear(row)
             _check_row(root, row, split, atoms, families, source_rows)
             if row['text'] and labels.setdefault(row['text_sha256'], split) != split:
                 raise ValueError('Cross-split label leakage')
@@ -578,6 +645,8 @@ def validate(root):
             if split == 'train':
                 tokens.update(row['text'])
         browser = [r for r in rows if r.get('origin') == 'browser']
+        if excluded is not None and split == 'train' and len(browser) != round(len(rows) * meta['browser_train_share']):
+            raise ValueError('Actual train mix differs from exclusion-aware browser share')
         if split != 'train' and len(browser) != len(rows):
             raise ValueError('Dev and heldout must be browser crops only')
         expected = kind_counts(len(browser))
@@ -604,8 +673,9 @@ def main(argv=None):
     parser.add_argument('--fonts')
     parser.add_argument('--counts', nargs=3, type=int, default=COUNTS)
     parser.add_argument('--seed', type=int, default=20261016)
+    parser.add_argument('--exclusions', help='Frozen cross-round exposure inventory')
     args = parser.parse_args(argv)
-    value = generate(args.dataset, args.fonts, tuple(args.counts), args.seed) if args.action == 'generate' else validate(args.dataset)
+    value = generate(args.dataset, args.fonts, tuple(args.counts), args.seed, exclusions=args.exclusions) if args.action == 'generate' else validate(args.dataset)
     print(json.dumps(value, indent=2))
 
 

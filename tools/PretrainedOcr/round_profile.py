@@ -95,8 +95,40 @@ BRACKET_PAIRS = RoundProfile(
     previous_budget=ARTIFACTS / 'browser-font-20261016/gpu-budget.json',
     previous_sha256='4b73ac8e2454e261412a6ae8a09aa53993d927ffbfd6d0036c30da8ea71df9b7',
     previous_used_seconds=2376.438000000001, maximum_seconds=0.0, specialist_families=1)
-ROUNDS = (QUALITY, GRAMMAR, CANDIDATES, REAL_RENDERING, BROWSER_RENDERING, BROWSER_FONT, BRACKET_PAIRS)
-CURRENT = BRACKET_PAIRS
+RECOVERY = RoundProfile(
+    name='candidate-recovery-20261018', change='improve-small-text-candidate-recovery',
+    root=ARTIFACTS / 'candidate-recovery-20261018', maximum_bytes=2 * GIB, owned_bytes=1200 * 1024 ** 2,
+    previous_budget=ARTIFACTS / 'bracket-pairs-20261016/gpu-budget.json',
+    previous_sha256='f1cd5c3aeeb69e994dc8e8e874375f48168bea4b884ba9ecb8aaa1880973334a',
+    previous_used_seconds=0.0, maximum_seconds=0.0, specialist_families=1)
+COMPLETE_SPANS = RoundProfile(
+    name='complete-spans-20261019', change='improve-complete-span-localization',
+    root=ARTIFACTS / 'complete-spans-20261019', maximum_bytes=2 * GIB, owned_bytes=1200 * 1024 ** 2,
+    previous_budget=ARTIFACTS / 'candidate-recovery-20261018/gpu-budget.json',
+    previous_sha256='6efbb7420c4412038fdb84063dab799d752acd61940637f6a7f04fc2ef555731',
+    previous_used_seconds=0.0, maximum_seconds=0.0, specialist_families=1)
+PIXEL_OWNED_SPANS = RoundProfile(
+    name='pixel-owned-spans-20261020', change='improve-pixel-owned-complete-spans',
+    root=ARTIFACTS / 'pixel-owned-spans-20261020', maximum_bytes=2 * GIB, owned_bytes=1200 * 1024 ** 2,
+    previous_budget=ARTIFACTS / 'complete-spans-20261019/gpu-budget.json',
+    previous_sha256='c5d3e632a9e4db19bb7e8cbb3392a2e0e8041f43b0b5de4d3b9a34dc0df58bb0',
+    previous_used_seconds=0.0, maximum_seconds=0.0, specialist_families=1)
+OWNED_POSITION = RoundProfile(
+    name='ownership-position-20261022', change='improve-owned-position-localization',
+    root=ARTIFACTS / 'ownership-position-20261022', maximum_bytes=2 * GIB, owned_bytes=1200 * 1024 ** 2,
+    previous_budget=ARTIFACTS / 'pixel-owned-spans-20261020/gpu-budget.json',
+    previous_sha256='7992c1d4b53399867e9ed8b4b597e244cb8234f8cf09d7185818daf1dc58ef18',
+    previous_used_seconds=0.0, maximum_seconds=0.0, specialist_families=1)
+FIRST_PASS_POSITION = RoundProfile(
+    name='first-pass-position-20261027', change='improve-first-pass-position-binding',
+    root=ARTIFACTS / 'first-pass-position-20261027', maximum_bytes=2 * GIB, owned_bytes=1200 * 1024 ** 2,
+    previous_budget=ARTIFACTS / 'ownership-position-20261022/gpu-budget.json',
+    previous_sha256='f26451af3dc659ade605aac11776ddebfc1e3745871156a9009ec3a3f4c80cb9',
+    previous_used_seconds=0.0, maximum_seconds=0.0, specialist_families=1)
+ROUNDS = (QUALITY, GRAMMAR, CANDIDATES, REAL_RENDERING, BROWSER_RENDERING, BROWSER_FONT, BRACKET_PAIRS, RECOVERY,
+          COMPLETE_SPANS, PIXEL_OWNED_SPANS, OWNED_POSITION, FIRST_PASS_POSITION)
+# The new opt-in round is dispatched explicitly; historical command defaults stay stable.
+CURRENT = PIXEL_OWNED_SPANS
 
 
 def _resolved(path):

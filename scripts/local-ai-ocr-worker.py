@@ -98,7 +98,7 @@ def visible_ring_prefix(image, rect, minimum_left=0):
     return len(rings)
 
 
-def choose_reread(original, variants):
+def choose_reread(original, variants, observer=None):
     """Require independent crop views to agree; confidence alone cannot restore a glyph.
 
     Whitespace is ignored for voting only. The selected recognizer string is
@@ -107,7 +107,7 @@ def choose_reread(original, variants):
     but may not change the letters/numbers or remove original symbols.
     """
     votes = {}
-    for text, score in variants:
+    for variant_index, (text, score) in enumerate(variants):
         if not math.isfinite(float(score)) or score < 0.70 or not text.strip():
             continue
         if text_anchors(text) != text_anchors(original) or symbol_count(text) < symbol_count(original):
@@ -120,17 +120,29 @@ def choose_reread(original, variants):
             if ''.join(text.split()) != ''.join(original.replace('•', '●').split()):
                 continue
         key = "".join(text.split())
-        votes.setdefault(key, []).append((text, float(score)))
+        votes.setdefault(key, []).append((text, float(score), variant_index))
     eligible = [items for key, items in votes.items()
                 if len(items) >= 2 and key != "".join(original.split())]
     if not eligible:
         return None
     items = max(eligible, key=lambda items: (symbol_count(items[0][0]), len(items)))
     # Keep the ordinary unpadded view's spelling if it participated in the vote.
-    return items[0][0], min(score for _, score in items)
+    if observer is not None:
+        observer(items[0][2])
+    return items[0][0], min(item[1] for item in items)
 
 
-def reread_symbols(engine, image, result):
+def _trace_observe(observer, event, payload):
+    """Optional research observation cannot change the production OCR result."""
+    if observer is not None:
+        try:
+            observer(event, payload)
+        except Exception:
+            # An unsupported or failed research mapping retains native output.
+            pass
+
+
+def reread_symbols(engine, image, result, observer=None):
     """Retry a bounded number of horizontal symbol regions using the same recognizer.
 
     Detection runs once. Neighbour detections cap the crop so a retry cannot
@@ -247,13 +259,29 @@ def reread_symbols(engine, image, result):
         requests.append((group, (left+cx, top+cy, left+cr, top+cb), rings))
     if not samples:
         return result
+    if observer is not None:
+        descriptors = []
+        for offset, (group, rect, _rings) in enumerate(requests):
+            for view, padding, color in (('raw', [0, 0, 0, 0], 'BGR-identity'),
+                                         ('inverse', [0, 0, 0, 0], 'BGR-to-gray-invert-to-BGR'),
+                                         ('padded', [6, 4, 6, 4], 'BGR-identity')):
+                descriptors.append({'request_index': offset, 'crop_bbox': [int(value) for value in rect],
+                                    'source_indices': list(group['indices']),
+                                    'source_entries': [{'index': int(index), 'text': str(result.txts[index]),
+                                                        'box': np.asarray(result.boxes[index], dtype=float).tolist()}
+                                                       for index in group['indices']],
+                                    'before_text': group['text'], 'selected_view': view,
+                                    'padding': padding, 'color_transform': color})
+        _trace_observe(observer, 'requests', {'samples': samples, 'descriptors': descriptors})
     recognized = engine._load_rec_model()(TextRecInput(img=samples, return_word_box=False))
     if len(recognized.txts) != len(samples) or len(recognized.scores) != len(samples):
         raise ValueError('Invalid symbol reread output')
     replacements, removed = {}, set()
     for offset, (group, rect, rings) in enumerate(requests):
         variants = list(zip(recognized.txts[offset*3:offset*3+3], recognized.scores[offset*3:offset*3+3]))
-        chosen = choose_reread(group['text'], variants)
+        selected = []
+        chosen = (choose_reread(group['text'], variants, observer=selected.append)
+                  if observer is not None else choose_reread(group['text'], variants))
         if rings:
             votes = [(text, float(score)) for text,score in variants
                      if float(score)>=.70 and text.startswith('。') and not text.startswith('。'*(rings+1))
@@ -263,6 +291,12 @@ def reread_symbols(engine, image, result):
                 # The run is jointly supported by hollow pixels and OCR. Keep
                 # the first pass's remaining text, including its punctuation.
                 chosen = ('。'*rings + group['text'], min(score for _,score in votes))
+        if observer is not None:
+            _trace_observe(observer, 'selection', {
+                'request_index': offset, 'source_indices': list(group['indices']),
+                'before_text': group['text'], 'bbox': [int(value) for value in rect], 'applied': chosen is not None,
+                'synthetic': bool(rings), 'selected_text': None if chosen is None else chosen[0],
+                'selected_sample_index': offset * 3 + selected[0] if selected and not rings else None})
         if chosen is None:
             continue
         x, y, r, b = rect
@@ -276,6 +310,7 @@ def reread_symbols(engine, image, result):
         boxes.append(box)
         texts.append(text)
         scores.append(score)
+    _trace_observe(observer, 'complete', {})
     return SimpleNamespace(boxes=boxes, txts=texts, scores=scores)
 
 

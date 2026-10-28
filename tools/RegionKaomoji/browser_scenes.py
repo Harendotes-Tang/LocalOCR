@@ -36,6 +36,7 @@ from tools.PretrainedOcr.common import write as atomic_write, utc
 from tools.PretrainedOcr.data import MixedRenderer
 from tools.PretrainedOcr.grammar_data import renderable_atoms
 from . import card_scenes as cs
+from . import exposure
 from .known_input import COMMON_FACES
 from .scenes import sha, th, read, pixels, bbox
 
@@ -140,7 +141,7 @@ def face_record(text, atoms, source, structure):
             'structure': structure, 'source': source}
 
 
-def common_pool(atoms, renderable):
+def common_pool(atoms, renderable, exclusions=None):
     """Every width variant of the common listings, keyed by the split its own core belongs to."""
     families = width_families(atoms)
     pool = {'train': [], 'dev': [], 'heldout': []}   # train serves the browser crop generator (training only)
@@ -159,6 +160,9 @@ def common_pool(atoms, renderable):
                     if kg.parse_face(text, atoms) is None:
                         continue
                     record = face_record(text, atoms, source, 'common')
+                    if exclusions is not None and (exclusions.matches(text, record['core_key'])
+                                                   or not exposure.split_matches(text, record['core_partition'], record['core_key'])):
+                        continue
                     if record['core_partition'] in pool:
                         pool[record['core_partition']].append({**record, 'bracket_width_class': name})
     return pool
@@ -166,10 +170,14 @@ def common_pool(atoms, renderable):
 
 class FacePicker:
     """Faces of one split: common listings (may recur) and distinct atom compositions, width sampled first."""
-    def __init__(self, split, rng, atoms, allowed, pool, seen):
+    def __init__(self, split, rng, atoms, allowed, pool, seen, exclusions=None):
         self.split, self.rng, self.atoms, self.allowed, self.seen = split, rng, atoms, allowed, seen
+        self.exclusions = exclusions
         self.families = width_families(atoms)
-        self.pool = {name: [f for f in pool[split] if f['bracket_width_class'] == name] for name in (*WIDTH_CLASS_WEIGHTS, 'none')}
+        self.pool = {name: [f for f in pool[split] if f['bracket_width_class'] == name
+                           and (exclusions is None or not exclusions.matches(f['text'], f['core_key'])
+                                and exposure.split_matches(f['text'], split, f['core_key']))]
+                     for name in (*WIDTH_CLASS_WEIGHTS, 'none')}
 
     def target(self):
         names = list(WIDTH_CLASS_WEIGHTS)
@@ -186,21 +194,31 @@ class FacePicker:
                 continue
             text = rewrite_width(composed['text'], self.atoms, self.families, target, self.rng)
             record = face_record(text, self.atoms, 'atom-table-' + self.split + '-partition', composed['structure'])
-            if record['core_partition'] != self.split or th(text) in self.seen:
+            if (record['core_partition'] != self.split or th(text) in self.seen
+                    or self.exclusions is not None and (self.exclusions.matches(text, record['core_key'])
+                                                        or not exposure.split_matches(text, self.split, record['core_key']))):
                 continue
             self.seen.add(th(text))
             return {**record, 'bracket_width_class': width_class(text, self.atoms, self.families)}
         raise ValueError('Original face pool exhausted for ' + self.split)
 
 
-def plan_comment(rng, faces, atoms, seen, negative=False, words=None):
+def plan_comment(rng, faces, atoms, seen, negative=False, words=None, exclusions=None):
     """Ordered (kind, payload, separator) segments of one single-line comment."""
     kinds = [k for k in PLAN_WEIGHTS if not negative or k in NEGATIVE_PLANS]
+    fragments = cs.FRAGMENTS if exclusions is None else tuple(t for t in cs.FRAGMENTS if not exclusions.matches(t))
+    if not fragments:
+        kinds = [k for k in kinds if all(separator != 'fragment' for _, separator in PLANS[k])]
+    if not kinds:
+        raise ValueError('Comment plan pool exhausted by exposure exclusions')
     kind = rng.choices(kinds, [PLAN_WEIGHTS[k] for k in kinds])[0]
     def body(count):
+        if exclusions is not None:
+            return exclusions.words(rng, count, atoms, seen=seen)
         for _ in range(10000):
             text = cs.comment_words(rng, count)
-            if th(text) not in seen and text.strip() and not cs.contains_face(text, atoms):
+            if (th(text) not in seen and text.strip() and not cs.contains_face(text, atoms)
+                    and (exclusions is None or not exclusions.matches(text))):
                 seen.add(th(text))
                 return text
         raise ValueError('Original comment pool exhausted')
@@ -208,7 +226,7 @@ def plan_comment(rng, faces, atoms, seen, negative=False, words=None):
     for segment_kind, separator in PLANS[kind]:
         separator = rng.choice(('', ' ')) if separator == '?' else separator
         if separator == 'fragment':
-            segments.append(('body', rng.choice(cs.FRAGMENTS), ''))
+            segments.append(('body', rng.choice(fragments), ''))
         elif segment_kind == 'face':
             segments.append(('face', faces(), separator))
         else:
@@ -228,10 +246,10 @@ def scene_style(rng):
             'method': WEBP['method']} if webp else {'format': 'png', 'quality': None, 'method': None}}
 
 
-def plan_row(rng, faces, atoms, seen, negative):
+def plan_row(rng, faces, atoms, seen, negative, exclusions=None):
     palette = rng.choice(sorted(PALETTES))
     jitter = lambda colour: tuple(max(0, min(255, c + rng.randrange(-4, 5))) for c in colour)
-    kind, segments = plan_comment(rng, faces, atoms, seen, negative)
+    kind, segments = plan_comment(rng, faces, atoms, seen, negative, exclusions=exclusions)
     duty = ''.join(rng.choice(cs.CN_WORDS) for _ in range(rng.randrange(2, 5))) + rng.choice(('', '', '！'))
     stamp = (f'{rng.randrange(2024, 2027)}-{rng.randrange(1, 13):02d}-{rng.randrange(1, 29):02d} '
              f'{rng.randrange(24):02d}:{rng.randrange(60):02d}:{rng.randrange(60):02d}')
@@ -653,16 +671,21 @@ def region_records(regions, masks, contact, used, style):
     return records
 
 
-def render_one(session, split, rng, picker, atoms, seen, negative, fonts, exclusions, rows_override=None):
+def render_one(session, split, rng, picker, atoms, seen, negative, fonts, exclusions, rows_override=None, exposure_exclusions=None):
     """One reliable scene: (style, rows, text, records, background, lossless, delivered, masks, page html)."""
     attempt = session.temp_root / 'attempt.html'
     for _ in range(60):
         style = scene_style(rng)
         try:
-            rows = fitting_rows(session, style, lambda _: plan_row(rng, picker, atoms, seen, negative), attempt, rows_override)
+            rows = fitting_rows(session, style, lambda _: plan_row(rng, picker, atoms, seen, negative, exposure_exclusions), attempt, rows_override)
             if not negative and not any(kind == 'face' for row in rows for kind, _, _ in row['segments']):
                 raise Unsupported('positive-card-scene-without-face')
             text, regions = page_regions(rows)
+            if exposure_exclusions is not None:
+                try:
+                    exposure_exclusions.assert_clear({'text': text, 'regions': regions, 'split': split})
+                except ValueError as error:
+                    raise Unsupported('cross-round-exposed-target') from error
             page = page_html(style, rows)
             attempt.write_text(page, encoding='utf-8')
             background, full, masks, contact, used = capture_scene(session, style, attempt, regions, fonts)
@@ -720,10 +743,12 @@ def split_summary(rows):
             'platform_fonts': dict(Counter(font for row in rows for region in row['regions'] for font in region['font_ids']))}
 
 
-def _dependency_digests():
+def _dependency_digests(include_exposure=False):
     base = Path(__file__).resolve().parents[1]
     names = ['RegionKaomoji/card_scenes.py', 'RegionKaomoji/known_input.py', 'RegionKaomoji/scenes.py', 'PretrainedOcr/quality_corpus.py',
              'PretrainedOcr/grammar_corpus.py', 'PretrainedOcr/grammar_data.py', 'PretrainedOcr/kaomoji_grammar.py', 'PretrainedOcr/kaomoji_atoms.json']
+    if include_exposure:
+        names.append('RegionKaomoji/exposure.py')
     return {name: sha(base / name) for name in names}
 
 
@@ -738,7 +763,7 @@ def environment(session, fonts, rows):
             'fonts_distributed': False, 'images_distributable': False}
 
 
-def generate(output, fonts, counts=(60, 120), seed=20261015, rows_override=None):
+def generate(output, fonts, counts=(60, 120), seed=20261015, rows_override=None, exclusions=None):
     """Render, freeze and seal a browser real-font card dataset inside the registered round."""
     if len(counts) != 2 or any(not isinstance(n, int) or isinstance(n, bool) or n < NEGATIVE_EVERY for n in counts):
         raise ValueError('Each split needs at least one negative scene')
@@ -746,6 +771,7 @@ def generate(output, fonts, counts=(60, 120), seed=20261015, rows_override=None)
     if rp.profile_for(root) is None or root.exists():
         raise ValueError('Fresh browser scenes must be generated inside a registered research round')
     qd.storage_gate(root, 64 * 1024 ** 2)
+    excluded = exposure.load(exclusions) if exclusions is not None else None
     renderer, atoms = MixedRenderer(fonts), kg.default_atoms()
     allowed, excluded_atoms = renderable_atoms(renderer, atoms)
     def renderable(text):
@@ -754,7 +780,7 @@ def generate(output, fonts, counts=(60, 120), seed=20261015, rows_override=None)
         except Unsupported:
             return False
         return True
-    pool = common_pool(atoms, renderable)
+    pool = common_pool(atoms, renderable, exclusions=excluded)
     root.mkdir(parents=True)
     for name in ('images', 'lossless', 'backgrounds', 'masks', 'pages'):
         (root / name).mkdir()
@@ -764,11 +790,12 @@ def generate(output, fonts, counts=(60, 120), seed=20261015, rows_override=None)
     with BrowserSession(root / 'browser-temp') as session:
         for split, target in zip(('dev', 'heldout'), counts):
             rng = random.Random(seed + (0 if split == 'dev' else 1))
-            picker, rows = FacePicker(split, rng, atoms, allowed, pool, seen), []
+            picker, rows = FacePicker(split, rng, atoms, allowed, pool, seen, exclusions=excluded), []
             for index in range(target):
                 negative = index % NEGATIVE_EVERY == NEGATIVE_EVERY - 1
                 while True:
-                    scene = render_one(session, split, rng, picker, atoms, seen, negative, font_files, exclusions, rows_override)
+                    extra = {'exposure_exclusions': excluded} if excluded is not None else {}
+                    scene = render_one(session, split, rng, picker, atoms, seen, negative, font_files, exclusions, rows_override, **extra)
                     digest = pixels(_image(scene[6]))
                     if digest not in allpixels:
                         break
@@ -794,7 +821,7 @@ def generate(output, fonts, counts=(60, 120), seed=20261015, rows_override=None)
         'paste_faces': list(PASTE_FACES), 'device_scales': list(DEVICE_SCALES), 'device_size': list(DEVICE_SIZE), 'font_sizes': list(FONT_SIZES),
         'font_family': FONT_FAMILY, 'layout': LAYOUT, 'palettes': {k: [list(c) for c in v] for k, v in PALETTES.items()}, 'webp': WEBP,
         'atoms_binding': kg.binding(atoms), 'excluded_atoms': excluded_atoms, 'core_partition_buckets': {k: list(v) for k, v in gc.PARTITION_BUCKETS.items()},
-        'environment': env, 'source_sha256': sha(__file__), 'dependency_sha256': _dependency_digests(), 'font_manifest_sha256': sha(fonts),
+        'environment': env, 'source_sha256': sha(__file__), 'dependency_sha256': _dependency_digests(include_exposure=excluded is not None), 'font_manifest_sha256': sha(fonts),
         'bounds': 'lossless-capture visible-ink half-open [left,top,right,bottom)',
         'spans': 'raw Python Unicode codepoint spans [start,end); rows separated by LF, columns by two spaces, comment segments by their declared separator; separators are not regions',
         'background': 'per-scene capture with every region hidden and comments transparent; visible ink is any lossless pixel differing from it',
@@ -803,6 +830,12 @@ def generate(output, fonts, counts=(60, 120), seed=20261015, rows_override=None)
         'delivery': 'png scenes deliver the lossless capture; webp scenes deliver the decoded lossy webp of it with the recorded quality and method',
         'layout_note': 'Original geometric badges and icons stand in for application icons; names are original word compounds; no game assets are reproduced',
         'exclusions': dict(exclusions), 'summary': summary,
+        **({'exposure_exclusions': excluded.binding,
+            'exposure_split_policy': 'raw-and-width-sibling split agreement',
+            'exposure_distribution': {'common_pool_available': {s: len(rows) for s, rows in pool.items()},
+                                      'empty_common_class_fallback': 'original atom compositions',
+                                      'exhausted_fragment_plan': 'excluded before sampling',
+                                      'body_word_recovery': excluded.word_recovery_summary()}} if excluded is not None else {}),
         'usage': {'dev': 'measurement of frozen configurations only', 'heldout': 'first CPU evaluation after selection and dual freeze'}})
     atomic_write(root / 'progress.json', {'pid': os.getpid(), 'phase': 'validating', 'updated_utc': utc()})
     binding = validate(root)
@@ -927,6 +960,9 @@ def validate(root):
     if meta.get('schema_version') != 'localocr.region-scenes.v1' or meta.get('synthetic_only') is not True or meta.get('generator_id') != GENERATOR_ID:
         raise ValueError('Scene schema/synthetic declaration')
     atoms = kg.default_atoms()
+    excluded = exposure.load_bound(meta['exposure_exclusions']) if 'exposure_exclusions' in meta else None
+    if excluded is not None and meta.get('exposure_split_policy') != 'raw-and-width-sibling split agreement':
+        raise ValueError('Cross-round exposure split policy differs')
     if meta.get('atoms_binding') != kg.binding(atoms):
         raise ValueError('Scene atoms binding differs from the canonical table')
     if meta['environment']['browser']['blocked_requests'] != 0:
@@ -941,6 +977,8 @@ def validate(root):
         if len(rows) != info['count']:
             raise ValueError('Scene count changed')
         for row in rows:
+            if excluded is not None:
+                excluded.assert_clear(row)
             _check_row_identity(row, split, owners, pixelsets)
             lossless, background = _check_files(root, row)
             for region in row['regions']:
@@ -968,8 +1006,9 @@ def main(argv=None):
     parser.add_argument('--fonts')
     parser.add_argument('--counts', nargs=2, type=int, default=(60, 120))
     parser.add_argument('--seed', type=int, default=20261015)
+    parser.add_argument('--exclusions', help='Frozen cross-round exposure inventory')
     args = parser.parse_args(argv)
-    value = generate(args.dataset, args.fonts, tuple(args.counts), args.seed) if args.action == 'generate' else validate(args.dataset)
+    value = generate(args.dataset, args.fonts, tuple(args.counts), args.seed, exclusions=args.exclusions) if args.action == 'generate' else validate(args.dataset)
     print(json.dumps(value, indent=2))
 
 
