@@ -1,18 +1,18 @@
 {
-  "built_utc": "2026-10-16T19:06:29.307479+00:00",
+  "built_utc": "2026-10-29T14:08:48.820947+00:00",
   "figures": [
     {
       "file": "docs/evaluation/history/figures/version-comparison.svg",
-      "sha256": "a9ad2797e33e48ae63fb1b76616c190282a6296291e8a83f56bda85097ff00a5"
+      "sha256": "99afba755b94ff4f55a82925033804085eee13566f92cb322ae9464d6acfc4aa"
     }
   ],
   "schema_version": "localocr.version-history.assets-build.v1",
-  "script_sha256": "647fc45b5e1a0f871fe45fe5c8ed469693ccbb866cfd7680b9caded81c9b19bc",
+  "script_sha256": "4921581dfdd112ecfe16a3e1fcce75b1263b8574f567b3abe4b09141c6e1e1c9",
   "sources": [
     {
-      "file": "artifacts/bracket-pairs-20261016/validation/version-comparison-counts.json",
+      "file": "artifacts/stage-attribution-20261029/validation/version-comparison-counts.json",
       "role": "version-comparison-counts",
-      "sha256": "f9be8c6269be6fad2540348b73b35fda2e9ccec4b8ee2a717478889483461161"
+      "sha256": "f26032a20854ef1bafda835fd666de7ba11f9497feaca0e20ccc9da9e696a68d"
     },
     {
       "file": "docs/evaluation/region-20261012/summary.json",
@@ -50,6 +50,11 @@
       "sha256": "aa717c6caed39f310b59259c3722ecd6d2b7b11ead95b09a23330e6d0726f155"
     },
     {
+      "file": "docs/evaluation/candidate-recovery-20261018/summary.json",
+      "role": "round:candidate-recovery-20261018",
+      "sha256": "b29f688c51c9f76558b50077002369f4b3715397b8733c6b4d3205e8752e47aa"
+    },
+    {
       "file": "docs/evaluation/kaomoji-v1-v4-20261011/metrics.json",
       "role": "round:kaomoji-v1-v4-20261011",
       "sha256": "b90934708975aac2bbf71219bb455f24d6c4e71f8753f6d003a48edb042d146f"
@@ -73,8 +78,33 @@
       "file": "docs/evaluation/bracket-pairs-20261016/summary.json",
       "role": "crop:bracket-pairs-20261016",
       "sha256": "aa717c6caed39f310b59259c3722ecd6d2b7b11ead95b09a23330e6d0726f155"
+    },
+    {
+      "file": "docs/evaluation/candidate-recovery-20261018/summary.json",
+      "role": "crop:candidate-recovery-20261018",
+      "sha256": "b29f688c51c9f76558b50077002369f4b3715397b8733c6b4d3205e8752e47aa"
+    },
+    {
+      "file": "docs/evaluation/complete-spans-20261019/summary.json",
+      "role": "unfrozen:complete-spans-20261019",
+      "sha256": "ad6cfe09de9907e3233125590e1ea9685acfd01ce3dc1815dc981ffb8cde1bd4"
+    },
+    {
+      "file": "docs/evaluation/pixel-owned-spans-20261020/summary.json",
+      "role": "unfrozen:pixel-owned-spans-20261020",
+      "sha256": "5273a52cc1d94083e207417b6e0a56372945c95efb3f364017a9bd1454d6e801"
+    },
+    {
+      "file": "artifacts/ownership-position-20261022/evaluation/quality-only-gates.json",
+      "role": "unfrozen:ownership-position-20261022",
+      "sha256": "967961abb1c5af158572a48c436532fefe4b46b6f95fcdf0ba778e244415eed5"
+    },
+    {
+      "file": "artifacts/first-pass-position-20261027/evaluation/quality-only-gates.json",
+      "role": "unfrozen:first-pass-position-20261027",
+      "sha256": "0665051f2c930b5db6758a92db87fc4e20e15df0676dd5b39ab848a2d7b56ddf"
     }
   ],
   "statement": "Built from tracked anonymous round summaries and a local counts-only recount; no images, labels, row predictions, private screenshots or weights opened; no inference; no network.",
-  "summary_sha256": "d710ad5a577e5189d00dacba41abd807212f376e915fc9ec8258984dda42997d"
+  "summary_sha256": "731aa8b010c19420fb05444101574c938d67a87238d4a953f3446e4ce63cf286"
 }

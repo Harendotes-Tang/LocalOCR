@@ -1,0 +1,1641 @@
+{
+  "categories": [
+    "nohit",
+    "partial-only",
+    "complete-but-body/graphicunsafe",
+    "safe-unrouted",
+    "safe-routed-raw-wrong",
+    "safe-routed-raw-correct"
+  ],
+  "comparisons": [
+    {
+      "category_transitions": {
+        "complete-but-body/graphicunsafe -> complete-but-body/graphicunsafe": 82,
+        "complete-but-body/graphicunsafe -> nohit": 1,
+        "complete-but-body/graphicunsafe -> safe-routed-raw-correct": 4,
+        "complete-but-body/graphicunsafe -> safe-routed-raw-wrong": 1,
+        "complete-but-body/graphicunsafe -> safe-unrouted": 7,
+        "nohit -> nohit": 6,
+        "partial-only -> partial-only": 76,
+        "partial-only -> safe-routed-raw-correct": 1,
+        "safe-routed-raw-correct -> safe-routed-raw-correct": 36,
+        "safe-routed-raw-wrong -> safe-routed-raw-wrong": 3,
+        "safe-unrouted -> safe-routed-raw-correct": 1,
+        "safe-unrouted -> safe-unrouted": 26
+      },
+      "gained_targets": [
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "complete-but-body/graphicunsafe",
+          "scene_id": "dev-0020",
+          "truth_id": "dev-0020-region-34"
+        },
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "safe-unrouted",
+          "scene_id": "dev-0036",
+          "truth_id": "dev-0036-region-36"
+        }
+      ],
+      "lost_signatures": {},
+      "lost_targets": [],
+      "start": "start-anchor",
+      "tier": "initial-anchor"
+    },
+    {
+      "category_transitions": {
+        "complete-but-body/graphicunsafe -> complete-but-body/graphicunsafe": 91,
+        "complete-but-body/graphicunsafe -> safe-unrouted": 4,
+        "nohit -> nohit": 6,
+        "partial-only -> partial-only": 75,
+        "partial-only -> safe-unrouted": 2,
+        "safe-routed-raw-correct -> safe-routed-raw-correct": 36,
+        "safe-routed-raw-wrong -> safe-routed-raw-wrong": 3,
+        "safe-unrouted -> safe-routed-raw-correct": 6,
+        "safe-unrouted -> safe-routed-raw-wrong": 2,
+        "safe-unrouted -> safe-unrouted": 19
+      },
+      "gained_targets": [
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "safe-unrouted",
+          "scene_id": "dev-0003",
+          "truth_id": "dev-0003-region-30"
+        }
+      ],
+      "lost_signatures": {},
+      "lost_targets": [],
+      "start": "start-anchor",
+      "tier": "local-anchor"
+    },
+    {
+      "category_transitions": {
+        "complete-but-body/graphicunsafe -> complete-but-body/graphicunsafe": 82,
+        "complete-but-body/graphicunsafe -> nohit": 1,
+        "complete-but-body/graphicunsafe -> safe-routed-raw-correct": 4,
+        "complete-but-body/graphicunsafe -> safe-routed-raw-wrong": 2,
+        "complete-but-body/graphicunsafe -> safe-unrouted": 6,
+        "nohit -> nohit": 6,
+        "partial-only -> partial-only": 74,
+        "partial-only -> safe-routed-raw-correct": 1,
+        "partial-only -> safe-unrouted": 2,
+        "safe-routed-raw-correct -> safe-routed-raw-correct": 36,
+        "safe-routed-raw-wrong -> safe-routed-raw-wrong": 3,
+        "safe-unrouted -> safe-routed-raw-correct": 7,
+        "safe-unrouted -> safe-routed-raw-wrong": 2,
+        "safe-unrouted -> safe-unrouted": 18
+      },
+      "gained_targets": [
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "safe-unrouted",
+          "scene_id": "dev-0003",
+          "truth_id": "dev-0003-region-30"
+        },
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "complete-but-body/graphicunsafe",
+          "scene_id": "dev-0020",
+          "truth_id": "dev-0020-region-34"
+        },
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "safe-unrouted",
+          "scene_id": "dev-0036",
+          "truth_id": "dev-0036-region-36"
+        }
+      ],
+      "lost_signatures": {},
+      "lost_targets": [],
+      "start": "start-anchor",
+      "tier": "union-anchor"
+    },
+    {
+      "category_transitions": {
+        "complete-but-body/graphicunsafe -> complete-but-body/graphicunsafe": 107,
+        "complete-but-body/graphicunsafe -> nohit": 1,
+        "complete-but-body/graphicunsafe -> partial-only": 1,
+        "complete-but-body/graphicunsafe -> safe-routed-raw-correct": 3,
+        "complete-but-body/graphicunsafe -> safe-unrouted": 4,
+        "nohit -> nohit": 5,
+        "partial-only -> partial-only": 89,
+        "partial-only -> safe-routed-raw-correct": 1,
+        "safe-routed-raw-correct -> safe-routed-raw-correct": 25,
+        "safe-routed-raw-wrong -> safe-routed-raw-wrong": 9,
+        "safe-unrouted -> safe-unrouted": 23
+      },
+      "gained_targets": [],
+      "lost_signatures": {
+        "accepted-then-parent-restored": 3
+      },
+      "lost_targets": [
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "safe-routed-raw-correct",
+          "loss": {
+            "accepted": true,
+            "conflicts": [
+              "multiple-parent-face-edits"
+            ],
+            "decision_reasons": [
+              "exact-views-and-independent-pixels"
+            ],
+            "kind": "accepted-then-parent-restored",
+            "retained": false
+          },
+          "scene_id": "dev-0011",
+          "truth_id": "dev-0011-region-42"
+        },
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "safe-routed-raw-correct",
+          "loss": {
+            "accepted": true,
+            "conflicts": [
+              "multiple-parent-face-edits"
+            ],
+            "decision_reasons": [
+              "exact-views-and-independent-pixels"
+            ],
+            "kind": "accepted-then-parent-restored",
+            "retained": false
+          },
+          "scene_id": "dev-0011",
+          "truth_id": "dev-0011-region-43"
+        },
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "safe-routed-raw-correct",
+          "loss": {
+            "accepted": true,
+            "conflicts": [
+              "multiple-parent-face-edits"
+            ],
+            "decision_reasons": [
+              "exact-views-and-independent-pixels"
+            ],
+            "kind": "accepted-then-parent-restored",
+            "retained": false
+          },
+          "scene_id": "dev-0018",
+          "truth_id": "dev-0018-region-30"
+        }
+      ],
+      "start": "start-fresh",
+      "tier": "initial-fresh"
+    },
+    {
+      "category_transitions": {
+        "complete-but-body/graphicunsafe -> complete-but-body/graphicunsafe": 112,
+        "complete-but-body/graphicunsafe -> safe-routed-raw-correct": 1,
+        "complete-but-body/graphicunsafe -> safe-unrouted": 3,
+        "nohit -> nohit": 5,
+        "partial-only -> partial-only": 89,
+        "partial-only -> safe-routed-raw-correct": 1,
+        "safe-routed-raw-correct -> safe-routed-raw-correct": 25,
+        "safe-routed-raw-wrong -> safe-routed-raw-wrong": 9,
+        "safe-unrouted -> safe-routed-raw-correct": 3,
+        "safe-unrouted -> safe-routed-raw-wrong": 1,
+        "safe-unrouted -> safe-unrouted": 19
+      },
+      "gained_targets": [
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "partial-only",
+          "scene_id": "dev-0008",
+          "truth_id": "dev-0008-region-37"
+        }
+      ],
+      "lost_signatures": {
+        "accepted-then-parent-restored": 3
+      },
+      "lost_targets": [
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "safe-routed-raw-correct",
+          "loss": {
+            "accepted": true,
+            "conflicts": [
+              "multiple-parent-face-edits"
+            ],
+            "decision_reasons": [
+              "exact-views-and-independent-pixels"
+            ],
+            "kind": "accepted-then-parent-restored",
+            "retained": false
+          },
+          "scene_id": "dev-0011",
+          "truth_id": "dev-0011-region-42"
+        },
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "safe-routed-raw-correct",
+          "loss": {
+            "accepted": true,
+            "conflicts": [
+              "multiple-parent-face-edits"
+            ],
+            "decision_reasons": [
+              "exact-views-and-independent-pixels"
+            ],
+            "kind": "accepted-then-parent-restored",
+            "retained": false
+          },
+          "scene_id": "dev-0011",
+          "truth_id": "dev-0011-region-43"
+        },
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "safe-routed-raw-correct",
+          "loss": {
+            "accepted": true,
+            "conflicts": [
+              "multiple-parent-face-edits"
+            ],
+            "decision_reasons": [
+              "exact-views-and-independent-pixels"
+            ],
+            "kind": "accepted-then-parent-restored",
+            "retained": false
+          },
+          "scene_id": "dev-0018",
+          "truth_id": "dev-0018-region-30"
+        }
+      ],
+      "start": "start-fresh",
+      "tier": "local-fresh"
+    },
+    {
+      "category_transitions": {
+        "complete-but-body/graphicunsafe -> complete-but-body/graphicunsafe": 106,
+        "complete-but-body/graphicunsafe -> nohit": 1,
+        "complete-but-body/graphicunsafe -> partial-only": 1,
+        "complete-but-body/graphicunsafe -> safe-routed-raw-correct": 3,
+        "complete-but-body/graphicunsafe -> safe-unrouted": 5,
+        "nohit -> nohit": 5,
+        "partial-only -> partial-only": 88,
+        "partial-only -> safe-routed-raw-correct": 2,
+        "safe-routed-raw-correct -> safe-routed-raw-correct": 25,
+        "safe-routed-raw-wrong -> safe-routed-raw-wrong": 9,
+        "safe-unrouted -> safe-routed-raw-correct": 3,
+        "safe-unrouted -> safe-routed-raw-wrong": 1,
+        "safe-unrouted -> safe-unrouted": 19
+      },
+      "gained_targets": [
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "partial-only",
+          "scene_id": "dev-0008",
+          "truth_id": "dev-0008-region-37"
+        }
+      ],
+      "lost_signatures": {
+        "accepted-then-parent-restored": 3
+      },
+      "lost_targets": [
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "safe-routed-raw-correct",
+          "loss": {
+            "accepted": true,
+            "conflicts": [
+              "multiple-parent-face-edits"
+            ],
+            "decision_reasons": [
+              "exact-views-and-independent-pixels"
+            ],
+            "kind": "accepted-then-parent-restored",
+            "retained": false
+          },
+          "scene_id": "dev-0011",
+          "truth_id": "dev-0011-region-42"
+        },
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "safe-routed-raw-correct",
+          "loss": {
+            "accepted": true,
+            "conflicts": [
+              "multiple-parent-face-edits"
+            ],
+            "decision_reasons": [
+              "exact-views-and-independent-pixels"
+            ],
+            "kind": "accepted-then-parent-restored",
+            "retained": false
+          },
+          "scene_id": "dev-0011",
+          "truth_id": "dev-0011-region-43"
+        },
+        {
+          "category_after": "safe-routed-raw-correct",
+          "category_before": "safe-routed-raw-correct",
+          "loss": {
+            "accepted": true,
+            "conflicts": [
+              "multiple-parent-face-edits"
+            ],
+            "decision_reasons": [
+              "exact-views-and-independent-pixels"
+            ],
+            "kind": "accepted-then-parent-restored",
+            "retained": false
+          },
+          "scene_id": "dev-0018",
+          "truth_id": "dev-0018-region-30"
+        }
+      ],
+      "start": "start-fresh",
+      "tier": "union-fresh"
+    }
+  ],
+  "evidence_kind": "Read-only recount of recorded development reports; no inference, no heldout access",
+  "generated_utc": "2026-10-29T14:10:52.505126+00:00",
+  "model": "ppocrv6-tiny-exp-20261016-001",
+  "private_output": {
+    "file": "artifacts\\stage-attribution-20261029\\stage-attribution-private.json",
+    "sha256": "43f94b89db4ff55ae96c4bd7e9af23ffc7e7f80133bbb48d1613d3137240d850"
+  },
+  "reports": {
+    "initial-anchor": {
+      "baseline_exact": 0,
+      "body_regions_flagged": {
+        "count": 0,
+        "counters": {},
+        "target_ids": []
+      },
+      "complete_unsafe": {
+        "kinds": {
+          "body": 82
+        },
+        "routed_any_hit": 40
+      },
+      "faces": 244,
+      "final_exact": 22,
+      "final_exact_by_stage": {
+        "complete-but-body/graphicunsafe": 1,
+        "nohit": 0,
+        "partial-only": 0,
+        "safe-routed-raw-correct": 20,
+        "safe-routed-raw-wrong": 0,
+        "safe-unrouted": 1
+      },
+      "label": "initial-anchor",
+      "partial_only": {
+        "coverage_bins": {
+          "[0.0,0.5)": 9,
+          "[0.5,0.8)": 35,
+          "[0.8,0.95)": 30,
+          "[0.95,1.0)": 2
+        },
+        "routed_partial_candidate": 47
+      },
+      "raw_correct_final_wrong": {
+        "conflicts": {},
+        "count": 22,
+        "decision_reasons": {
+          "context-not-unique-raw-prefix-suffix": 2,
+          "exact-unicode-view-disagreement": 5,
+          "exact-views-and-independent-pixels": 1,
+          "insufficient-independent-pixel-shape-support": 3,
+          "mixed-region-not-confirmed-face-fragment": 3,
+          "mixed-region-ordinary-letter-number-protected": 1,
+          "multiple-baseline-regions-not-one-face-expression": 1,
+          "ordinary-body-region-protected": 4,
+          "raw-view-outside-agreement": 2
+        },
+        "kinds": {
+          "accepted-absent-from-final-regions": 1,
+          "fusion-rejected": 21
+        },
+        "target_ids": [
+          [
+            "dev-0000",
+            "dev-0000-region-5"
+          ],
+          [
+            "dev-0002",
+            "dev-0002-region-6"
+          ],
+          [
+            "dev-0008",
+            "dev-0008-region-34"
+          ],
+          [
+            "dev-0010",
+            "dev-0010-region-35"
+          ],
+          [
+            "dev-0010",
+            "dev-0010-region-75"
+          ],
+          [
+            "dev-0015",
+            "dev-0015-region-20"
+          ],
+          [
+            "dev-0017",
+            "dev-0017-region-50"
+          ],
+          [
+            "dev-0018",
+            "dev-0018-region-50"
+          ],
+          [
+            "dev-0022",
+            "dev-0022-region-14"
+          ],
+          [
+            "dev-0023",
+            "dev-0023-region-12"
+          ],
+          [
+            "dev-0023",
+            "dev-0023-region-26"
+          ],
+          [
+            "dev-0031",
+            "dev-0031-region-44"
+          ],
+          [
+            "dev-0031",
+            "dev-0031-region-59"
+          ],
+          [
+            "dev-0036",
+            "dev-0036-region-43"
+          ],
+          [
+            "dev-0043",
+            "dev-0043-region-15"
+          ],
+          [
+            "dev-0047",
+            "dev-0047-region-6"
+          ],
+          [
+            "dev-0047",
+            "dev-0047-region-29"
+          ],
+          [
+            "dev-0048",
+            "dev-0048-region-28"
+          ],
+          [
+            "dev-0051",
+            "dev-0051-region-20"
+          ],
+          [
+            "dev-0053",
+            "dev-0053-region-30"
+          ],
+          [
+            "dev-0056",
+            "dev-0056-region-30"
+          ],
+          [
+            "dev-0058",
+            "dev-0058-region-70"
+          ]
+        ]
+      },
+      "recorded_body": {
+        "baseline_correct_to_wrong": 0,
+        "baseline_exact": 1592,
+        "baseline_mixed_regions": 208,
+        "body_intersection_transcript_changes": 13,
+        "body_literal_deleted": 0,
+        "erroneous_rewrites": 0,
+        "final_exact": 1594,
+        "final_mixed_regions": 205,
+        "new_body_intersection_errors": 0,
+        "regions": 2309,
+        "split_children_with_unchanged_reading": 2091,
+        "verified_body_preserving_splices": 11
+      },
+      "report": "artifacts\\first-pass-position-20261027\\evaluation\\scene-dev-initial-anchor\\evaluation.json",
+      "report_sha256": "24f98c891b675a808b4995c9da4c7785a3d7d7b0ec8ea3dbf0b15560034c3dcc",
+      "safe_unrouted_reasons": {
+        "incomplete-or-edge-clipped-crop": 4,
+        "neighbor-body-overlap": 21,
+        "observed-ordinary-body-anchors": 3,
+        "observed-ordinary-numbers": 2,
+        "ordinary-body-or-single-letter-brackets": 3
+      },
+      "stage_partition": {
+        "complete-but-body/graphicunsafe": 82,
+        "nohit": 7,
+        "partial-only": 76,
+        "safe-routed-raw-correct": 42,
+        "safe-routed-raw-wrong": 4,
+        "safe-unrouted": 33
+      }
+    },
+    "initial-fresh": {
+      "baseline_exact": 0,
+      "body_regions_flagged": {
+        "count": 2,
+        "counters": {
+          "new_body_intersection_errors": 2
+        },
+        "target_ids": [
+          [
+            "dev-0008",
+            "dev-0008-region-14"
+          ],
+          [
+            "dev-0055",
+            "dev-0055-region-12"
+          ]
+        ]
+      },
+      "complete_unsafe": {
+        "kinds": {
+          "body": 107
+        },
+        "routed_any_hit": 33
+      },
+      "faces": 268,
+      "final_exact": 18,
+      "final_exact_by_stage": {
+        "complete-but-body/graphicunsafe": 2,
+        "nohit": 0,
+        "partial-only": 0,
+        "safe-routed-raw-correct": 16,
+        "safe-routed-raw-wrong": 0,
+        "safe-unrouted": 0
+      },
+      "label": "initial-fresh",
+      "partial_only": {
+        "coverage_bins": {
+          "[0.0,0.5)": 11,
+          "[0.5,0.8)": 53,
+          "[0.8,0.95)": 26
+        },
+        "routed_partial_candidate": 47
+      },
+      "raw_correct_final_wrong": {
+        "conflicts": {
+          "multiple-parent-face-edits": 3
+        },
+        "count": 13,
+        "decision_reasons": {
+          "context-not-unique-raw-prefix-suffix": 1,
+          "exact-unicode-view-disagreement": 4,
+          "exact-views-and-independent-pixels": 4,
+          "insufficient-independent-pixel-shape-support": 2,
+          "mixed-region-not-confirmed-face-fragment": 1,
+          "mixed-region-ordinary-letter-number-protected": 1
+        },
+        "kinds": {
+          "accepted-absent-from-final-regions": 1,
+          "accepted-then-parent-restored": 3,
+          "fusion-rejected": 9
+        },
+        "target_ids": [
+          [
+            "dev-0002",
+            "dev-0002-region-38"
+          ],
+          [
+            "dev-0007",
+            "dev-0007-region-22"
+          ],
+          [
+            "dev-0011",
+            "dev-0011-region-42"
+          ],
+          [
+            "dev-0011",
+            "dev-0011-region-43"
+          ],
+          [
+            "dev-0016",
+            "dev-0016-region-19"
+          ],
+          [
+            "dev-0017",
+            "dev-0017-region-47"
+          ],
+          [
+            "dev-0018",
+            "dev-0018-region-30"
+          ],
+          [
+            "dev-0033",
+            "dev-0033-region-14"
+          ],
+          [
+            "dev-0043",
+            "dev-0043-region-44"
+          ],
+          [
+            "dev-0045",
+            "dev-0045-region-79"
+          ],
+          [
+            "dev-0048",
+            "dev-0048-region-45"
+          ],
+          [
+            "dev-0050",
+            "dev-0050-region-6"
+          ],
+          [
+            "dev-0057",
+            "dev-0057-region-74"
+          ]
+        ]
+      },
+      "recorded_body": {
+        "baseline_correct_to_wrong": 0,
+        "baseline_exact": 1660,
+        "baseline_mixed_regions": 243,
+        "body_intersection_transcript_changes": 14,
+        "body_literal_deleted": 0,
+        "erroneous_rewrites": 0,
+        "final_exact": 1661,
+        "final_mixed_regions": 241,
+        "new_body_intersection_errors": 2,
+        "regions": 2437,
+        "split_children_with_unchanged_reading": 2233,
+        "verified_body_preserving_splices": 9
+      },
+      "report": "artifacts\\first-pass-position-20261027\\evaluation\\scene-dev-initial-fresh\\evaluation.json",
+      "report_sha256": "d9ec024e56276fac78a633589472bec27a72c4a8c4a5d4c510c52886c953fa4c",
+      "safe_unrouted_reasons": {
+        "incomplete-or-edge-clipped-crop": 5,
+        "neighbor-body-overlap": 10,
+        "observed-ordinary-body-anchors": 8,
+        "observed-ordinary-numbers": 3,
+        "ordinary-body-or-single-letter-brackets": 1
+      },
+      "stage_partition": {
+        "complete-but-body/graphicunsafe": 107,
+        "nohit": 6,
+        "partial-only": 90,
+        "safe-routed-raw-correct": 29,
+        "safe-routed-raw-wrong": 9,
+        "safe-unrouted": 27
+      }
+    },
+    "local-anchor": {
+      "baseline_exact": 0,
+      "body_regions_flagged": {
+        "count": 0,
+        "counters": {},
+        "target_ids": []
+      },
+      "complete_unsafe": {
+        "kinds": {
+          "body": 91
+        },
+        "routed_any_hit": 39
+      },
+      "faces": 244,
+      "final_exact": 21,
+      "final_exact_by_stage": {
+        "complete-but-body/graphicunsafe": 1,
+        "nohit": 0,
+        "partial-only": 0,
+        "safe-routed-raw-correct": 19,
+        "safe-routed-raw-wrong": 0,
+        "safe-unrouted": 1
+      },
+      "label": "local-anchor",
+      "partial_only": {
+        "coverage_bins": {
+          "[0.0,0.5)": 9,
+          "[0.5,0.8)": 34,
+          "[0.8,0.95)": 30,
+          "[0.95,1.0)": 2
+        },
+        "routed_partial_candidate": 55
+      },
+      "raw_correct_final_wrong": {
+        "conflicts": {},
+        "count": 23,
+        "decision_reasons": {
+          "baseline-region-already-consumed": 1,
+          "context-not-unique-raw-prefix-suffix": 2,
+          "exact-unicode-view-disagreement": 4,
+          "exact-views-and-independent-pixels": 1,
+          "insufficient-independent-pixel-shape-support": 4,
+          "mixed-region-not-confirmed-face-fragment": 3,
+          "mixed-region-ordinary-letter-number-protected": 1,
+          "multiple-baseline-regions-not-one-face-expression": 1,
+          "ordinary-body-region-protected": 4,
+          "raw-view-outside-agreement": 2
+        },
+        "kinds": {
+          "accepted-absent-from-final-regions": 1,
+          "fusion-rejected": 22
+        },
+        "target_ids": [
+          [
+            "dev-0000",
+            "dev-0000-region-5"
+          ],
+          [
+            "dev-0002",
+            "dev-0002-region-6"
+          ],
+          [
+            "dev-0003",
+            "dev-0003-region-39"
+          ],
+          [
+            "dev-0010",
+            "dev-0010-region-35"
+          ],
+          [
+            "dev-0010",
+            "dev-0010-region-75"
+          ],
+          [
+            "dev-0015",
+            "dev-0015-region-20"
+          ],
+          [
+            "dev-0017",
+            "dev-0017-region-26"
+          ],
+          [
+            "dev-0017",
+            "dev-0017-region-50"
+          ],
+          [
+            "dev-0018",
+            "dev-0018-region-50"
+          ],
+          [
+            "dev-0023",
+            "dev-0023-region-12"
+          ],
+          [
+            "dev-0031",
+            "dev-0031-region-44"
+          ],
+          [
+            "dev-0031",
+            "dev-0031-region-59"
+          ],
+          [
+            "dev-0036",
+            "dev-0036-region-43"
+          ],
+          [
+            "dev-0038",
+            "dev-0038-region-13"
+          ],
+          [
+            "dev-0042",
+            "dev-0042-region-22"
+          ],
+          [
+            "dev-0043",
+            "dev-0043-region-15"
+          ],
+          [
+            "dev-0047",
+            "dev-0047-region-6"
+          ],
+          [
+            "dev-0047",
+            "dev-0047-region-29"
+          ],
+          [
+            "dev-0048",
+            "dev-0048-region-28"
+          ],
+          [
+            "dev-0050",
+            "dev-0050-region-56"
+          ],
+          [
+            "dev-0053",
+            "dev-0053-region-30"
+          ],
+          [
+            "dev-0056",
+            "dev-0056-region-30"
+          ],
+          [
+            "dev-0058",
+            "dev-0058-region-70"
+          ]
+        ]
+      },
+      "recorded_body": {
+        "baseline_correct_to_wrong": 0,
+        "baseline_exact": 1592,
+        "baseline_mixed_regions": 208,
+        "body_intersection_transcript_changes": 13,
+        "body_literal_deleted": 0,
+        "erroneous_rewrites": 0,
+        "final_exact": 1594,
+        "final_mixed_regions": 205,
+        "new_body_intersection_errors": 0,
+        "regions": 2309,
+        "split_children_with_unchanged_reading": 2091,
+        "verified_body_preserving_splices": 11
+      },
+      "report": "artifacts\\first-pass-position-20261027\\evaluation\\scene-dev-local-anchor\\evaluation.json",
+      "report_sha256": "cd09411e113a740e68539aa4c4e1b124eee710508032e0812d0cc1b3adb03101",
+      "safe_unrouted_reasons": {
+        "incomplete-or-edge-clipped-crop": 3,
+        "neighbor-body-overlap": 14,
+        "observed-ordinary-body-anchors": 3,
+        "observed-ordinary-numbers": 2,
+        "ordinary-body-or-single-letter-brackets": 3
+      },
+      "stage_partition": {
+        "complete-but-body/graphicunsafe": 91,
+        "nohit": 6,
+        "partial-only": 75,
+        "safe-routed-raw-correct": 42,
+        "safe-routed-raw-wrong": 5,
+        "safe-unrouted": 25
+      }
+    },
+    "local-fresh": {
+      "baseline_exact": 0,
+      "body_regions_flagged": {
+        "count": 2,
+        "counters": {
+          "new_body_intersection_errors": 2
+        },
+        "target_ids": [
+          [
+            "dev-0008",
+            "dev-0008-region-14"
+          ],
+          [
+            "dev-0055",
+            "dev-0055-region-12"
+          ]
+        ]
+      },
+      "complete_unsafe": {
+        "kinds": {
+          "body": 112
+        },
+        "routed_any_hit": 33
+      },
+      "faces": 268,
+      "final_exact": 19,
+      "final_exact_by_stage": {
+        "complete-but-body/graphicunsafe": 2,
+        "nohit": 0,
+        "partial-only": 0,
+        "safe-routed-raw-correct": 17,
+        "safe-routed-raw-wrong": 0,
+        "safe-unrouted": 0
+      },
+      "label": "local-fresh",
+      "partial_only": {
+        "coverage_bins": {
+          "[0.0,0.5)": 11,
+          "[0.5,0.8)": 53,
+          "[0.8,0.95)": 25
+        },
+        "routed_partial_candidate": 50
+      },
+      "raw_correct_final_wrong": {
+        "conflicts": {
+          "multiple-parent-face-edits": 3
+        },
+        "count": 13,
+        "decision_reasons": {
+          "exact-unicode-view-disagreement": 3,
+          "exact-views-and-independent-pixels": 5,
+          "insufficient-independent-pixel-shape-support": 3,
+          "mixed-region-ordinary-letter-number-protected": 2
+        },
+        "kinds": {
+          "accepted-absent-from-final-regions": 2,
+          "accepted-then-parent-restored": 3,
+          "fusion-rejected": 8
+        },
+        "target_ids": [
+          [
+            "dev-0007",
+            "dev-0007-region-22"
+          ],
+          [
+            "dev-0008",
+            "dev-0008-region-45"
+          ],
+          [
+            "dev-0011",
+            "dev-0011-region-42"
+          ],
+          [
+            "dev-0011",
+            "dev-0011-region-43"
+          ],
+          [
+            "dev-0016",
+            "dev-0016-region-19"
+          ],
+          [
+            "dev-0017",
+            "dev-0017-region-47"
+          ],
+          [
+            "dev-0018",
+            "dev-0018-region-30"
+          ],
+          [
+            "dev-0021",
+            "dev-0021-region-35"
+          ],
+          [
+            "dev-0030",
+            "dev-0030-region-28"
+          ],
+          [
+            "dev-0033",
+            "dev-0033-region-14"
+          ],
+          [
+            "dev-0045",
+            "dev-0045-region-79"
+          ],
+          [
+            "dev-0048",
+            "dev-0048-region-45"
+          ],
+          [
+            "dev-0057",
+            "dev-0057-region-74"
+          ]
+        ]
+      },
+      "recorded_body": {
+        "baseline_correct_to_wrong": 0,
+        "baseline_exact": 1660,
+        "baseline_mixed_regions": 243,
+        "body_intersection_transcript_changes": 14,
+        "body_literal_deleted": 0,
+        "erroneous_rewrites": 0,
+        "final_exact": 1662,
+        "final_mixed_regions": 240,
+        "new_body_intersection_errors": 2,
+        "regions": 2437,
+        "split_children_with_unchanged_reading": 2233,
+        "verified_body_preserving_splices": 9
+      },
+      "report": "artifacts\\first-pass-position-20261027\\evaluation\\scene-dev-local-fresh\\evaluation.json",
+      "report_sha256": "190c99cd4e2389b34da23abcbde01d1cf451d991ef379195ac1c181ffb99064c",
+      "safe_unrouted_reasons": {
+        "incomplete-or-edge-clipped-crop": 3,
+        "neighbor-body-overlap": 7,
+        "observed-ordinary-body-anchors": 8,
+        "observed-ordinary-numbers": 3,
+        "ordinary-body-or-single-letter-brackets": 1
+      },
+      "stage_partition": {
+        "complete-but-body/graphicunsafe": 112,
+        "nohit": 5,
+        "partial-only": 89,
+        "safe-routed-raw-correct": 30,
+        "safe-routed-raw-wrong": 10,
+        "safe-unrouted": 22
+      }
+    },
+    "start-anchor": {
+      "baseline_exact": 0,
+      "body_regions_flagged": {
+        "count": 0,
+        "counters": {},
+        "target_ids": []
+      },
+      "complete_unsafe": {
+        "kinds": {
+          "body": 95
+        },
+        "routed_any_hit": 41
+      },
+      "faces": 244,
+      "final_exact": 20,
+      "final_exact_by_stage": {
+        "complete-but-body/graphicunsafe": 2,
+        "nohit": 0,
+        "partial-only": 0,
+        "safe-routed-raw-correct": 18,
+        "safe-routed-raw-wrong": 0,
+        "safe-unrouted": 0
+      },
+      "label": "start-anchor",
+      "partial_only": {
+        "coverage_bins": {
+          "[0.0,0.5)": 9,
+          "[0.5,0.8)": 36,
+          "[0.8,0.95)": 30,
+          "[0.95,1.0)": 2
+        },
+        "routed_partial_candidate": 48
+      },
+      "raw_correct_final_wrong": {
+        "conflicts": {},
+        "count": 18,
+        "decision_reasons": {
+          "context-not-unique-raw-prefix-suffix": 2,
+          "exact-unicode-view-disagreement": 3,
+          "exact-views-and-independent-pixels": 1,
+          "insufficient-independent-pixel-shape-support": 3,
+          "mixed-region-not-confirmed-face-fragment": 1,
+          "mixed-region-ordinary-letter-number-protected": 1,
+          "multiple-baseline-regions-not-one-face-expression": 1,
+          "ordinary-body-region-protected": 4,
+          "raw-view-outside-agreement": 2
+        },
+        "kinds": {
+          "accepted-absent-from-final-regions": 1,
+          "fusion-rejected": 17
+        },
+        "target_ids": [
+          [
+            "dev-0000",
+            "dev-0000-region-5"
+          ],
+          [
+            "dev-0002",
+            "dev-0002-region-6"
+          ],
+          [
+            "dev-0010",
+            "dev-0010-region-35"
+          ],
+          [
+            "dev-0010",
+            "dev-0010-region-75"
+          ],
+          [
+            "dev-0015",
+            "dev-0015-region-20"
+          ],
+          [
+            "dev-0017",
+            "dev-0017-region-50"
+          ],
+          [
+            "dev-0018",
+            "dev-0018-region-50"
+          ],
+          [
+            "dev-0023",
+            "dev-0023-region-12"
+          ],
+          [
+            "dev-0031",
+            "dev-0031-region-44"
+          ],
+          [
+            "dev-0031",
+            "dev-0031-region-59"
+          ],
+          [
+            "dev-0036",
+            "dev-0036-region-43"
+          ],
+          [
+            "dev-0043",
+            "dev-0043-region-15"
+          ],
+          [
+            "dev-0047",
+            "dev-0047-region-6"
+          ],
+          [
+            "dev-0047",
+            "dev-0047-region-29"
+          ],
+          [
+            "dev-0048",
+            "dev-0048-region-28"
+          ],
+          [
+            "dev-0053",
+            "dev-0053-region-30"
+          ],
+          [
+            "dev-0056",
+            "dev-0056-region-30"
+          ],
+          [
+            "dev-0058",
+            "dev-0058-region-70"
+          ]
+        ]
+      },
+      "recorded_body": {
+        "baseline_correct_to_wrong": 0,
+        "baseline_exact": 1592,
+        "baseline_mixed_regions": 208,
+        "body_intersection_transcript_changes": 11,
+        "body_literal_deleted": 0,
+        "erroneous_rewrites": 0,
+        "final_exact": 1594,
+        "final_mixed_regions": 205,
+        "new_body_intersection_errors": 0,
+        "regions": 2309,
+        "split_children_with_unchanged_reading": 2093,
+        "verified_body_preserving_splices": 9
+      },
+      "report": "artifacts\\first-pass-position-20261027\\evaluation\\scene-dev-start-anchor\\evaluation.json",
+      "report_sha256": "7a1e98fa15e71e77219353aba4430605acef81f7de161a4aff489ae81fabff91",
+      "safe_unrouted_reasons": {
+        "incomplete-or-edge-clipped-crop": 1,
+        "neighbor-body-overlap": 18,
+        "observed-ordinary-body-anchors": 3,
+        "observed-ordinary-numbers": 2,
+        "ordinary-body-or-single-letter-brackets": 3
+      },
+      "stage_partition": {
+        "complete-but-body/graphicunsafe": 95,
+        "nohit": 6,
+        "partial-only": 77,
+        "safe-routed-raw-correct": 36,
+        "safe-routed-raw-wrong": 3,
+        "safe-unrouted": 27
+      }
+    },
+    "start-fresh": {
+      "baseline_exact": 0,
+      "body_regions_flagged": {
+        "count": 2,
+        "counters": {
+          "new_body_intersection_errors": 2
+        },
+        "target_ids": [
+          [
+            "dev-0008",
+            "dev-0008-region-14"
+          ],
+          [
+            "dev-0055",
+            "dev-0055-region-12"
+          ]
+        ]
+      },
+      "complete_unsafe": {
+        "kinds": {
+          "body": 116
+        },
+        "routed_any_hit": 34
+      },
+      "faces": 268,
+      "final_exact": 21,
+      "final_exact_by_stage": {
+        "complete-but-body/graphicunsafe": 3,
+        "nohit": 0,
+        "partial-only": 0,
+        "safe-routed-raw-correct": 18,
+        "safe-routed-raw-wrong": 0,
+        "safe-unrouted": 0
+      },
+      "label": "start-fresh",
+      "partial_only": {
+        "coverage_bins": {
+          "[0.0,0.5)": 11,
+          "[0.5,0.8)": 55,
+          "[0.8,0.95)": 24
+        },
+        "routed_partial_candidate": 48
+      },
+      "raw_correct_final_wrong": {
+        "conflicts": {},
+        "count": 7,
+        "decision_reasons": {
+          "exact-unicode-view-disagreement": 3,
+          "exact-views-and-independent-pixels": 1,
+          "insufficient-independent-pixel-shape-support": 2,
+          "mixed-region-ordinary-letter-number-protected": 1
+        },
+        "kinds": {
+          "accepted-absent-from-final-regions": 1,
+          "fusion-rejected": 6
+        },
+        "target_ids": [
+          [
+            "dev-0007",
+            "dev-0007-region-22"
+          ],
+          [
+            "dev-0016",
+            "dev-0016-region-19"
+          ],
+          [
+            "dev-0017",
+            "dev-0017-region-47"
+          ],
+          [
+            "dev-0033",
+            "dev-0033-region-14"
+          ],
+          [
+            "dev-0045",
+            "dev-0045-region-79"
+          ],
+          [
+            "dev-0048",
+            "dev-0048-region-45"
+          ],
+          [
+            "dev-0057",
+            "dev-0057-region-74"
+          ]
+        ]
+      },
+      "recorded_body": {
+        "baseline_correct_to_wrong": 0,
+        "baseline_exact": 1660,
+        "baseline_mixed_regions": 243,
+        "body_intersection_transcript_changes": 16,
+        "body_literal_deleted": 0,
+        "erroneous_rewrites": 0,
+        "final_exact": 1661,
+        "final_mixed_regions": 240,
+        "new_body_intersection_errors": 2,
+        "regions": 2437,
+        "split_children_with_unchanged_reading": 2233,
+        "verified_body_preserving_splices": 9
+      },
+      "report": "artifacts\\first-pass-position-20261027\\evaluation\\scene-dev-start-fresh\\evaluation.json",
+      "report_sha256": "dad4b3f2a24756bedd31c360d1aa2833c72ea2cfe5243a5c9ec6bf5e148d915c",
+      "safe_unrouted_reasons": {
+        "incomplete-or-edge-clipped-crop": 1,
+        "neighbor-body-overlap": 10,
+        "observed-ordinary-body-anchors": 8,
+        "observed-ordinary-numbers": 3,
+        "ordinary-body-or-single-letter-brackets": 1
+      },
+      "stage_partition": {
+        "complete-but-body/graphicunsafe": 116,
+        "nohit": 5,
+        "partial-only": 90,
+        "safe-routed-raw-correct": 25,
+        "safe-routed-raw-wrong": 9,
+        "safe-unrouted": 23
+      }
+    },
+    "union-anchor": {
+      "baseline_exact": 0,
+      "body_regions_flagged": {
+        "count": 0,
+        "counters": {},
+        "target_ids": []
+      },
+      "complete_unsafe": {
+        "kinds": {
+          "body": 82
+        },
+        "routed_any_hit": 41
+      },
+      "faces": 244,
+      "final_exact": 23,
+      "final_exact_by_stage": {
+        "complete-but-body/graphicunsafe": 1,
+        "nohit": 0,
+        "partial-only": 0,
+        "safe-routed-raw-correct": 21,
+        "safe-routed-raw-wrong": 0,
+        "safe-unrouted": 1
+      },
+      "label": "union-anchor",
+      "partial_only": {
+        "coverage_bins": {
+          "[0.0,0.5)": 9,
+          "[0.5,0.8)": 33,
+          "[0.8,0.95)": 30,
+          "[0.95,1.0)": 2
+        },
+        "routed_partial_candidate": 54
+      },
+      "raw_correct_final_wrong": {
+        "conflicts": {},
+        "count": 27,
+        "decision_reasons": {
+          "baseline-region-already-consumed": 1,
+          "context-not-unique-raw-prefix-suffix": 2,
+          "exact-unicode-view-disagreement": 6,
+          "exact-views-and-independent-pixels": 1,
+          "insufficient-independent-pixel-shape-support": 4,
+          "mixed-region-not-confirmed-face-fragment": 5,
+          "mixed-region-ordinary-letter-number-protected": 1,
+          "multiple-baseline-regions-not-one-face-expression": 1,
+          "ordinary-body-region-protected": 4,
+          "raw-view-outside-agreement": 2
+        },
+        "kinds": {
+          "accepted-absent-from-final-regions": 1,
+          "fusion-rejected": 26
+        },
+        "target_ids": [
+          [
+            "dev-0000",
+            "dev-0000-region-5"
+          ],
+          [
+            "dev-0002",
+            "dev-0002-region-6"
+          ],
+          [
+            "dev-0003",
+            "dev-0003-region-39"
+          ],
+          [
+            "dev-0008",
+            "dev-0008-region-34"
+          ],
+          [
+            "dev-0010",
+            "dev-0010-region-35"
+          ],
+          [
+            "dev-0010",
+            "dev-0010-region-75"
+          ],
+          [
+            "dev-0015",
+            "dev-0015-region-20"
+          ],
+          [
+            "dev-0017",
+            "dev-0017-region-26"
+          ],
+          [
+            "dev-0017",
+            "dev-0017-region-50"
+          ],
+          [
+            "dev-0018",
+            "dev-0018-region-50"
+          ],
+          [
+            "dev-0022",
+            "dev-0022-region-14"
+          ],
+          [
+            "dev-0023",
+            "dev-0023-region-12"
+          ],
+          [
+            "dev-0023",
+            "dev-0023-region-26"
+          ],
+          [
+            "dev-0031",
+            "dev-0031-region-44"
+          ],
+          [
+            "dev-0031",
+            "dev-0031-region-59"
+          ],
+          [
+            "dev-0036",
+            "dev-0036-region-43"
+          ],
+          [
+            "dev-0038",
+            "dev-0038-region-13"
+          ],
+          [
+            "dev-0042",
+            "dev-0042-region-22"
+          ],
+          [
+            "dev-0043",
+            "dev-0043-region-15"
+          ],
+          [
+            "dev-0047",
+            "dev-0047-region-6"
+          ],
+          [
+            "dev-0047",
+            "dev-0047-region-29"
+          ],
+          [
+            "dev-0048",
+            "dev-0048-region-28"
+          ],
+          [
+            "dev-0050",
+            "dev-0050-region-56"
+          ],
+          [
+            "dev-0051",
+            "dev-0051-region-20"
+          ],
+          [
+            "dev-0053",
+            "dev-0053-region-30"
+          ],
+          [
+            "dev-0056",
+            "dev-0056-region-30"
+          ],
+          [
+            "dev-0058",
+            "dev-0058-region-70"
+          ]
+        ]
+      },
+      "recorded_body": {
+        "baseline_correct_to_wrong": 0,
+        "baseline_exact": 1592,
+        "baseline_mixed_regions": 208,
+        "body_intersection_transcript_changes": 16,
+        "body_literal_deleted": 0,
+        "erroneous_rewrites": 0,
+        "final_exact": 1594,
+        "final_mixed_regions": 205,
+        "new_body_intersection_errors": 0,
+        "regions": 2309,
+        "split_children_with_unchanged_reading": 2088,
+        "verified_body_preserving_splices": 14
+      },
+      "report": "artifacts\\first-pass-position-20261027\\evaluation\\scene-dev-union-anchor\\evaluation.json",
+      "report_sha256": "7d281c5386a82453d0d780c2ddf4cb0837fbe05efe908e5d4fc0ad304f492c41",
+      "safe_unrouted_reasons": {
+        "incomplete-or-edge-clipped-crop": 4,
+        "neighbor-body-overlap": 14,
+        "observed-ordinary-body-anchors": 3,
+        "observed-ordinary-numbers": 2,
+        "ordinary-body-or-single-letter-brackets": 3
+      },
+      "stage_partition": {
+        "complete-but-body/graphicunsafe": 82,
+        "nohit": 7,
+        "partial-only": 74,
+        "safe-routed-raw-correct": 48,
+        "safe-routed-raw-wrong": 7,
+        "safe-unrouted": 26
+      }
+    },
+    "union-fresh": {
+      "baseline_exact": 0,
+      "body_regions_flagged": {
+        "count": 2,
+        "counters": {
+          "new_body_intersection_errors": 2
+        },
+        "target_ids": [
+          [
+            "dev-0008",
+            "dev-0008-region-14"
+          ],
+          [
+            "dev-0055",
+            "dev-0055-region-12"
+          ]
+        ]
+      },
+      "complete_unsafe": {
+        "kinds": {
+          "body": 106
+        },
+        "routed_any_hit": 36
+      },
+      "faces": 268,
+      "final_exact": 19,
+      "final_exact_by_stage": {
+        "complete-but-body/graphicunsafe": 2,
+        "nohit": 0,
+        "partial-only": 0,
+        "safe-routed-raw-correct": 17,
+        "safe-routed-raw-wrong": 0,
+        "safe-unrouted": 0
+      },
+      "label": "union-fresh",
+      "partial_only": {
+        "coverage_bins": {
+          "[0.0,0.5)": 11,
+          "[0.5,0.8)": 51,
+          "[0.8,0.95)": 27
+        },
+        "routed_partial_candidate": 49
+      },
+      "raw_correct_final_wrong": {
+        "conflicts": {
+          "multiple-parent-face-edits": 3
+        },
+        "count": 16,
+        "decision_reasons": {
+          "context-not-unique-raw-prefix-suffix": 1,
+          "exact-unicode-view-disagreement": 4,
+          "exact-views-and-independent-pixels": 5,
+          "insufficient-independent-pixel-shape-support": 3,
+          "mixed-region-not-confirmed-face-fragment": 1,
+          "mixed-region-ordinary-letter-number-protected": 2
+        },
+        "kinds": {
+          "accepted-absent-from-final-regions": 2,
+          "accepted-then-parent-restored": 3,
+          "fusion-rejected": 11
+        },
+        "target_ids": [
+          [
+            "dev-0002",
+            "dev-0002-region-38"
+          ],
+          [
+            "dev-0007",
+            "dev-0007-region-22"
+          ],
+          [
+            "dev-0008",
+            "dev-0008-region-45"
+          ],
+          [
+            "dev-0011",
+            "dev-0011-region-42"
+          ],
+          [
+            "dev-0011",
+            "dev-0011-region-43"
+          ],
+          [
+            "dev-0016",
+            "dev-0016-region-19"
+          ],
+          [
+            "dev-0017",
+            "dev-0017-region-47"
+          ],
+          [
+            "dev-0018",
+            "dev-0018-region-30"
+          ],
+          [
+            "dev-0021",
+            "dev-0021-region-35"
+          ],
+          [
+            "dev-0030",
+            "dev-0030-region-28"
+          ],
+          [
+            "dev-0033",
+            "dev-0033-region-14"
+          ],
+          [
+            "dev-0043",
+            "dev-0043-region-44"
+          ],
+          [
+            "dev-0045",
+            "dev-0045-region-79"
+          ],
+          [
+            "dev-0048",
+            "dev-0048-region-45"
+          ],
+          [
+            "dev-0050",
+            "dev-0050-region-6"
+          ],
+          [
+            "dev-0057",
+            "dev-0057-region-74"
+          ]
+        ]
+      },
+      "recorded_body": {
+        "baseline_correct_to_wrong": 0,
+        "baseline_exact": 1660,
+        "baseline_mixed_regions": 243,
+        "body_intersection_transcript_changes": 14,
+        "body_literal_deleted": 0,
+        "erroneous_rewrites": 0,
+        "final_exact": 1662,
+        "final_mixed_regions": 240,
+        "new_body_intersection_errors": 2,
+        "regions": 2437,
+        "split_children_with_unchanged_reading": 2233,
+        "verified_body_preserving_splices": 9
+      },
+      "report": "artifacts\\first-pass-position-20261027\\evaluation\\scene-dev-union-fresh\\evaluation.json",
+      "report_sha256": "f8c6c6c848c6b9a5adf50c393cbe8d3482d4da79806db38072de933d28c55c9e",
+      "safe_unrouted_reasons": {
+        "incomplete-or-edge-clipped-crop": 5,
+        "neighbor-body-overlap": 7,
+        "observed-ordinary-body-anchors": 8,
+        "observed-ordinary-numbers": 3,
+        "ordinary-body-or-single-letter-brackets": 1
+      },
+      "stage_partition": {
+        "complete-but-body/graphicunsafe": 106,
+        "nohit": 6,
+        "partial-only": 89,
+        "safe-routed-raw-correct": 33,
+        "safe-routed-raw-wrong": 10,
+        "safe-unrouted": 24
+      }
+    }
+  },
+  "schema_version": "localocr.stage-attribution.v1"
+}

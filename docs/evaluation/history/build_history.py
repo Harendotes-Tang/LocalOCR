@@ -22,12 +22,13 @@ from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Patch
 
 PUBLIC_REL = Path("docs/evaluation/history")
-COUNTS_REL = Path("artifacts/bracket-pairs-20261016/validation/version-comparison-counts.json")
+COUNTS_REL = Path("artifacts/stage-attribution-20261029/validation/version-comparison-counts.json")
 SUMMARY_SCHEMA = "localocr.version-history.anonymous-evaluation.v1"
 RECEIPT_SCHEMA = "localocr.version-history.assets-build.v1"
 MODEL = "ppocrv6-tiny-exp-20261013-001"
 MODELS = {"browser-font-20261016": "ppocrv6-tiny-exp-20261016-001",  # versions with another specialist; MODEL otherwise
-          "bracket-pairs-20261016": "ppocrv6-tiny-exp-20261016-001"}
+          "bracket-pairs-20261016": "ppocrv6-tiny-exp-20261016-001",
+          "candidate-recovery-20261018": "ppocrv6-tiny-exp-20261016-001"}
 VERSIONS = (
     ("baseline", "生产文字基线", "#64748b"),
     ("grammar-20261013", "语法路由轮 10-13", "#93b3cb"),
@@ -35,12 +36,21 @@ VERSIONS = (
     ("real-rendering-20261015", "真实渲染轮 10-15（冻结）", "#b45309"),
     ("browser-font-20261016", "浏览器字体轮 10-16（开发未过）", "#15803d"),
     ("bracket-pairs-20261016", "括号配对轮 10-16（冻结）", "#7c3aed"),
+    ("candidate-recovery-20261018", "候选恢复轮 10-18（冻结，当前起点）", "#0f766e"),
 )
 DATASET_NAMES = {"atoms-mixed-v1": "原子混合 v1", "cards-v2": "记录卡片 v2", "atoms-mixed-v2": "原子混合 v2", "cards-v3": "记录卡片 v3"}
 SCENE_SETS = (
     ("cards-v2", "记录卡片 v2"), ("atoms-mixed-v1", "原子混合 v1"), ("cards-v3", "记录卡片 v3"),
     ("atoms-mixed-v2", "原子混合 v2"), ("cards-v4", "记录卡片 v4"), ("atoms-mixed-v3", "原子混合 v3"),
-    ("browser-cards-v1", "浏览器渲染卡片"),
+    ("browser-cards-v1", "浏览器渲染卡片"), ("browser-cards-v2", "浏览器渲染卡片 v2"),
+)
+# Rounds after 2026-10-18 that retained the candidate-recovery start configuration and froze nothing. Each is
+# listed with its own anchor (browser-cards-v2 dev, 244 faces) and fresh development set; no heldout was first used.
+UNFROZEN_ROUNDS = (
+    ("complete-spans-20261019", "10-19 完整范围", "浏览器渲染卡片 v3", 256),
+    ("pixel-owned-spans-20261020", "10-20 像素互斥", "浏览器渲染卡片 v4", 232),
+    ("ownership-position-20261022", "10-22 归属位置", "浏览器渲染卡片 v5", 258),
+    ("first-pass-position-20261027", "10-27 首轮位置", "浏览器渲染卡片 v6", 268),
 )
 
 
@@ -121,6 +131,57 @@ def scene_firsts(docs: Path, load) -> list[dict]:
     rows.append({"round": "10-16 括号配对", "dataset": f"浏览器渲染卡片 {model['count']} 面", "faces": model["count"],
                  "baseline": item["baseline"]["isolated_kaomoji"]["exact"], "chain": model["exact"],
                  "gate": (item["model"].get("research_quality_gates") or {}).get("passed")})
+    recovery = load(docs / "candidate-recovery-20261018/summary.json", "round:candidate-recovery-20261018")["scene_heldout"]
+    rows.append({"round": "10-18 候选恢复", "dataset": f"浏览器渲染卡片 v2 {recovery['strict']['count']} 面", "faces": recovery["strict"]["count"],
+                 "baseline": recovery["production"]["exact"], "chain": recovery["strict"]["exact"], "gate": recovery["gate"].get("passed")})
+    return rows
+
+
+def unfrozen_rounds(docs: Path, repo: Path, load) -> list[dict]:
+    """Rounds after 10-18 whose every candidate tier failed its fixed development gates: start retained, nothing frozen.
+
+    Anchor is the candidate-recovery browser-cards-v2 dev set (244 faces) rerun by each round; fresh is that round's own
+    new development set. Best is the highest strict exact count among the rejected tiers, listed only to show that no
+    tier reached the floors (safe complete >= 100, exact >= 30 on the anchor; no lost start-correct target on fresh).
+    """
+    spans = load(docs / "complete-spans-20261019/summary.json", "unfrozen:complete-spans-20261019")
+    owned = load(docs / "pixel-owned-spans-20261020/summary.json", "unfrozen:pixel-owned-spans-20261020")
+    gates = {key: load(repo / "artifacts" / key / "evaluation/quality-only-gates.json", "unfrozen:" + key)
+             for key in ("ownership-position-20261022", "first-pass-position-20261027")}
+
+    def one(starts, bests, faces):
+        """(start exact, best tier exact, faces); every tier must report the same start on the same population."""
+        if len(set(starts)) != 1 or len(set(faces)) != 1:
+            raise ValueError("Tiers of one unfrozen round disagree on their start or population")
+        return starts[0], max(bests), faces[0]
+
+    reports = spans["reports"]
+    values = {"complete-spans-20261019": {
+        "anchor": one([reports["start-anchor"]["strict_exact"]], [reports[k]["strict_exact"] for k in ("line-anchor", "ownership-start-anchor")],
+                      [reports[k]["faces"] for k in ("start-anchor", "line-anchor", "ownership-start-anchor")]),
+        "fresh": one([reports["start-new"]["strict_exact"]], [reports[k]["strict_exact"] for k in ("line-new", "ownership-start-new")],
+                     [reports[k]["faces"] for k in ("start-new", "line-new", "ownership-start-new")])}}
+    tiers = owned["quality_comparisons"].values()
+    values["pixel-owned-spans-20261020"] = {
+        "anchor": one([t["anchor"]["start_exact"] for t in tiers], [t["anchor"]["final_exact"] for t in tiers], [244]),
+        "fresh": one([t["fresh"]["start_exact"] for t in tiers], [t["fresh"]["final_exact"] for t in tiers], [owned["datasets"]["cards"]["dev_faces"]])}
+    for key, gate in gates.items():
+        if gate["passed"] or gate["quality_eligible_tiers"] or gate["selected_tier"] != "start":
+            raise ValueError("Unfrozen round did not retain start: " + key)
+        tiers = gate["tiers"].values()
+        values[key] = {group: one([t[name]["start_exact"] for t in tiers], [t[name]["final_exact"] for t in tiers], [t[name]["count"] for t in tiers])
+                       for group, name in (("anchor", "anchor"), ("fresh", "fresh_development"))}
+    if spans["retained_configuration"] != "start" or owned["retained_configuration"] != "start" or not spans["new_heldouts_sealed"] or not owned["new_heldouts_sealed"]:
+        raise ValueError("Unfrozen round summary does not record a retained start with sealed heldouts")
+    rows = []
+    for key, label, fresh_label, fresh_faces in UNFROZEN_ROUNDS:
+        anchor, fresh = values[key]["anchor"], values[key]["fresh"]
+        if anchor[2] != 244 or fresh[2] != fresh_faces:
+            raise ValueError("Unfrozen round population differs from the documented one: " + key)
+        rows.append({"round": key, "label": label, "anchor": {"faces": anchor[2], "start_exact": anchor[0], "best_tier_exact": anchor[1]},
+                     "fresh": {"dataset": fresh_label, "faces": fresh[2], "start_exact": fresh[0], "best_tier_exact": fresh[1]},
+                     "frozen": False, "heldout_first_use": False,
+                     "note": "best_tier_exact is the highest strict count among the rejected tiers and may sit below start; no tier passed"})
     return rows
 
 
@@ -146,6 +207,10 @@ def crop_firsts(docs: Path, load) -> list[dict]:
     specialist = MODELS["bracket-pairs-20261016"]
     rows.append({"round": "10-16 浏览器字体专项", "dataset": "浏览器裁片 2400 张", "count": browser["production-baseline"]["by_kind"]["face"]["count"],
                  "baseline": browser["production-baseline"]["by_kind"]["face"]["exact"], "specialist": browser[specialist]["by_kind"]["face"]["exact"]})
+    # The candidate-recovery round trained nothing: the same browser-font specialist was first tested on browser-crops-v2.
+    recovery = load(docs / "candidate-recovery-20261018/summary.json", "crop:candidate-recovery-20261018")["crop_heldout"]["models"]
+    rows.append({"round": "10-18 候选恢复", "dataset": "浏览器裁片 v2 2400 张", "count": recovery["production-baseline"]["face"]["count"],
+                 "baseline": recovery["production-baseline"]["face"]["exact"], "specialist": recovery[MODELS["candidate-recovery-20261018"]]["face"]["exact"]})
     return rows
 
 
@@ -154,7 +219,7 @@ def pct(value, total):
 
 
 def figure(panel_a, panel_b, panel_c, public: Path, preview: Path | None = None) -> dict:
-    fig = plt.figure(figsize=(14, 10.5))
+    fig = plt.figure(figsize=(16, 10.5))
     grid = fig.add_gridspec(2, 2, height_ratios=(1.25, 1), width_ratios=(1.9, 1), hspace=.42, wspace=.14)
     ax = fig.add_subplot(grid[0, :])
     width = .8 / len(VERSIONS)
@@ -238,12 +303,14 @@ def main() -> None:
     panel_a = same_data(counts)
     panel_b = scene_firsts(docs, load)
     panel_c = crop_firsts(docs, load)
+    unfrozen = unfrozen_rounds(docs, repo, load)
     figures = [figure(panel_a, panel_b, panel_c, public, args.preview)]
     summary = {"schema_version": SUMMARY_SCHEMA, "generated_utc": datetime.now(timezone.utc).isoformat(), "model": MODEL, "models": MODELS,
-               "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15; the browser set is rendered by Edge with Windows system fonts, not real screenshots. The browser-font version (2026-10-16) is a measured development configuration whose dual freeze was refused; the bracket-pairs version (2026-10-16) is frozen (dual freeze written, both browser heldouts first used once); tail-resolved counts are listed beside the strict count.",
+               "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15; the browser sets are rendered by Edge with Windows system fonts, not real screenshots. The browser-font version (2026-10-16) is a measured development configuration whose dual freeze was refused; the bracket-pairs version (2026-10-16) is frozen (dual freeze written, both browser heldouts first used once); the candidate-recovery version (2026-10-18, pair recrop on the bracket-pairs configuration, no training) is frozen and is the start configuration of every later round; the four later rounds (2026-10-19 to 2026-10-27) failed their fixed development gates, retained start and froze nothing, so they are listed in unfrozen_rounds and never appear as a version; tail-resolved counts are listed beside the strict count.",
                "normalization": "Raw Unicode exact match; the width-only count is a diagnostic of faces equal to the truth except for the outermost bracket width, never part of the exact score.",
                "versions": [{"key": key, "label": label} for key, label, _ in VERSIONS],
-               "same_data": panel_a, "scene_first_tests": panel_b, "crop_first_tests": panel_c, "figures": figures, "sources": sources,
+               "same_data": panel_a, "scene_first_tests": panel_b, "crop_first_tests": panel_c, "unfrozen_rounds": unfrozen,
+               "figures": figures, "sources": sources,
                "font": {"id": cjk["id"], "license": cjk["license"], "sha256": cjk["sha256"]}, "promote": False, "enabled": False}
     write(public / "summary.json", summary)
     write(public / "summary.build-receipt.json", {"schema_version": RECEIPT_SCHEMA, "built_utc": summary["generated_utc"],

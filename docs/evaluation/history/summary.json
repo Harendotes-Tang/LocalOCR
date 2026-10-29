@@ -34,13 +34,20 @@
       "dataset": "浏览器裁片 2400 张",
       "round": "10-16 浏览器字体专项",
       "specialist": 2159
+    },
+    {
+      "baseline": 2,
+      "count": 1200,
+      "dataset": "浏览器裁片 v2 2400 张",
+      "round": "10-18 候选恢复",
+      "specialist": 1076
     }
   ],
   "enabled": false,
   "figures": [
     {
       "file": "docs/evaluation/history/figures/version-comparison.svg",
-      "sha256": "a9ad2797e33e48ae63fb1b76616c190282a6296291e8a83f56bda85097ff00a5"
+      "sha256": "99afba755b94ff4f55a82925033804085eee13566f92cb322ae9464d6acfc4aa"
     }
   ],
   "font": {
@@ -48,11 +55,12 @@
     "license": "OFL-1.1",
     "sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b"
   },
-  "generated_utc": "2026-10-16T19:06:29.307479+00:00",
+  "generated_utc": "2026-10-29T14:08:48.820947+00:00",
   "model": "ppocrv6-tiny-exp-20261013-001",
   "models": {
     "bracket-pairs-20261016": "ppocrv6-tiny-exp-20261016-001",
-    "browser-font-20261016": "ppocrv6-tiny-exp-20261016-001"
+    "browser-font-20261016": "ppocrv6-tiny-exp-20261016-001",
+    "candidate-recovery-20261018": "ppocrv6-tiny-exp-20261016-001"
   },
   "normalization": "Raw Unicode exact match; the width-only count is a diagnostic of faces equal to the truth except for the outermost bracket width, never part of the exact score.",
   "promote": false,
@@ -189,6 +197,13 @@
           "tail_resolved_exact": 5,
           "width_only": 2
         },
+        "candidate-recovery-20261018": {
+          "cer": 0.8736445073078737,
+          "exact": 5,
+          "research_gate_passed": true,
+          "tail_resolved_exact": 5,
+          "width_only": 2
+        },
         "candidates-20261013": {
           "cer": 0.8708156529938709,
           "exact": 9,
@@ -225,6 +240,13 @@
           "exact": 27,
           "research_gate_passed": true,
           "tail_resolved_exact": 27,
+          "width_only": 0
+        },
+        "candidate-recovery-20261018": {
+          "cer": 0.6644493717664449,
+          "exact": 28,
+          "research_gate_passed": true,
+          "tail_resolved_exact": 28,
           "width_only": 0
         },
         "candidates-20261013": {
@@ -265,6 +287,13 @@
           "tail_resolved_exact": 25,
           "width_only": 3
         },
+        "candidate-recovery-20261018": {
+          "cer": 0.8211128445137805,
+          "exact": 33,
+          "research_gate_passed": true,
+          "tail_resolved_exact": 34,
+          "width_only": 2
+        },
         "candidates-20261013": {
           "cer": 0.9048361934477379,
           "exact": 8,
@@ -276,6 +305,25 @@
           "exact": 4,
           "research_gate_passed": false,
           "width_only": 9
+        }
+      }
+    },
+    {
+      "faces": 244,
+      "key": "browser-cards-v2",
+      "kind": "browser-dev",
+      "label": "浏览器渲染卡片 v2 dev",
+      "versions": {
+        "baseline": {
+          "exact": 0,
+          "width_only": 0
+        },
+        "candidate-recovery-20261018": {
+          "cer": 0.8663414634146341,
+          "exact": 20,
+          "research_gate_passed": true,
+          "tail_resolved_exact": 20,
+          "width_only": 0
         }
       }
     },
@@ -303,6 +351,13 @@
           "embedded_faces": 35,
           "exact": 16,
           "width_only": 5
+        },
+        "candidate-recovery-20261018": {
+          "body_lost": 0,
+          "embedded_contained": 10,
+          "embedded_faces": 35,
+          "exact": 13,
+          "width_only": 4
         },
         "candidates-20261013": {
           "body_lost": 0,
@@ -391,15 +446,23 @@
       "faces": 481,
       "gate": true,
       "round": "10-16 括号配对"
+    },
+    {
+      "baseline": 1,
+      "chain": 29,
+      "dataset": "浏览器渲染卡片 v2 522 面",
+      "faces": 522,
+      "gate": true,
+      "round": "10-18 候选恢复"
     }
   ],
   "schema_version": "localocr.version-history.anonymous-evaluation.v1",
-  "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15; the browser set is rendered by Edge with Windows system fonts, not real screenshots. The browser-font version (2026-10-16) is a measured development configuration whose dual freeze was refused; the bracket-pairs version (2026-10-16) is frozen (dual freeze written, both browser heldouts first used once); tail-resolved counts are listed beside the strict count.",
+  "scope": "Panel A compares versions on identical datasets; panels B and C list each round's own first test on different data and are baseline-relative only. Synthetic data except the known-input set, which became a non-independent development probe on 2026-10-15; the browser sets are rendered by Edge with Windows system fonts, not real screenshots. The browser-font version (2026-10-16) is a measured development configuration whose dual freeze was refused; the bracket-pairs version (2026-10-16) is frozen (dual freeze written, both browser heldouts first used once); the candidate-recovery version (2026-10-18, pair recrop on the bracket-pairs configuration, no training) is frozen and is the start configuration of every later round; the four later rounds (2026-10-19 to 2026-10-27) failed their fixed development gates, retained start and froze nothing, so they are listed in unfrozen_rounds and never appear as a version; tail-resolved counts are listed beside the strict count.",
   "sources": [
     {
-      "file": "artifacts/bracket-pairs-20261016/validation/version-comparison-counts.json",
+      "file": "artifacts/stage-attribution-20261029/validation/version-comparison-counts.json",
       "role": "version-comparison-counts",
-      "sha256": "f9be8c6269be6fad2540348b73b35fda2e9ccec4b8ee2a717478889483461161"
+      "sha256": "f26032a20854ef1bafda835fd666de7ba11f9497feaca0e20ccc9da9e696a68d"
     },
     {
       "file": "docs/evaluation/region-20261012/summary.json",
@@ -437,6 +500,11 @@
       "sha256": "aa717c6caed39f310b59259c3722ecd6d2b7b11ead95b09a23330e6d0726f155"
     },
     {
+      "file": "docs/evaluation/candidate-recovery-20261018/summary.json",
+      "role": "round:candidate-recovery-20261018",
+      "sha256": "b29f688c51c9f76558b50077002369f4b3715397b8733c6b4d3205e8752e47aa"
+    },
+    {
       "file": "docs/evaluation/kaomoji-v1-v4-20261011/metrics.json",
       "role": "round:kaomoji-v1-v4-20261011",
       "sha256": "b90934708975aac2bbf71219bb455f24d6c4e71f8753f6d003a48edb042d146f"
@@ -460,6 +528,105 @@
       "file": "docs/evaluation/bracket-pairs-20261016/summary.json",
       "role": "crop:bracket-pairs-20261016",
       "sha256": "aa717c6caed39f310b59259c3722ecd6d2b7b11ead95b09a23330e6d0726f155"
+    },
+    {
+      "file": "docs/evaluation/candidate-recovery-20261018/summary.json",
+      "role": "crop:candidate-recovery-20261018",
+      "sha256": "b29f688c51c9f76558b50077002369f4b3715397b8733c6b4d3205e8752e47aa"
+    },
+    {
+      "file": "docs/evaluation/complete-spans-20261019/summary.json",
+      "role": "unfrozen:complete-spans-20261019",
+      "sha256": "ad6cfe09de9907e3233125590e1ea9685acfd01ce3dc1815dc981ffb8cde1bd4"
+    },
+    {
+      "file": "docs/evaluation/pixel-owned-spans-20261020/summary.json",
+      "role": "unfrozen:pixel-owned-spans-20261020",
+      "sha256": "5273a52cc1d94083e207417b6e0a56372945c95efb3f364017a9bd1454d6e801"
+    },
+    {
+      "file": "artifacts/ownership-position-20261022/evaluation/quality-only-gates.json",
+      "role": "unfrozen:ownership-position-20261022",
+      "sha256": "967961abb1c5af158572a48c436532fefe4b46b6f95fcdf0ba778e244415eed5"
+    },
+    {
+      "file": "artifacts/first-pass-position-20261027/evaluation/quality-only-gates.json",
+      "role": "unfrozen:first-pass-position-20261027",
+      "sha256": "0665051f2c930b5db6758a92db87fc4e20e15df0676dd5b39ab848a2d7b56ddf"
+    }
+  ],
+  "unfrozen_rounds": [
+    {
+      "anchor": {
+        "best_tier_exact": 21,
+        "faces": 244,
+        "start_exact": 20
+      },
+      "fresh": {
+        "best_tier_exact": 16,
+        "dataset": "浏览器渲染卡片 v3",
+        "faces": 256,
+        "start_exact": 16
+      },
+      "frozen": false,
+      "heldout_first_use": false,
+      "label": "10-19 完整范围",
+      "note": "best_tier_exact is the highest strict count among the rejected tiers and may sit below start; no tier passed",
+      "round": "complete-spans-20261019"
+    },
+    {
+      "anchor": {
+        "best_tier_exact": 22,
+        "faces": 244,
+        "start_exact": 20
+      },
+      "fresh": {
+        "best_tier_exact": 17,
+        "dataset": "浏览器渲染卡片 v4",
+        "faces": 232,
+        "start_exact": 17
+      },
+      "frozen": false,
+      "heldout_first_use": false,
+      "label": "10-20 像素互斥",
+      "note": "best_tier_exact is the highest strict count among the rejected tiers and may sit below start; no tier passed",
+      "round": "pixel-owned-spans-20261020"
+    },
+    {
+      "anchor": {
+        "best_tier_exact": 20,
+        "faces": 244,
+        "start_exact": 20
+      },
+      "fresh": {
+        "best_tier_exact": 19,
+        "dataset": "浏览器渲染卡片 v5",
+        "faces": 258,
+        "start_exact": 18
+      },
+      "frozen": false,
+      "heldout_first_use": false,
+      "label": "10-22 归属位置",
+      "note": "best_tier_exact is the highest strict count among the rejected tiers and may sit below start; no tier passed",
+      "round": "ownership-position-20261022"
+    },
+    {
+      "anchor": {
+        "best_tier_exact": 23,
+        "faces": 244,
+        "start_exact": 20
+      },
+      "fresh": {
+        "best_tier_exact": 19,
+        "dataset": "浏览器渲染卡片 v6",
+        "faces": 268,
+        "start_exact": 21
+      },
+      "frozen": false,
+      "heldout_first_use": false,
+      "label": "10-27 首轮位置",
+      "note": "best_tier_exact is the highest strict count among the rejected tiers and may sit below start; no tier passed",
+      "round": "first-pass-position-20261027"
     }
   ],
   "versions": [
@@ -486,6 +653,10 @@
     {
       "key": "bracket-pairs-20261016",
       "label": "括号配对轮 10-16（冻结）"
+    },
+    {
+      "key": "candidate-recovery-20261018",
+      "label": "候选恢复轮 10-18（冻结，当前起点）"
     }
   ]
 }
